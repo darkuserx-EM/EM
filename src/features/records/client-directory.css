@@ -1,0 +1,70 @@
+.client-directory-toolbar{display:flex;gap:12px;align-items:center;margin-bottom:18px}
+.heading-actions:has(.client-import-trigger){flex-wrap:wrap;flex-shrink:1;justify-content:flex-end;max-width:620px}
+.client-import-counts{display:flex;gap:20px;flex-wrap:wrap;font-size:12px;margin:18px 0 10px;color:#637656}
+.client-import-counts strong{font-weight:600}
+.client-directory-toolbar .search-box{flex:1;max-width:none;background:#fff;padding:0 13px;min-height:43px}
+.client-directory-toolbar .search-box input{width:100%;min-width:0;font-size:12px}
+.client-directory-toolbar .search-box .icon-button{flex-shrink:0}
+.client-directory-toolbar>select{font-size:12px;min-height:43px;max-width:210px}
+.client-directory-layout{display:grid;grid-template-columns:minmax(240px,29%) minmax(0,1fr);background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;min-height:590px}
+.client-directory-list{border-right:1px solid var(--line);max-height:min(76vh,800px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#c9cebf transparent}
+.client-directory-caption{position:sticky;top:0;z-index:1;display:flex;justify-content:space-between;gap:10px;padding:18px 20px;background:#fafbf7;border-bottom:1px solid var(--line);font-size:10px;color:#858c7a;letter-spacing:.8px}
+.client-directory-caption>span:last-child{letter-spacing:0;color:#9a9f90}
+.client-directory-item{display:block;text-align:left;width:100%;border-bottom:1px solid #eaede4;padding:17px 20px;background:#fff;position:relative}
+.client-directory-item:hover{background:#f6f8f0}
+.client-directory-item[aria-pressed=true]{background:#edf1e5;box-shadow:inset 3px 0 #61764e}
+.client-directory-item:focus-visible{outline-offset:-4px}
+.client-directory-item-top{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:8px}
+.client-directory-code{font-size:10px;color:#869177;letter-spacing:.4px}
+.client-directory-item>strong{font-size:13px;font-weight:550;line-height:1.5;display:block;color:#46523b;overflow-wrap:anywhere}
+.client-directory-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:10px;color:#87947a;margin-top:7px}
+.client-directory-no-results{padding:22px;font-size:12px;color:#829174}
+.client-directory-note{font-size:10px;color:#919981;margin-top:13px}
+.client-inspector{padding:28px 30px;min-width:0}
+.client-inspector-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:25px}
+.client-inspector-heading>div:first-child{min-width:0}
+.client-inspector-heading .eyebrow{display:block;font-size:10px;letter-spacing:1.2px;margin:0 0 9px}
+.client-inspector-heading h2{font-size:24px;line-height:1.35;letter-spacing:-.7px;color:#3f4a36;overflow-wrap:anywhere}
+.client-inspector-heading p{font-size:11px;color:#8b967f;margin-top:6px}
+.client-inspector-actions{display:flex;align-items:flex-end;gap:10px;flex-direction:column;flex-shrink:0}
+.client-inspector-actions>.status{font-size:9px}
+.client-inspector-actions>.button{font-size:11px}
+.client-section-tabs{display:flex;align-items:center;gap:22px;border-bottom:1px solid var(--line);margin-bottom:26px;flex-wrap:wrap}
+.client-section-tabs button{display:flex;align-items:center;gap:6px;font-size:12px;color:#8a9380;padding:0 0 13px;border-bottom:2px solid transparent;margin-bottom:-1px;min-height:38px}
+.client-section-tabs button[aria-pressed=true]{color:#475e35;border-bottom-color:#5e754b;font-weight:600}
+.client-section-tabs button>span{font-size:10px;color:#93a083;background:#f2f5ec;border-radius:4px;padding:1px 5px;min-width:18px;text-align:center;font-variant-numeric:tabular-nums}
+.client-summary-fields{display:grid;grid-template-columns:1fr 1fr;gap:23px 30px;margin:0}
+.client-summary-fields dt{font-size:11px;color:#8b987e;margin-bottom:7px}
+.client-summary-fields dd{font-size:13px;color:#536547;margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.client-summary-wide{grid-column:1/-1}
+.client-summary-location{border-top:1px solid #e8eddf;padding-top:23px;margin-top:27px}
+.client-section-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-bottom:17px}
+.client-section-heading h3{display:flex;align-items:center;gap:8px;font-size:13px;color:#5a6b4a;font-weight:550}
+.client-section-heading .text-link{font-size:11px}
+.client-summary-location>strong{font-size:13px;font-weight:550;color:#526b42}
+.client-summary-location>p{font-size:12px;color:#879879;line-height:1.8;margin-top:7px;overflow-wrap:anywhere}
+.client-location-reference{display:inline-block;border:1px solid #e4e9dc;border-radius:5px;padding:5px 8px;font-size:11px;color:#7c9069;margin-top:10px;overflow-wrap:anywhere;max-width:100%}
+.client-billing-details{border-top:1px solid #e8eddf;margin-top:26px;padding-top:19px}
+.client-billing-details>summary{font-size:12px;color:#72875e;cursor:pointer}
+.client-billing-details>.client-summary-fields{padding-top:22px}
+.client-summary-notes{border-top:1px solid #e8eddf;margin-top:24px;padding-top:19px}
+.client-summary-notes h3{font-size:12px;font-weight:500;color:#72875e}
+.client-summary-notes p{font-size:12px;color:#879879;margin-top:9px;white-space:pre-wrap;overflow-wrap:anywhere}
+.client-section-content{min-width:0}
+.client-section-content .button{font-size:11px}
+.client-section-empty{padding:18px 0;font-size:12px;color:#899879;line-height:1.8}
+.client-inspector-related article{border-top:1px solid #e6ecde;padding:17px 0}
+.client-inspector-related .related-title{flex-wrap:wrap}
+.client-inspector-related .related-title strong{font-size:13px;overflow-wrap:anywhere}
+.client-inspector-related p{display:flex;align-items:center;gap:7px;font-size:12px;color:#839873;line-height:1.8;margin-top:8px;overflow-wrap:anywhere}
+.client-inspector-equipment>a{display:flex;align-items:center;gap:13px;border-top:1px solid #e6ecde;padding:18px 0}
+.client-equipment-symbol{display:grid;place-items:center;width:37px;height:37px;background:#f3f6ed;border:1px solid #e8eddf;border-radius:7px;color:#98aa86;flex-shrink:0}
+.client-equipment-copy{min-width:0;flex:1}
+.client-equipment-copy strong{font-size:12px;font-weight:550;color:#5b7449;display:block;overflow-wrap:anywhere}
+.client-equipment-copy small{font-size:10px;color:#8d9e7e;display:block;margin-top:6px;overflow-wrap:anywhere}
+.client-inspector-equipment>a>svg:last-child{color:#96a587}
+.client-inspector-empty{text-align:center;align-self:start}
+.client-inspector .empty-state{padding:35px 10px}
+@media(max-width:1250px){.client-directory-layout{grid-template-columns:240px minmax(0,1fr)}.client-inspector{padding:24px}.client-inspector-heading{flex-wrap:wrap}.client-inspector-actions{flex-direction:row;align-items:center}.client-section-tabs{gap:15px}.client-inspector-heading h2{font-size:22px}}
+@media(max-width:1080px) and (min-width:851px){.client-directory-layout{grid-template-columns:210px minmax(0,1fr)}.client-directory-item{padding:15px}.client-directory-caption{padding:16px 15px}.client-inspector{padding:22px 20px}.client-section-tabs{gap:10px}.client-section-tabs button{font-size:11px}.client-inspector-equipment>a{flex-wrap:wrap}.client-equipment-copy{flex-basis:calc(100% - 60px)}}
+@media(max-width:600px){.client-directory-toolbar{flex-wrap:wrap;gap:10px}.client-directory-toolbar .search-box{flex-basis:100%}.client-directory-toolbar .search-box input{font-size:16px}.client-directory-toolbar>select{font-size:13px;max-width:none;width:100%}.client-directory-layout{grid-template-columns:1fr;min-height:0}.client-directory-list{border-right:0;border-bottom:1px solid var(--line);max-height:282px}.client-directory-caption{padding:13px 17px}.client-directory-item{padding:13px 17px}.client-directory-item-top{margin-bottom:5px}.client-directory-item>strong{font-size:13px}.client-directory-meta{margin-top:5px;font-size:11px}.client-inspector{padding:23px 19px;min-height:420px}.client-inspector-heading{gap:14px;margin-bottom:21px}.client-inspector-heading h2{font-size:22px}.client-inspector-actions{flex-direction:row;align-items:center}.client-section-tabs{gap:16px;row-gap:3px;margin-bottom:23px}.client-section-tabs button{font-size:11px;gap:4px;min-height:42px}.client-section-tabs button>span{padding:1px 3px;min-width:15px}.client-summary-fields{gap:20px}.client-summary-fields dd{font-size:12px}.client-inspector-equipment>a{flex-wrap:wrap}.client-equipment-copy{flex-basis:calc(100% - 60px)}.client-section-heading .button{min-height:36px}.client-inspector-related p{align-items:flex-start}.client-directory-note{font-size:10px}}
