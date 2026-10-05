@@ -1,0 +1,107 @@
+import express from 'express';
+import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
+import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames } from './generated/domain.mjs';
+import { readSnapshot, readDatabase, saveDatabase, consumeLoginAttempt } from './database.mjs';
+import { hashPassword, verifyPassword, digest, equal, token, cookieToken } from './security.mjs';
+
+const fail = (status, message) => Object.assign(new Error(message), { status });
+const visible = (db, actor) => ({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, filterVisible(actor, name, db.entities[name])])) });
+const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, cliente_id: user.client_id || undefined, tecnico_id: user.technician_id || undefined });
+const cookieName = 'em_session';
+const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
+export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist') }) {
+  const app = express();
+  app.disable('x-powered-by'); app.set('trust proxy', 1);
+  app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null } } }));
+  app.use((_req, res, next) => { res.set('X-Robots-Tag', 'noindex, nofollow'); next(); });
+  app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
+  app.get('/api/health', async (_req,res) => { try { await pool.query('SELECT 1'); res.json({ status:'ok', database:'connected' }); } catch { res.status(503).json({ status:'unavailable' }); } });
+  app.use('/api', rateLimit({ windowMs:60000, limit:240, standardHeaders:'draft-8', legacyHeaders:false, message:{error:'Demasiadas solicitudes. Intenta de nuevo en un minuto.'} }));
+  app.use('/api', (req,_res,next) => {
+    if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || !req.is('application/json'))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
+    next();
+  });
+  app.use('/api', express.json({ limit:'8mb' }));
+  const loginLimit = rateLimit({ windowMs:900000, limit:30, standardHeaders:'draft-8', legacyHeaders:false, message:{error:'Demasiados intentos. Espera 15 minutos.'} });
+  app.get('/api/setup-status', async (_req,res) => { const [rows] = await pool.query('SELECT COUNT(*) AS n FROM em_users'); res.json({ needsSetup:Number(rows[0].n) === 0 }); });
+  app.post('/api/setup', loginLimit, async (req,res) => {
+    if (!setupToken || setupToken.length < 32 || !equal(req.body?.setupToken,setupToken)) throw fail(403,'La clave de instalación no es válida.');
+    const email = emailOf(req.body.email);
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254 || !name || name.length>160) throw fail(400,'Indica nombre y correo válidos.');
+    let passwordHash;
+    try { passwordHash = await hashPassword(req.body.password); } catch (error) { throw fail(400,error.message); }
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE');
+      const [users] = await conn.query('SELECT COUNT(*) AS n FROM em_users');
+      if (Number(users[0].n)) throw fail(409,'La cuenta inicial ya existe. Inicia sesión.');
+      await conn.execute('INSERT INTO em_users (id,email,name,role,password_hash) VALUES (?,?,?,?,?)',[randomUUID(),email,name,'Administrador',passwordHash]);
+      await conn.commit(); res.status(201).json({created:true});
+    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+  });
+  app.post('/api/login', loginLimit, async (req,res) => {
+    const email = emailOf(req.body?.email);
+    if (!email || email.length>254 || typeof req.body.password !== 'string' || req.body.password.length>128) throw fail(401,'Correo o contraseña incorrectos.');
+    if (!await consumeLoginAttempt(pool,digest(email))) throw fail(429,'Demasiados intentos para esta cuenta. Espera 15 minutos.');
+    const [rows] = await pool.execute('SELECT * FROM em_users WHERE email=? AND active=TRUE',[email]);
+    // Derive even for an unknown account to avoid fast username enumeration.
+    const dummy = `scrypt:${'0'.repeat(32)}:${'0'.repeat(128)}`;
+    if (!await verifyPassword(req.body.password,rows[0]?.password_hash || dummy) || !rows[0]) throw fail(401,'Correo o contraseña incorrectos.');
+    const session = token();
+    await pool.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at) VALUES (?,?,?,?)',[digest(session),rows[0].id,token(),Date.now()+8*3600000]);
+    await pool.execute('DELETE FROM em_login_limits WHERE bucket=?',[digest(email)]);
+    await pool.execute('DELETE FROM em_sessions WHERE expires_at<?',[Date.now()]);
+    res.cookie(cookieName,session,{httpOnly:true,secure:production,sameSite:'strict',path:'/',maxAge:8*3600000});
+    res.json({ok:true});
+  });
+  app.use('/api', async (req,_res,next) => {
+    const session = cookieToken(req.headers.cookie,cookieName);
+    if (!session || session.length>128) throw fail(401,'Inicia sesión para continuar.');
+    const [rows] = await pool.execute('SELECT s.csrf, s.token_hash, u.* FROM em_sessions s JOIN em_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=TRUE',[digest(session),Date.now()]);
+    if (!rows[0]) throw fail(401,'Tu sesión terminó. Vuelve a ingresar.');
+    req.actor = actorOf(rows[0]); req.sessionHash = rows[0].token_hash; req.csrf = rows[0].csrf;
+    if (!['GET','HEAD'].includes(req.method) && !equal(req.get('x-csrf-token'),req.csrf)) throw fail(403,'La sesión de esta solicitud no es válida. Recarga el portal.');
+    next();
+  });
+  app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf}));
+  app.post('/api/logout', async (req,res) => { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); res.clearCookie(cookieName,{path:'/',secure:production,httpOnly:true,sameSite:'strict'}); res.json({ok:true}); });
+  app.get('/api/database', async (req,res) => res.json(visible(await readSnapshot(pool),req.actor)));
+  app.post('/api/mutate', async (req,res) => {
+    if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
+    const body = req.body;
+    if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
+    if (!['importClients','restore'].includes(body.action) && !['Cliente','Contacto','Sede','Equipo','Catalogos'].includes(body.entity)) throw fail(400,'Entidad no editable.');
+    if (['import','importClients'].includes(body.action) && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction(); const db = await readDatabase(conn,true);
+      if (body.revision !== db.revision) throw fail(409,'Los datos cambiaron en otro dispositivo. Recarga y revisa antes de guardar.');
+      let saved = JSON.stringify(db);
+      const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false});
+      let result;
+      try {
+        if (body.action==='importClients') result = source.importClients(req.actor,body.rows,db.revision);
+        else if (body.action==='restore') source.restore(req.actor,body.database,db.revision);
+        else {
+          const repo = source.repository(body.entity,req.actor);
+          if (body.action==='create') result = await repo.create(body.fields);
+          if (body.action==='update') result = await repo.update(body.id,body.fields);
+          if (body.action==='remove') await repo.remove(body.id);
+          if (body.action==='import') await repo.import(body.rows,db.revision);
+        }
+      } catch (error) { throw fail(400,error.message); }
+      const next = JSON.parse(saved); await saveDatabase(conn,next,db); await conn.commit();
+      res.json({result,database:visible(next,req.actor)});
+    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+  });
+  app.use('/api', (_req,_res,next)=>next(fail(404,'Ruta no encontrada.')));
+  app.use(express.static(dist,{index:false,dotfiles:'deny',setHeaders:(res,path)=>res.set('Cache-Control',path.includes('/assets/')?'public,max-age=31536000,immutable':'no-cache')}));
+  app.get('/{*path}', (_req,res)=>{res.set('Cache-Control','no-cache');res.sendFile(resolve(dist,'index.html'));});
+  app.use((error,_req,res,_next)=>{ const status = error.status || 503; res.status(status).json({error:status<500?error.message:'El servicio no está disponible. Intenta nuevamente en unos minutos.'}); });
+  return app;
+}

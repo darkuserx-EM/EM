@@ -2,7 +2,7 @@ import { useRef, useState, type ChangeEvent } from 'react';
 import { Check, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import { useActor, useToast } from '../../app/state';
 import { ErrorNotice, Modal } from '../../components/ui';
-import { getDataSource } from '../../data/repository';
+import { getDataSource, serverMode } from '../../data/source';
 import { readWorkbook } from '../../data/excel';
 import { parseClientWorkbook } from '../../data/client-excel';
 import { clientImportEntities, type ClientImportPreview } from '../../domain/client-import';
@@ -25,13 +25,13 @@ export default function ClientImportDialog({ onClose, onImported }: { onClose: (
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); target.value = ''; }
   };
-  const confirm = () => {
+  const confirm = async () => {
     if (busy || !rows.length || invalid) return;
     setBusy(true); setError('');
     try {
-      const clientId = getDataSource().importClients(actor, rows.map(row => row.input), revision);
+      const clientId = await getDataSource().importClients(actor, rows.map(row => row.input), revision);
       const clients = rows.filter(row => row.input.entity === 'Cliente').length;
-      notify(`Importación completada: ${clients} ${clients === 1 ? 'cliente' : 'clientes'} y ${rows.length - clients} contactos/sedes. Guardado en este navegador.`);
+      notify(`Importación completada: ${clients} ${clients === 1 ? 'cliente' : 'clientes'} y ${rows.length - clients} contactos/sedes. ${serverMode ? 'Guardado en el servidor.' : 'Guardado en este navegador.'}`);
       onImported(clientId);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }

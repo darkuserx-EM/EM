@@ -1,19 +1,25 @@
-# Publicación prevista en Hostinger
+# Publicación de pruebas en Hostinger
 
-Se verificó compatibilidad en hPanel el 04/10/2026. Todavía no se ha desplegado este proyecto ni creado un subdominio o base de datos.
+Destino autorizado: portal.expertosenmontacargas.com, como aplicación independiente del WordPress comercial. El 04/10/2026 se verificó Business Web Hosting, Node.js 24, pnpm y MySQL. El asistente se preparó con el subdominio y el repositorio público https://github.com/darkuserx-EM/EM, rama main. La base dedicada, credenciales, publicación final y pruebas contra MySQL real deben confirmarse antes de anunciar el portal operativo.
 
-## Demostración estática
+## Aplicación con MySQL
 
-- Dirección propuesta: portal.expertosenmontacargas.com, pendiente de configuración y comprobación de DNS/HTTPS.
+- Dirección: portal.expertosenmontacargas.com, pendiente de comprobación de DNS/HTTPS.
 - Compilar con Node.js 24: instalar dependencias y ejecutar `pnpm build`.
-- En Web Apps, elegir un proyecto React/Vite, con directorio de salida `dist` y comando de compilación correspondiente al gestor de paquetes elegido.
-- Si se aloja como sitio HTML estático, publicar el contenido de dist en el directorio del sitio destinado al portal. La regla .htaccess incluida permite recargar rutas de React Router en Apache/LiteSpeed.
+- En Web Apps, elegir Express, Node 24.x, pnpm, raíz ./ y entrada server/index.mjs. Compilación: pnpm build. Inicio: pnpm start. Puerto: PORT o 3000. El servidor entrega dist y resuelve las rutas de React.
+- No configurar esta versión como Vite estático: necesita ejecutar el servidor para acceder a MySQL.
 - Comprobar rutas directas, HTTPS, fuentes, descarga de Excel y comportamiento en móvil.
 - Crear un destino independiente para el portal. No subir estos archivos sobre el public_html de WordPress existente.
 
-## Operación real, en una entrega posterior
+## Primera instalación
 
-Configurar una aplicación Node.js y una base MySQL propia del portal. Autorizar consultas por sesión y empresa en el servidor. Añadir almacenamiento persistente para adjuntos, copias comprobadas y restauración. Si se usa el almacenamiento de archivos del hosting, comprobar su conservación en nuevos despliegues y su inclusión en respaldos.
+Crear una base MySQL exclusiva y un usuario asociado. El titular debe introducir personalmente las credenciales nuevas. Usar el host indicado por Hostinger, habitualmente localhost. Completar las variables de .env.example en Hostinger, nunca en GitHub: DB_*, APP_ORIGIN, NODE_ENV=production, VITE_DATA_MODE=server y una clave SETUP_TOKEN aleatoria de al menos 32 caracteres. Ninguna contraseña debe usar un nombre VITE_*.
+
+El servidor crea sus tablas y catálogos iniciales. La pantalla de instalación exige SETUP_TOKEN para crear la primera cuenta de administración. Tras iniciar sesión, retirar esa variable y reiniciar. No hay cuentas ficticias habilitadas en línea. Consultar BASE-DE-DATOS.md para el diseño, límites y pruebas de persistencia, permisos, importación y restauración. Antes de datos reales se deben comprobar las copias MySQL y una restauración.
+
+La importación por URL pública no necesita acceso a otros repositorios. No se ha confirmado un webhook: comprobar en el panel la modalidad de actualización antes de anunciar despliegues automáticos. Revisar la configuración detectada después de publicar cambios de código.
+
+En localhost se conserva la demostración; VITE_DATA_MODE=server fuerza la conexión al servidor para pruebas locales. Nunca publicar VITE_DATA_MODE=local como entorno operativo. La gestión de cuentas adicionales y recuperación de contraseña todavía no tiene interfaz. Los adjuntos necesitan almacenamiento persistente y respaldo propios en su etapa.
 
 Los correos automáticos, WhatsApp y procesos programados necesitan configuración adicional; no están implementados ni contratados en esta entrega. No se requiere instalar WordPress ni adquirir un constructor de sitios para ejecutar este proyecto.
 

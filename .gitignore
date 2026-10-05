@@ -11,3 +11,4 @@ coverage/
 *.local
 private/
 backups/
+server/generated/

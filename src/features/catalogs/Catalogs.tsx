@@ -3,7 +3,7 @@ import { Check, Download, FileSpreadsheet, Pencil, Plus, Search, Upload, X } fro
 import { useActor, useRows, useToast } from '../../app/state';
 import { ErrorNotice, Modal, SectionTitle, Status } from '../../components/ui';
 import { catalogGroups, type EntityRecord } from '../../domain/model';
-import { getDataSource } from '../../data/repository';
+import { getDataSource } from '../../data/source';
 import { normalize } from '../../domain/validation';
 import { downloadWorkbook, exportRows, makeTemplate, parseImport, readWorkbook, type PreviewRow } from '../../data/excel';
 

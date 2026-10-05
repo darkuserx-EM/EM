@@ -1,6 +1,6 @@
-# Portal EM · Etapa 1
+# Portal EM · Base y pruebas en línea
 
-Base navegable para Expertos en Montacargas, S.A. (EMSA). Versión 0.1, exclusivamente con datos ficticios y almacenamiento local. La plataforma operativa y el backend todavía no se han construido.
+Base navegable para Expertos en Montacargas, S.A. (EMSA). Versión 0.2: prototipo local y primera conexión con servidor Node.js/MySQL para pruebas. Incluye cuenta inicial de administración, sesiones y persistencia compartida de clientes, contactos, sedes, equipos y catálogos. La publicación y las pruebas contra MySQL real requieren configurar el alojamiento.
 
 ## Trabajar desde GitHub
 
@@ -75,7 +75,11 @@ public/         Favicon y reglas para distribución estática
 docs/           Arquitectura, alcance y despliegue
 ```
 
-## Alcance y límites
+## Conexión compartida en preparación
+
+El modo en línea usa servidor y cuenta autenticada; no muestra el selector de roles. Consulta `docs/BASE-DE-DATOS.md` para el esquema inicial, configuración, límites y pruebas pendientes. El modo local en localhost conserva la demostración anterior. Para forzar el servidor en desarrollo usa VITE_DATA_MODE=server.
+
+## Alcance y límites de la demostración local
 
 El selector de usuario **no es autenticación**. El filtrado local demuestra la experiencia de uso, pero no protege información frente a alguien con acceso al navegador. Los dispositivos no comparten datos. No introducir datos reales, contraseñas ni claves privadas.
 
@@ -91,6 +95,6 @@ La captura web y la importación de clientes adelantan una parte de las etapas 2
 
 El 04/10/2026 se verificó en hPanel: Business Web Hosting, 200 GB de almacenamiento, 3 GB de RAM, 2 núcleos de CPU, soporte React/Vite/Node.js, gestión MySQL, dominio expertosenmontacargas.com y opción de subdominios. El panel indicaba copias diarias y vencimiento del hosting el 11/09/2027. Estos son recursos del plan compartido entre sus sitios, no recursos exclusivos del portal.
 
-Se autorizó la creación local del proyecto y la descarga de dependencias. Esta entrega no modifica hosting, DNS, WordPress, cuentas ni permisos de la cuenta de Hostinger. La publicación se abordará con una compilación revisada.
+Se autorizó la creación local del proyecto y la descarga de dependencias. Esta entrega no modifica hosting, DNS, WordPress, cuentas ni permisos de la cuenta de Hostinger. El usuario autorizó posteriormente preparar y publicar un entorno de pruebas independiente. El resultado de despliegue se documenta en docs/HOSTINGER.md.
 
 Ver `docs/ARQUITECTURA.md` y `docs/HOSTINGER.md`.

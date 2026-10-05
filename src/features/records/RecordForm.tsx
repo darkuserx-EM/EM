@@ -3,7 +3,7 @@ import { Check, Info } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
 import { ErrorNotice, Modal } from '../../components/ui';
 import { definitions, type EntityRecord, type Scalar } from '../../domain/model';
-import { getDataSource } from '../../data/repository';
+import { getDataSource, serverMode } from '../../data/source';
 
 export type EditableRecord = 'Cliente' | 'Equipo' | 'Contacto' | 'Sede';
 const names = { Cliente: 'cliente', Equipo: 'equipo', Contacto: 'contacto', Sede: 'sede' };
@@ -40,7 +40,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
       const fields: Record<string, Scalar> = Object.fromEntries(definitions[entity].columns.map(column => [column.key, column.type === 'number' ? values[column.key]?.trim() ? Number(values[column.key]) : column.required ? '' : null : values[column.key] ?? '']));
       const repo = getDataSource().repository(entity, actor);
       const saved = row ? await repo.update(row.id, fields) : await repo.create(fields);
-      notify(`${saved.codigo} guardado en este navegador.`); onSaved(saved);
+      notify(`${saved.codigo} guardado ${serverMode ? 'en el servidor' : 'en este navegador'}.`); onSaved(saved);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };

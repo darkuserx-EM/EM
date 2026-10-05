@@ -19,12 +19,12 @@ export interface ImportRow { id?: string; fields: Record<string, Scalar> }
 export class LocalDataSource {
   private database: Database;
   private listeners = new Set<() => void>();
-  constructor(private storage: StorageAdapter) {
+  constructor(private storage: StorageAdapter, private options = { demoHistory: true }) {
     const saved = storage.getItem(STORAGE_KEY);
     try {
       const data: unknown = saved ? JSON.parse(saved) : createSeed();
       validateDatabase(data);
-      const expanded = addEquipmentHistoryDemo(data.entities);
+      const expanded = this.options.demoHistory && addEquipmentHistoryDemo(data.entities);
       if (saved && expanded) data.revision++;
       validateDatabase(data);
       if (!saved || expanded) storage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -152,7 +152,7 @@ export class LocalDataSource {
     assertAdmin(actor); validateDatabase(candidate);
     if (expectedRevision !== this.database.revision) throw new Error('Los datos cambiaron. Revisa nuevamente el respaldo antes de restaurarlo.');
     const next = structuredClone(candidate);
-    addEquipmentHistoryDemo(next.entities);
+    if (this.options.demoHistory) addEquipmentHistoryDemo(next.entities);
     this.audit(next, actor, 'Sistema', 'Restauración', 'Se restauró un respaldo completo revisado por administración.'); this.commit(next);
   }
 }

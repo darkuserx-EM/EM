@@ -10,7 +10,7 @@ import { EquipmentDetail } from '../fleet/EquipmentDetail';
 import { ClientDirectory } from './ClientDirectory';
 import type { ClientSection } from './ClientInspector';
 import { RecordForm, type EditableRecord } from './RecordForm';
-import { getDataSource } from '../../data/repository';
+import { getDataSource } from '../../data/source';
 import { assertAdmin } from '../../domain/permissions';
 const ClientImportDialog = lazy(() => import('./ClientImportDialog'));
 
