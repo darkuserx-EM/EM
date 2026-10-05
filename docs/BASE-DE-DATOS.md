@@ -29,7 +29,7 @@ La interfaz de altas de usuarios, recuperación de contraseña y MFA aún no est
 - `/api/health` respondió por HTTPS con la base dedicada conectada.
 - Cuenta inicial creada; inicio y cierre de sesión, rechazo de contraseña incorrecta y bloqueo de una segunda instalación verificados. Cookies HttpOnly, Secure y SameSite=Strict.
 - Cliente, contacto, sede, equipo y lectura inicial de 100 horas guardados. Dos sesiones independientes consultaron los mismos registros. Se comprobó nuevamente la persistencia tras el reinicio de Node.js al retirar SETUP_TOKEN. El navegador mostró la ficha del cliente y el historial inicial del equipo.
-- El servicio de importación aceptó tres clientes ficticios en un lote. Un lote con errores se rechazó sin altas parciales. Esta prueba ejercita la API y MySQL; la carga de un archivo Excel completo desde la interfaz queda para la prueba funcional del usuario.
+- El servicio de importación aceptó tres clientes ficticios en un lote. Un lote con errores se rechazó sin altas parciales. También se exportaron los cuatro clientes desde el navegador y se volvió a cargar el Excel: la vista previa mostró cuatro actualizaciones y cero errores; la confirmación guardó el lote en el servidor sin duplicar clientes.
 - Revisión atrasada rechazada; escritura sin CSRF válido o desde otro origen rechazada; lectura sin sesión rechazada.
 
 ## Validación pendiente antes de datos operativos
