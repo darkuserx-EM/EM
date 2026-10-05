@@ -1,6 +1,6 @@
 # Portal EM · Base y pruebas en línea
 
-Base navegable para Expertos en Montacargas, S.A. (EMSA). Versión 0.2: prototipo local y primera conexión con servidor Node.js/MySQL para pruebas. Incluye cuenta inicial de administración, sesiones y persistencia compartida de clientes, contactos, sedes, equipos y catálogos. La publicación y las pruebas contra MySQL real requieren configurar el alojamiento.
+Base navegable para Expertos en Montacargas, S.A. (EMSA). Versión 0.2: prototipo local y primera conexión con servidor Node.js/MySQL para pruebas. Incluye cuenta inicial de administración, sesiones y persistencia compartida de clientes, contactos, sedes, equipos y catálogos. Publicado para pruebas en https://portal.expertosenmontacargas.com. El 04/10/2026 se verificaron HTTPS, acceso, escritura/importación en MySQL, sesiones independientes y persistencia tras reiniciar.
 
 ## Trabajar desde GitHub
 
@@ -38,11 +38,11 @@ El desarrollo utiliza http://127.0.0.1:5173. La compilación genera `dist/`. `pn
 ## Qué incluye
 
 - Identidad Stone Light del portal interno, navegación adaptable y vista oscura EMSA para cliente y operador.
-- Selector de seis usuarios ficticios: administración, coordinación, tres técnicos y un cliente. El operador no tiene cuenta.
+- Solo en la demostración local, selector de seis usuarios ficticios: administración, coordinación, tres técnicos y un cliente. El operador no tiene cuenta.
 - Catálogos con altas, edición, activación/desactivación, búsqueda, filtros y bitácora.
 - Plantilla Excel con instrucciones, vista previa validada, alta o actualización por ID y exportación que respeta los filtros.
 - Respaldo de las 20 entidades en un libro Excel y restauración validada. Se descarga una copia del estado anterior antes de restaurar.
-- Muestra de 6 clientes, 25 equipos y 3 técnicos; consulta y exportación de flota y clientes. La gestión completa se construye en sus etapas.
+- Solo en la demostración local, muestra de 6 clientes, 25 equipos y 3 técnicos; consulta y exportación de flota y clientes. La gestión completa se construye en sus etapas.
 - Captura web administrativa: Nuevo cliente y Nuevo equipo; edición desde sus fichas. Clientes incluye NIT, datos de facturación y atención, contactos y sedes. Equipos incluye asignación a cliente/sede y especificaciones. Los códigos CLI/TCL/TCE son automáticos y cada cambio queda en bitácora.
 - Clientes usa una lista con ficha lateral, búsqueda y filtro por estado. Sus secciones Resumen, Equipos, Contactos y Sedes permiten consultar y editar sin abandonar el directorio. En móvil la ficha aparece debajo de la lista.
 - Ficha de equipo con reparaciones, diagnósticos, trabajos, repuestos y mano de obra; historial de horómetros con gráfica, filtros por fecha y exportación del expediente. Importes internos solo para administración.
@@ -50,7 +50,7 @@ El desarrollo utiliza http://127.0.0.1:5173. La compilación genera `dist/`. `pn
 - Plan visible de 10 etapas y espacios reservados para los módulos siguientes.
 - Repositorios asíncronos, tipos TypeScript, validación central y adaptador local; preparados para agregar otro proveedor.
 
-## Probar esta etapa
+## Probar la demostración local
 
 1. En Catálogos, crea una marca ficticia, edítala y recarga. Comprueba que sigue ahí.
 2. Filtra opciones y expórtalas. El Excel solo incluye la selección filtrada.
@@ -75,7 +75,7 @@ public/         Favicon y reglas para distribución estática
 docs/           Arquitectura, alcance y despliegue
 ```
 
-## Conexión compartida en preparación
+## Pruebas con conexión compartida
 
 El modo en línea usa servidor y cuenta autenticada; no muestra el selector de roles. Consulta `docs/BASE-DE-DATOS.md` para el esquema inicial, configuración, límites y pruebas pendientes. El modo local en localhost conserva la demostración anterior. Para forzar el servidor en desarrollo usa VITE_DATA_MODE=server.
 
@@ -85,7 +85,7 @@ El selector de usuario **no es autenticación**. El filtrado local demuestra la 
 
 El respaldo de esta etapa incluye datos tabulares; aún no hay fotografías, firmas ni archivos adjuntos. Cuando se incorporen, necesitarán almacenamiento y respaldo propios.
 
-Los identificadores son estables y los correlativos se calculan desde los registros existentes. La numeración global, transacciones y control de concurrencia real pertenecen al backend futuro. El modo local detecta revisiones cambiadas entre pestañas, pero no ofrece una base de datos multiusuario.
+Los identificadores son estables y los correlativos se calculan desde los registros existentes. El servidor MySQL aplica transacciones y control de revisión compartida; esas garantías no se extienden al adaptador local. El modo local detecta revisiones cambiadas entre pestañas, pero no ofrece una base de datos multiusuario.
 
 No hay envío de correo/WhatsApp, firmas, PDF, tickets operativos ni formularios de checklist en esta entrega. Las pantallas los identifican como etapas pendientes. La interfaz no inventa valores de SLA, tarifas ni reglas de facturación.
 
@@ -95,6 +95,6 @@ La captura web y la importación de clientes adelantan una parte de las etapas 2
 
 El 04/10/2026 se verificó en hPanel: Business Web Hosting, 200 GB de almacenamiento, 3 GB de RAM, 2 núcleos de CPU, soporte React/Vite/Node.js, gestión MySQL, dominio expertosenmontacargas.com y opción de subdominios. El panel indicaba copias diarias y vencimiento del hosting el 11/09/2027. Estos son recursos del plan compartido entre sus sitios, no recursos exclusivos del portal.
 
-Se autorizó la creación local del proyecto y la descarga de dependencias. Esta entrega no modifica hosting, DNS, WordPress, cuentas ni permisos de la cuenta de Hostinger. El usuario autorizó posteriormente preparar y publicar un entorno de pruebas independiente. El resultado de despliegue se documenta en docs/HOSTINGER.md.
+Se autorizó la creación local del proyecto y la descarga de dependencias. El usuario autorizó posteriormente publicar un entorno de pruebas independiente en Hostinger. Se creó la aplicación Node.js, la base dedicada y la cuenta de administración de pruebas. WordPress continúa en el dominio comercial. El resultado de despliegue se documenta en docs/HOSTINGER.md.
 
 Ver `docs/ARQUITECTURA.md` y `docs/HOSTINGER.md`.

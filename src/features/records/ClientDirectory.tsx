@@ -1,4 +1,5 @@
 import { Search, X } from 'lucide-react';
+import { serverMode } from '../../data/source';
 import { EmptyState, Status } from '../../components/ui';
 import type { EntityRecord } from '../../domain/model';
 import { ClientInspector, type ClientSection } from './ClientInspector';
@@ -19,6 +20,6 @@ export function ClientDirectory({ clients, selected, equipments, loading, equipm
       return <button key={client.id} className="client-directory-item" aria-pressed={client.id === selected?.id} onClick={() => onSelect(client.id)}><span className="client-directory-item-top"><span className="client-directory-code">{client.codigo}</span><Status value={String(client.estado)} /></span><strong>{client.nombre}</strong><span className="client-directory-meta">{client.ubicacion || 'Ubicación por completar'}<span>·</span>{equipmentLoading ? '…' : `${count} ${count === 1 ? 'equipo' : 'equipos'}`}</span></button>;
     })}{!clients.length && <p className="client-directory-no-results">{loading ? 'Cargando clientes…' : 'Sin coincidencias'}</p>}</aside>
       {selected ? <ClientInspector client={selected} equipments={equipments} equipmentLoading={equipmentLoading} section={section} onSectionChange={onSectionChange} onEdit={onEdit} /> : <div className="client-inspector client-inspector-empty"><EmptyState title={loading ? 'Cargando clientes…' : 'No encontramos clientes'} description={loading ? 'Preparando tu directorio.' : search || status !== 'Todos' ? 'Cambia la búsqueda o el estado para ver otros clientes.' : 'Empieza con Nuevo cliente para registrar una empresa.'} />{!loading && (search || status !== 'Todos') && <button className="button" onClick={() => { onSearch(''); onStatus('Todos'); }}>Limpiar filtros</button>}</div>}
-    </div><p className="client-directory-note">Los cambios se guardan en este navegador.</p>
+    </div><p className="client-directory-note">{serverMode ? 'Los cambios se guardan en el servidor y se comparten entre dispositivos.' : 'Los cambios se guardan en este navegador.'}</p>
   </div>;
 }

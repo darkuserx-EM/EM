@@ -22,15 +22,18 @@ Esta primera implementación está destinada a pruebas de EMSA. Lee el conjunto 
 
 El servidor exige una sesión válida para leer datos. Las mutaciones requieren administrador, mismo origen y token CSRF. Nunca toma el rol del cuerpo enviado por el navegador. Las cookies son HttpOnly, Secure en producción y SameSite=Strict. Las contraseñas, secretos y archivos .env no se publican en GitHub ni en el directorio dist.
 
-La interfaz de altas de usuarios, recuperación de contraseña y MFA aún no está implementada. En esta entrega se crea la cuenta inicial de administración; no se habilitan cuentas de demostración en línea ni se permite cambiar de rol mediante un selector. No usar información operativa real hasta completar las pruebas y verificar copias y restauración.
+La interfaz de altas de usuarios, recuperación de contraseña y MFA aún no está implementada. En esta entrega se crea la cuenta inicial de administración; la cuenta de pruebas es una cuenta real del servidor, y no se permite cambiar de rol mediante un selector. No usar información operativa real hasta completar las pruebas y verificar copias y restauración.
 
-## Validación pendiente en MySQL real
+## Validación realizada en MySQL real · 04/10/2026
 
-- Comprobar `/api/health` sobre HTTPS y la conexión con la base dedicada.
-- Crear la primera cuenta e iniciar/cerrar sesión; comprobar rechazo de contraseña incorrecta.
-- Crear un cliente de prueba, un contacto, una sede y un equipo; verificar que otro navegador autenticado los consulta y que sobreviven al reinicio de la aplicación.
-- Importar 3–4 clientes ficticios desde Excel y comprobar que un archivo con errores no deja filas parciales.
-- Abrir dos sesiones y verificar que una revisión atrasada se rechaza.
+- `/api/health` respondió por HTTPS con la base dedicada conectada.
+- Cuenta inicial creada; inicio y cierre de sesión, rechazo de contraseña incorrecta y bloqueo de una segunda instalación verificados. Cookies HttpOnly, Secure y SameSite=Strict.
+- Cliente, contacto, sede, equipo y lectura inicial de 100 horas guardados. Dos sesiones independientes consultaron los mismos registros. Se comprobó nuevamente la persistencia tras el reinicio de Node.js al retirar SETUP_TOKEN. El navegador mostró la ficha del cliente y el historial inicial del equipo.
+- El servicio de importación aceptó tres clientes ficticios en un lote. Un lote con errores se rechazó sin altas parciales. Esta prueba ejercita la API y MySQL; la carga de un archivo Excel completo desde la interfaz queda para la prueba funcional del usuario.
+- Revisión atrasada rechazada; escritura sin CSRF válido o desde otro origen rechazada; lectura sin sesión rechazada.
+
+## Validación pendiente antes de datos operativos
+
 - Descargar respaldo, restaurarlo en una base de ensayo y verificar registros e historial. El Excel no incluye cuentas, sesiones ni archivos adjuntos.
 - Confirmar los respaldos de MySQL del alojamiento y su restauración antes de habilitar datos reales.
 
