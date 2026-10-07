@@ -2,6 +2,7 @@ import { catalogGroups, definitions, entityNames, type Database, type EntityName
 
 import { validClientLogo } from './client-profile';
 import { siteContactError } from './site-profile';
+import { synchronizeEquipmentUnits } from './equipment-specifications';
 
 export function normalize(value: unknown) { return String(value ?? '').trim().normalize('NFKC').toLocaleLowerCase('es'); }
 export function validateRecord(entity: EntityName, input: Record<string, unknown>): string[] {
@@ -31,7 +32,8 @@ export function uniqueError(entity: EntityName, input: Record<string, unknown>, 
   return null;
 }
 export function cleanFields(entity: EntityName, input: Record<string, unknown>): Record<string, Scalar> {
-  return Object.fromEntries(definitions[entity].columns.filter(column => input[column.key] !== undefined).map(column => [column.key, typeof input[column.key] === 'string' ? String(input[column.key]).trim() : input[column.key] as Scalar]));
+  const fields = Object.fromEntries(definitions[entity].columns.filter(column => input[column.key] !== undefined).map(column => [column.key, typeof input[column.key] === 'string' ? String(input[column.key]).trim() : input[column.key] as Scalar]));
+  return entity === 'Equipo' ? synchronizeEquipmentUnits(fields) : fields;
 }
 export function validateDatabase(value: unknown): asserts value is Database {
   if (!value || typeof value !== 'object') throw new Error('El respaldo no contiene una estructura válida.');

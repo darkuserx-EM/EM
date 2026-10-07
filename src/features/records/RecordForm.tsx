@@ -7,6 +7,8 @@ import { getDataSource, serverMode } from '../../data/source';
 import { clientDisplayName, clientSectors } from '../../domain/client-profile';
 import { departments } from '../../domain/site-profile';
 import { ClientLogoField } from './ClientLogo';
+import { equipmentFormValues } from '../../domain/equipment-specifications';
+import { EquipmentSpecField, equipmentSpecGroups, equipmentSpecKeys } from './EquipmentSpecField';
 import './client-directory.css';
 
 export type EditableRecord = 'Cliente' | 'Equipo' | 'Contacto' | 'Sede';
@@ -25,7 +27,8 @@ const groups: Record<EditableRecord, { title: string; fields: string[] }[]> = {
   Equipo: [
     { title: 'Identificación', fields: ['propiedad', 'marca', 'modelo', 'serie', 'anio', 'tipo'] },
     { title: 'Asignación y horómetro', fields: ['estado', 'cliente_id', 'sede_id', 'horometro'] },
-    { title: 'Especificaciones opcionales', fields: ['capacidad_kg', 'altura_elevacion_m', 'voltaje', 'combustible', 'bateria', 'cargador', 'llantas', 'notas'] },
+    ...equipmentSpecGroups,
+    { title: 'Observaciones', fields: ['notas'] },
   ],
   Contacto: [{ title: 'Datos de contacto', fields: ['nombre', 'cargo', 'telefono', 'correo', 'principal'] }],
   Sede: [{ title: 'Ubicación y acceso', fields: ['nombre', 'direccion', 'municipio', 'departamento', 'referencia_ubicacion', 'autoriza_contacto_id'] }],
@@ -36,7 +39,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
   const clients = useRows('Cliente'); const sites = useRows('Sede'); const catalogs = useRows('Catalogos'); const contacts = useRows('Contacto');
   const [values, setValues] = useState<Record<string, string>>(() => {
     const defaults: Record<string, string> = entity === 'Equipo' ? { estado: 'Disponible', propiedad: 'Propio' } : entity === 'Cliente' ? { estado: 'Activo' } : entity === 'Sede' && !row ? { departamento: 'Guatemala' } : {};
-    return { ...defaults, ...Object.fromEntries(Object.entries(row ?? {}).map(([key, value]) => [key, value === null ? '' : String(value)])), ...(clientId ? { cliente_id: clientId } : {}) };
+    return { ...defaults, ...Object.fromEntries(Object.entries(row ?? {}).map(([key, value]) => [key, value === null ? '' : String(value)])), ...(entity === 'Equipo' ? equipmentFormValues(row) : {}), ...(clientId ? { cliente_id: clientId } : {}) };
   });
   const [logoBusy, setLogoBusy] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
@@ -52,6 +55,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
     finally { setBusy(false); }
   };
   const renderField = (key: string) => {
+    if (entity === 'Equipo' && equipmentSpecKeys.includes(key)) return <EquipmentSpecField key={key} field={key} value={values[key] ?? ''} disabled={busy} onChange={value => change(key, value)} />;
     const column = definitions[entity].columns.find(item => item.key === key)!;
     const needsClient = entity === 'Equipo' && (values.propiedad === 'De cliente' || values.estado === 'En renta');
     const required = !!column.required || (key === 'cliente_id' && needsClient);
@@ -86,7 +90,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
   return <Modal title={`${row ? 'Editar' : entity === 'Sede' ? 'Nueva' : 'Nuevo'} ${names[entity]}`} onClose={() => { if (!busy && !logoBusy) onClose(); }} wide><form onSubmit={save} className="record-form"><p className="record-intro">{row ? `Código ${row.codigo}. ` : 'El código se genera automáticamente. '}Los campos con <strong>*</strong> son obligatorios.</p>
     {entity === 'Cliente' && <><div className="client-auto-code"><span>Código de cliente</span><strong>{row?.codigo || 'Automático al guardar'}</strong></div><ClientLogoField value={String(values.logo || '')} onChange={value => change('logo',value)} disabled={busy || logoBusy} onBusy={setLogoBusy} /></>}
     {clientId && <div className="record-parent"><Info size={16} />{clientDisplayName(clients.rows.find(client => client.id === clientId))}</div>}
-    {groups[entity].map(group => <fieldset className="record-section" key={group.title}><legend>{group.title}</legend><div className="record-fields">{group.fields.map(renderField)}</div></fieldset>)}
+    {groups[entity].map(group => <fieldset className="record-section" key={group.title}><legend>{group.title}</legend><div className="record-fields">{group.fields.map(renderField)}</div>{entity === 'Equipo' && group.title === 'Llantas y rodos' && row?.llantas && <p className="equipment-legacy-note">Dato anterior de llantas (conservado): {row.llantas}</p>}</fieldset>)}
     {['marca','tipo'].map(key => <datalist id={`suggestions-${key}`} key={key}>{catalogs.rows.filter(item => item.activo && item.categoria === (key === 'marca' ? 'Marcas' : 'Tipos de equipo')).map(item => <option key={item.id} value={String(item.nombre)} />)}</datalist>)}
     {entity === 'Cliente' && !row && <p className="record-footer-note">Al guardar se abrirá la ficha para agregar sus contactos, sedes y equipos.</p>}
     <ErrorNotice message={error} /><div className="modal-actions record-actions"><button type="button" className="button" onClick={onClose} disabled={busy || logoBusy}>Cancelar</button><button type="submit" className="button button-dark" disabled={busy || logoBusy}><Check size={16} />{busy ? 'Guardando…' : `Guardar ${names[entity]}`}</button></div>
