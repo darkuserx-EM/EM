@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { createSeed, entityNames, validateDatabase } from './generated/domain.mjs';
+import { createSeed, entityNames, validateDatabase, addClientSectors } from './generated/domain.mjs';
 export function connectDatabase(env) {
   for (const key of ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']) if (!env[key]) throw new Error(`Falta ${key}.`);
   return mysql.createPool({ host: env.DB_HOST, port: Number(env.DB_PORT || 3306), database: env.DB_NAME, user: env.DB_USER, password: env.DB_PASSWORD, connectionLimit: 5, charset: 'utf8mb4', timezone: 'Z', multipleStatements: false });
@@ -24,6 +24,12 @@ export async function migrate(pool) {
       for (const name of entityNames) if (name !== 'Catalogos') db.entities[name] = [];
       db.revision = 1;
       await saveDatabase(conn, db);
+    }
+    if (Number(meta[0].schema_version) < 2) {
+      const previous = await readDatabase(conn);
+      const next = structuredClone(previous);
+      if (addClientSectors(next)) { next.revision++; await saveDatabase(conn,next,previous); }
+      await conn.execute('UPDATE em_meta SET schema_version=2 WHERE id=1');
     }
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }

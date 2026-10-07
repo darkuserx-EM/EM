@@ -1,3 +1,4 @@
+import { clientDisplayName } from '../../domain/client-profile';
 import { serverMode } from '../../data/source';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ArrowUpRight, Building2, Check, ChevronRight, ClipboardCheck, Database, Forklift, Layers3, Settings2, ShieldCheck, Users } from 'lucide-react';
@@ -9,7 +10,7 @@ import { ModulePage } from '../modules/ModulePage';
 export function Home() {
   const actor = useActor(); const equipment = useRows('Equipo').rows; const clients = useRows('Cliente').rows; const technicians = useRows('Tecnico').rows; const catalogs = useRows('Catalogos').rows;
   if (actor.rol === 'Técnico') return <ModulePage module="ordenes" />;
-  const clientName = (id: string) => String(clients.find(row => row.id === id)?.nombre ?? 'Patio EMSA');
+  const clientName = (id: string) => clients.some(row => row.id === id) ? clientDisplayName(clients.find(row => row.id === id)) : 'Patio EMSA';
   const activeCount = equipment.filter(row => row.estado === 'En renta').length;
   return <>
     <div className="home-welcome"><div><div className="eyebrow">CENTRO DE OPERACIONES</div><h1>Todo listo para avanzar<span className="orange-period">.</span></h1><p>Bienvenido a tu espacio de gestión, {actor.rol === 'Administrador' ? 'administración' : 'coordinación'}.</p></div><div className="date-label"><span className="date-dot" />{formatToday()}</div></div>

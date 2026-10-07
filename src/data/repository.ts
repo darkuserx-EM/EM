@@ -100,7 +100,7 @@ export class LocalDataSource {
         const errors = validateRecord(entity, row); const duplicate = uniqueError(entity, row, next.entities[entity], id);
         if (errors.length || duplicate) throw new Error(errors.join('; ') || duplicate!);
         next.entities[entity][index] = row;
-        const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => `${key}: ${original[key]} → ${value}`).join('; ');
+        const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : `${key}: ${original[key]} → ${value}`).join('; ');
         this.audit(next, actor, entity, 'Actualización', `${row.codigo} · ${changed || 'Sin cambios'}`); this.commit(next); return structuredClone(row);
       },
       remove: async id => { this.assertEditable(entity, actor); if (entity !== 'Catalogos') throw new Error('Conserva el registro y cambia su estado desde la ficha.'); await this.repository(entity, actor).update(id, { activo: false }); },

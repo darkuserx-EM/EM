@@ -6,13 +6,24 @@ import type { Repository } from './repository';
 let csrf = '';
 export function setCsrf(value: string) { csrf = value; }
 export async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: body === undefined ? undefined : JSON.stringify(body) });
-  const data = await response.json().catch(() => ({ error: 'El servidor no respondió correctamente.' }));
+  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(),30000);
+  let response: Response; let data: unknown;
+  try {
+    response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: body === undefined ? undefined : JSON.stringify(body),signal:controller.signal });
+    if (response.status === 401 && !['login','session'].includes(path)) window.dispatchEvent(new Event('portal-session-expired'));
+    try { data = await response.json(); }
+    catch {
+      throw new Error(response.status === 401 ? 'Tu sesión terminó. Vuelve a ingresar.' : `No recibimos una respuesta válida del servidor (HTTP ${response.status}). ${body === undefined ? 'Intenta actualizar la página.' : 'Tus campos siguen en el formulario. Comprueba la lista antes de volver a guardar para evitar duplicados.'}`);
+    }
+  } catch (error) {
+    if (controller.signal.aborted || error instanceof TypeError) throw new Error(body === undefined ? 'No se pudo conectar con el portal. Revisa tu conexión e intenta nuevamente.' : 'No recibimos confirmación del guardado. Tus campos siguen en el formulario; comprueba la lista antes de repetirlo para evitar duplicados.');
+    throw error;
+  } finally { clearTimeout(timeout); }
+  if (!data || typeof data !== 'object') throw new Error('La respuesta del servidor está incompleta. Actualiza la página antes de continuar.');
   if (!response.ok) {
-    if (response.status === 401 && !['login', 'session'].includes(path)) window.dispatchEvent(new Event('portal-session-expired'));
-    throw Object.assign(new Error(data.error || 'No se pudo completar la solicitud.'), { status: response.status });
+    throw Object.assign(new Error(('error' in data && typeof data.error === 'string' && data.error) || 'No se pudo completar la solicitud.'), { status: response.status });
   }
-  return data;
+  return data as T;
 }
 export class RemoteDataSource {
   private database?: Database;

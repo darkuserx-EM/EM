@@ -24,7 +24,7 @@ export function RecordsPage({ module }: { module: 'flota' | 'clientes' }) {
   const equipmentQuery = useRows('Equipo'); const clientQuery = useRows('Cliente');
   const equipments = equipmentQuery.rows; const clients = clientQuery.rows;
   const filtered = equipments.filter(row => normalize(`${row.codigo} ${row.marca} ${row.modelo} ${row.serie}`).includes(normalize(search)) && (status === 'Todos' || row.estado === status));
-  const filteredClients = clients.filter(row => normalize(`${row.codigo} ${row.nombre} ${row.nit ?? ''} ${row.ubicacion ?? ''}`).includes(normalize(search)) && (status === 'Todos' || row.estado === status));
+  const filteredClients = clients.filter(row => normalize(`${row.codigo} ${row.nombre} ${row.nombre_comercial ?? ''} ${row.nit ?? ''} ${row.ubicacion ?? ''} ${row.plus_code ?? ''}`).includes(normalize(search)) && (status === 'Todos' || row.estado === status));
   const selected = equipments.find(row => row.id === params.get('equipo'));
   const selectedClient = filteredClients.find(row => row.id === params.get('cliente')) ?? filteredClients[0];
   const open = (entity: EditableRecord, row?: EntityRecord, clientId?: string) => setEditing({ entity, row, clientId });

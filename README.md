@@ -83,7 +83,7 @@ El modo en línea usa servidor y cuenta autenticada; no muestra el selector de r
 
 El selector de usuario **no es autenticación**. El filtrado local demuestra la experiencia de uso, pero no protege información frente a alguien con acceso al navegador. Los dispositivos no comparten datos. No introducir datos reales, contraseñas ni claves privadas.
 
-El respaldo de esta etapa incluye datos tabulares; aún no hay fotografías, firmas ni archivos adjuntos. Cuando se incorporen, necesitarán almacenamiento y respaldo propios.
+El respaldo incluye datos tabulares y el logo compacto del cliente. Aún no incluye fotografías de trabajos, firmas ni otros archivos adjuntos; necesitarán almacenamiento y respaldo propios.
 
 Los identificadores son estables y los correlativos se calculan desde los registros existentes. El servidor MySQL aplica transacciones y control de revisión compartida; esas garantías no se extienden al adaptador local. El modo local detecta revisiones cambiadas entre pestañas, pero no ofrece una base de datos multiusuario.
 

@@ -1,5 +1,7 @@
 import { entityNames, type Actor, type Database, type EntityRecord } from '../domain/model';
 
+import { clientSectors } from '../domain/client-profile';
+
 export const demoUsers: Actor[] = [
   { id: 'user-admin', nombre: 'Administración EMSA', rol: 'Administrador' },
   { id: 'user-coord', nombre: 'Coordinación EMSA', rol: 'Coordinador' },
@@ -38,6 +40,7 @@ export function createSeed(): Database {
     'Turnos': ['Diurno', 'Nocturno'],
     'Ítems de revisión': ['Frenos', 'Bocina', 'Fugas', 'Cadenas', 'Batería', 'Cinturón'],
     'Estados comerciales': ['Activo', 'Prospecto', 'Inactivo'],
+    'Sectores / actividades': clientSectors,
   };
   let index = 0;
   entities.Catalogos = Object.entries(catalogs).flatMap(([categoria, names]) => names.map(nombre => { index++; return seedRecord(`catalog-${index}`, `CAT-${String(index).padStart(3, '0')}`, { categoria, nombre, activo: true }); }));

@@ -15,7 +15,7 @@ export interface Actor { id: string; nombre: string; rol: Role; cliente_id?: str
 export interface Database { schemaVersion: 1; revision: number; entities: Record<EntityName, EntityRecord[]> }
 export interface Column { key: string; label: string; type: 'text' | 'number' | 'boolean'; required?: boolean; options?: readonly string[] }
 export interface EntityDefinition { label: string; prefix: string; columns: Column[] }
-export const catalogGroups = ['Marcas', 'Tipos de equipo', 'Síntomas', 'Categorías de gasto', 'Turnos', 'Ítems de revisión', 'Estados comerciales'] as const;
+export const catalogGroups = ['Marcas', 'Tipos de equipo', 'Síntomas', 'Categorías de gasto', 'Turnos', 'Ítems de revisión', 'Estados comerciales', 'Sectores / actividades'] as const;
 export const equipmentStates = ['Disponible', 'En renta', 'En mantenimiento', 'En taller', 'En tránsito', 'Vendido', 'Baja'] as const;
 export const baseColumns: Column[] = [
   { key: 'id', label: 'id', type: 'text' }, { key: 'codigo', label: 'codigo', type: 'text' },
@@ -27,7 +27,7 @@ const numberColumn = (key: string): Column => ({ key, label: key, type: 'number'
 export const definitions: Record<EntityName, EntityDefinition> = Object.fromEntries(entityNames.map(name => [name, { label: name, prefix: name.toUpperCase().slice(0, 3), columns: [] }])) as unknown as Record<EntityName, EntityDefinition>;
 Object.assign(definitions, {
   LecturaHorometro: { label: 'Lecturas de horómetro', prefix: 'HOR', columns: [] },
-  Cliente: { label: 'Clientes', prefix: 'CLI', columns: [textColumn('nombre', true), textColumn('sector'), textColumn('estado', true, ['Activo', 'Prospecto', 'Inactivo']), textColumn('ubicacion'), textColumn('referencia_cliente'), textColumn('nit'), textColumn('direccion_fiscal'), numberColumn('dia_facturacion'), textColumn('reporte_mensual_horas', false, ['Sí', 'No']), textColumn('notas_operativas')] },
+  Cliente: { label: 'Clientes', prefix: 'CLI', columns: [textColumn('nombre', true), textColumn('nombre_comercial'), textColumn('logo'), textColumn('plus_code'), textColumn('sector'), textColumn('estado', true, ['Activo', 'Prospecto', 'Inactivo']), textColumn('ubicacion'), textColumn('referencia_cliente'), textColumn('nit'), textColumn('direccion_fiscal'), numberColumn('dia_facturacion'), textColumn('reporte_mensual_horas', false, ['Sí', 'No']), textColumn('notas_operativas')] },
   Contacto: { label: 'Contactos', prefix: 'CON', columns: [textColumn('cliente_id', true), textColumn('nombre', true), textColumn('cargo'), textColumn('telefono'), textColumn('correo'), textColumn('principal', false, ['Sí', 'No'])] },
   Sede: { label: 'Sedes', prefix: 'SED', columns: [textColumn('cliente_id', true), textColumn('nombre', true), textColumn('direccion'), textColumn('municipio'), textColumn('departamento'), textColumn('referencia_ubicacion'), textColumn('horario_atencion'), textColumn('autoriza_ingreso')] },
   Equipo: { label: 'Equipos', prefix: 'TCL', columns: [textColumn('marca', true), textColumn('modelo', true), textColumn('serie', true), textColumn('tipo', true), textColumn('propiedad', true, ['Propio', 'De cliente']), textColumn('estado', true, equipmentStates), textColumn('cliente_id'), { key: 'horometro', label: 'horometro', type: 'number', required: true }, textColumn('sede_id'), numberColumn('anio'), numberColumn('capacidad_kg'), numberColumn('altura_elevacion_m'), numberColumn('voltaje'), textColumn('bateria'), textColumn('cargador'), textColumn('combustible'), textColumn('llantas'), textColumn('notas')] },
