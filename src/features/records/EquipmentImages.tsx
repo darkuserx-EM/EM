@@ -2,7 +2,7 @@ import { useRef, useState, type ChangeEvent } from 'react';
 import { Camera, Forklift, Maximize2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { EntityRecord } from '../../domain/model';
 import { equipmentImageFields, equipmentImageLabels, equipmentImageSource, MAX_EQUIPMENT_IMAGE_LENGTH, validEquipmentImage, type EquipmentImageField } from '../../domain/equipment-images';
-import { Modal } from '../../components/ui';
+import { EmptyState, Modal } from '../../components/ui';
 import './equipment-images.css';
 
 const readDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => {
@@ -59,6 +59,6 @@ function ImageField({ field, equipment, disabled, onChange, onBusy }: { field: E
 export function EquipmentImageGallery({ equipment }: { equipment: EntityRecord }) {
   const [view, setView] = useState<EquipmentImageField | null>(null);
   const available = equipmentImageFields.filter(field => equipmentImageSource(equipment, field));
-  if (!available.length) return null;
+  if (!available.length) return <section className="panel"><EmptyState title="Sin fotografías registradas" description="Las fotografías del equipo y de su placa se agregan desde Editar equipo." /></section>;
   return <section className="panel equipment-gallery"><h2>Fotografías y placa</h2><div className="equipment-images-grid">{available.map(field => <button key={field} className="equipment-gallery-item" onClick={() => setView(field)}><img src={equipmentImageSource(equipment, field)} alt={equipmentImageLabels[field]} /><span>{equipmentImageLabels[field]}<Maximize2 size={16} /></span></button>)}</div>{view && <ImageViewer src={equipmentImageSource(equipment, view)} title={`${equipmentImageLabels[view]} · ${equipment.codigo}`} onClose={() => setView(null)} />}</section>;
 }
