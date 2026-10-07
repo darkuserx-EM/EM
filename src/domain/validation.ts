@@ -1,6 +1,7 @@
 import { catalogGroups, definitions, entityNames, type Database, type EntityName, type EntityRecord, type Scalar } from './model';
 
 import { validClientLogo } from './client-profile';
+import { siteContactError } from './site-profile';
 
 export function normalize(value: unknown) { return String(value ?? '').trim().normalize('NFKC').toLocaleLowerCase('es'); }
 export function validateRecord(entity: EntityName, input: Record<string, unknown>): string[] {
@@ -58,6 +59,10 @@ export function validateDatabase(value: unknown): asserts value is Database {
     if (!clients.has(String(row.cliente_id))) throw new Error(`${row.codigo}: el cliente vinculado no existe.`);
   }
   const sites = new Map(data.entities.Sede.map(row => [row.id, row]));
+  for (const site of sites.values()) {
+    const error = siteContactError(site, data.entities.Contacto);
+    if (error) throw new Error(`${site.codigo}: ${error}`);
+  }
   for (const equipment of data.entities.Equipo) if (equipment.sede_id && (!sites.has(String(equipment.sede_id)) || sites.get(String(equipment.sede_id))?.cliente_id !== equipment.cliente_id)) throw new Error(`${equipment.codigo}: la sede no pertenece al cliente seleccionado.`);
   const equipmentIds = new Set(data.entities.Equipo.map(row => row.id));
   const orders = new Map(data.entities.OrdenServicio.map(row => [row.id, row]));

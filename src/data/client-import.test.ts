@@ -27,9 +27,9 @@ describe('importación administrativa de clientes', () => {
     const { source, storage } = fixture();
     const book = XLSX.read(readFileSync('public/templates/Plantilla-clientes-EMSA.xlsx'), {type:'buffer'});
     XLSX.utils.sheet_add_aoa(book.Sheets.Cliente, [
-      ['QA-01','Importación de prueba Uno','Activo','0000123-4'],
-      ['QA-02','Importación de prueba Dos','Prospecto'],
-      ['QA-03','Importación de prueba Tres','Activo'],
+      ['QA-01','Importación de prueba Uno','Comercial Uno','Activo','0000123-4'],
+      ['QA-02','Importación de prueba Dos','','Prospecto'],
+      ['QA-03','Importación de prueba Tres','','Activo'],
     ], { origin:'A2' });
     XLSX.utils.sheet_add_aoa(book.Sheets.Contacto, [['QA-01','Contacto de prueba','','+502 0000 0000','prueba@example.com','Sí']], {origin:'A2'});
     XLSX.utils.sheet_add_aoa(book.Sheets.Sede, [['QA-03','Bodega de prueba','Dirección de prueba','Villa Nueva','Guatemala']], {origin:'A2'});

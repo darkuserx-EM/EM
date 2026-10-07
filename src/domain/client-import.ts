@@ -1,5 +1,6 @@
 import { type EntityRecord, type Scalar } from './model';
 import { cleanFields, normalize, uniqueError, validateRecord } from './validation';
+import { siteContactError } from './site-profile';
 
 export const clientImportEntities = ['Cliente', 'Contacto', 'Sede'] as const;
 export type ClientImportEntity = typeof clientImportEntities[number];
@@ -39,6 +40,7 @@ export function planClientImport(current: ClientImportData, incoming: ClientImpo
       clientName = String(client?.nombre ?? 'Sin cliente válido');
     }
     const merged = { ...existing, ...fields };
+    if (entity === 'Sede') { const issue = siteContactError(merged,entities.Contacto); if (issue) errors.push(issue); }
     errors.push(...validateRecord(entity, merged));
     const duplicate = uniqueError(entity, merged, rows, id); if (duplicate) errors.push(duplicate);
     const others = rows.filter(row => row.id !== id);
