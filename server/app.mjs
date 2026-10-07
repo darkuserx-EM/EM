@@ -25,7 +25,9 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || !req.is('application/json'))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
     next();
   });
-  app.use('/api', express.json({ limit:'8mb' }));
+  const smallJson = express.json({ limit:'8mb' });
+  // Los adjuntos grandes se leen únicamente tras autenticar al administrador.
+  app.use('/api', (req,res,next) => req.path === '/mutate' && req.method === 'POST' ? next() : smallJson(req,res,next));
   const loginLimit = rateLimit({ windowMs:900000, limit:30, standardHeaders:'draft-8', legacyHeaders:false, message:{error:'Demasiados intentos. Espera 15 minutos.'} });
   app.get('/api/setup-status', async (_req,res) => { const [rows] = await pool.query('SELECT COUNT(*) AS n FROM em_users'); res.json({ needsSetup:Number(rows[0].n) === 0 }); });
   app.post('/api/setup', loginLimit, async (req,res) => {
@@ -89,8 +91,10 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (!image) throw fail(404,'Imagen no disponible.');
     res.type(image.type).send(image.bytes);
   });
-  app.post('/api/mutate', async (req,res) => {
-    if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
+  app.post('/api/mutate', (req,_res,next) => {
+    if (req.actor.rol !== 'Administrador') return next(fail(403,'Esta acción está disponible solo para administración.'));
+    next();
+  }, express.json({ limit:'32mb' }), async (req,res) => {
     const body = req.body;
     if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
     if (!['importClients','restore'].includes(body.action) && !['Cliente','Contacto','Sede','Equipo','Catalogos'].includes(body.entity)) throw fail(400,'Entidad no editable.');

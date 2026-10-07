@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createApp } from './app.mjs';
-import { createSeed, LocalDataSource } from './generated/domain.mjs';
+import { createSeed, LocalDataSource, equipmentImageFields } from './generated/domain.mjs';
 import { token } from './security.mjs';
 import { imageReference, presentDatabase, resolveEquipmentImages } from './equipment-images.mjs';
 const origin = 'http://localhost:3000';
@@ -20,7 +20,16 @@ function poolFor(user, prepare = () => {}) {
       if(sql==='SELECT 1') return [[{1:1}]];
       throw new Error('Unexpected query');
     },
-    async execute(sql) { if(sql.includes('em_sessions s')) return [user?[user]:[]]; throw new Error('Unexpected write'); },
+    async execute(sql, args) {
+      if(sql.includes('em_sessions s')) return [user?[user]:[]];
+      if(sql.startsWith('INSERT INTO em_records')) {
+        const [entity,id,payload]=args; const row=JSON.parse(payload); const index=db.entities[entity].findIndex(item=>item.id===id);
+        if(index < 0) db.entities[entity].push(row); else db.entities[entity][index]=row;
+        return [{}];
+      }
+      if(sql.startsWith('UPDATE em_meta SET revision=')) { db.revision=args[0]; return [{}]; }
+      throw new Error('Unexpected write');
+    },
     async getConnection() { return {...fake,beginTransaction:async()=>{},commit:async()=>{},rollback:async()=>{},release:()=>{}}; },
   };
   return fake;
@@ -67,7 +76,7 @@ test('shared engine does not inject demo records into an empty online workspace'
 
 const picture='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jp9sAAAAASUVORK5CYII=';
 const imageHash=imageReference(picture).slice(6);
-const withImages=db=>{db.entities.Equipo[0].foto_equipo=picture;db.entities.Equipo[0].cliente_id='client-1';};
+const withImages=db=>{for(const field of equipmentImageFields) db.entities.Equipo[0][field]=picture;db.entities.Equipo[0].cliente_id='client-1';};
 test('equipment images require authentication and equipment visibility, including knowledge of the hash',async t=>{
   const path=`/api/equipment-images/equipment-1/foto_equipo/${imageHash}`;
   const anon=await fixture(t,null,withImages); assert.equal((await anon(path)).status,401);
@@ -77,6 +86,11 @@ test('equipment images require authentication and equipment visibility, includin
   assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');assert.equal(response.headers.get('cache-control'),'no-store');
   assert.deepEqual(Buffer.from(await response.arrayBuffer()),Buffer.from(picture.split(',')[1],'base64'));
   assert.equal((await allowed(`/api/equipment-images/equipment-1/foto_equipo/${'0'.repeat(64)}`,{headers:{Cookie:'em_session=x'}})).status,404);
+  for(const field of equipmentImageFields) {
+    const url=`/api/equipment-images/equipment-1/${field}/${imageHash}`;
+    assert.equal((await other(url,{headers:{Cookie:'em_session=x'}})).status,404);
+    assert.equal((await allowed(url,{headers:{Cookie:'em_session=x'}})).status,200);
+  }
 });
 test('normal responses exclude image bytes and only administration exports complete image backups',async t=>{
   const limited=await fixture(t,client,withImages);
@@ -88,10 +102,27 @@ test('normal responses exclude image bytes and only administration exports compl
   const backup=await (await admin('/api/backup',{headers:{Cookie:'em_session=x'}})).json();assert.equal(backup.entities.Equipo[0].foto_equipo,picture);
   const exported=await (await admin('/api/equipment-export',{method:'POST',headers:jsonHeaders,body:JSON.stringify({ids:['equipment-1']})})).json();
   assert.equal(exported.rows.length,1);assert.equal(exported.rows[0].foto_equipo,picture);
+  for(const field of equipmentImageFields) {assert.equal(db.entities.Equipo[0][field],imageReference(picture));assert.equal(backup.entities.Equipo[0][field],picture);assert.equal(exported.rows[0][field],picture);}
 });
 test('image references resolve only to the same original equipment and field',()=>{
   const previous=createSeed();withImages(previous);
   const next=presentDatabase(previous);resolveEquipmentImages(next,previous);assert.equal(next.entities.Equipo[0].foto_equipo,picture);
   const crossed=presentDatabase(previous);crossed.entities.Equipo[1].foto_equipo=imageReference(picture);
   assert.throws(()=>resolveEquipmentImages(crossed,previous),/imagen/);
+});
+
+test('an administrator saves all six photos together above the former 8 MB limit',async t=>{
+  const request=await fixture(t,{...coordinator,role:'Administrador'});
+  const db=await (await request('/api/database',{headers:{Cookie:'em_session=x'}})).json();
+  const fields=Object.fromEntries(equipmentImageFields.map((field,index)=>[field,'data:image/png;base64,'+Buffer.concat([Buffer.from(picture.split(',')[1],'base64'),Buffer.alloc(1100000,65+index)]).toString('base64')]));
+  const body=JSON.stringify({action:'update',entity:'Equipo',id:'equipment-1',revision:db.revision,fields});
+  assert.ok(Buffer.byteLength(body)>8*1024*1024);
+  const response=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body});
+  const saved=await response.json();assert.equal(response.status,200,JSON.stringify(saved));
+  assert.equal(JSON.stringify(saved).includes('base64'),false);
+  const backup=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  const row=backup.entities.Equipo.find(item=>item.id==='equipment-1');
+  for(const field of equipmentImageFields) assert.equal(row[field],fields[field]);
+  assert.equal(row.horometro,db.entities.Equipo[0].horometro);
+  assert.equal(JSON.stringify(backup.entities.Bitacora).includes('base64'),false);
 });

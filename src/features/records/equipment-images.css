@@ -10,7 +10,15 @@
 .equipment-image-actions{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
 .equipment-gallery{padding:22px;margin-bottom:24px}
 .equipment-gallery h2{font-size:15px;color:#50683d;margin:0 0 16px}
+.equipment-gallery-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.equipment-gallery-heading h2,.equipment-gallery-reference h2{margin-bottom:6px}
+.equipment-gallery-reference{border-top:1px solid #e1e6d9;margin-top:24px;padding-top:24px}
+.equipment-gallery .equipment-image-help{margin:0 0 16px}
+.record-section>.equipment-image-help{margin:0 0 14px}
 .equipment-gallery-item{border:1px solid #e1e6d9;border-radius:8px;background:white;overflow:hidden;text-align:left;cursor:pointer;padding:0;min-width:0}
+.equipment-gallery-empty{cursor:default}
+.equipment-gallery-placeholder{height:205px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#fafbf7;color:#879676}
+.equipment-gallery-placeholder small{font-size:12px}
 .equipment-gallery-item img{width:100%;height:205px;object-fit:contain;display:block}
 .equipment-gallery-item span{display:flex;justify-content:space-between;align-items:center;padding:12px;color:#52683f;background:#f6f8f2;font-size:12px}
 .equipment-image-viewer-actions{display:flex;justify-content:flex-end;margin-bottom:14px}

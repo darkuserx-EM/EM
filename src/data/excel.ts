@@ -76,9 +76,9 @@ export function parseBackup(workbook: XLSX.WorkBook): Database {
   restoreEquipmentImages(workbook,database.entities.Equipo);
   validateDatabase(database); return database;
 }
-export async function readWorkbook(file: File, inspectFormulas = false) {
+export async function readWorkbook(file: File, inspectFormulas = false, maxSizeMb = 8) {
   if (!/\.xlsx$/i.test(file.name)) throw new Error('Selecciona un archivo .xlsx.');
-  if (file.size > 8 * 1024 * 1024) throw new Error('El archivo supera el límite de 8 MB de esta versión.');
+  if (file.size > maxSizeMb * 1024 * 1024) throw new Error(`El archivo supera el límite de ${maxSizeMb} MB de esta versión.`);
   return XLSX.read(await file.arrayBuffer(), { type: 'array', cellFormula: inspectFormulas, cellHTML: false });
 }
 export function downloadWorkbook(workbook: XLSX.WorkBook, filename: string) { XLSX.writeFile(workbook, filename, { compression: true }); }

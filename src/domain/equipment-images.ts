@@ -1,8 +1,13 @@
 import type { EntityRecord } from './model';
 
-export const equipmentImageFields = ['foto_equipo', 'placa_datos'] as const;
+export const equipmentViewFields = ['foto_frontal', 'foto_trasera', 'foto_lateral_1', 'foto_lateral_2'] as const;
+export const equipmentReferenceFields = ['foto_equipo', 'placa_datos'] as const;
+export const equipmentImageFields = [...equipmentReferenceFields, ...equipmentViewFields] as const;
 export type EquipmentImageField = typeof equipmentImageFields[number];
-export const equipmentImageLabels = { foto_equipo: 'Foto del equipo', placa_datos: 'Placa de datos' };
+export const equipmentImageLabels: Record<EquipmentImageField, string> = {
+  foto_equipo: 'Imagen de referencia del equipo', placa_datos: 'Placa de datos',
+  foto_frontal: 'Foto frontal', foto_trasera: 'Foto trasera', foto_lateral_1: 'Foto lateral 1', foto_lateral_2: 'Foto lateral 2',
+};
 export const MAX_EQUIPMENT_IMAGE_LENGTH = 3500000;
 export const isEquipmentImageReference = (value: unknown): value is `media:${string}` => typeof value === 'string' && /^media:[a-f0-9]{64}$/.test(value);
 export function validEquipmentImage(value: unknown): boolean {
