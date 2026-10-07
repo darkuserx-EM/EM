@@ -42,7 +42,7 @@ export class RemoteDataSource {
     const getAll = async () => structuredClone(this.current().entities[entity]);
     return {
       getAll, getById: async id => (await getAll()).find(row => row.id === id),
-      export: async predicate => { assertAdmin(actor); return (await getAll()).filter(predicate || (() => true)); },
+      export: async predicate => { assertAdmin(actor); const rows = (await getAll()).filter(predicate || (() => true)); return entity === 'Equipo' ? (await api<{rows:EntityRecord[]}>('equipment-export', {ids:rows.map(row => row.id)})).rows : rows; },
       create: async (fields: Record<string, Scalar>) => { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'create', entity, fields }); },
       update: async (id, fields) => { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'update', entity, id, fields }); },
       remove: async id => { assertAdmin(actor); await this.mutate({ action: 'remove', entity, id }); },
@@ -50,6 +50,7 @@ export class RemoteDataSource {
     };
   }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.current()); }
+  async backup(actor: Actor) { assertAdmin(actor); return api<Database>('backup'); }
   previewClientImport(actor: Actor, rows: ClientImportRow[]) {
     assertAdmin(actor); const entities = this.current().entities;
     return planClientImport({ Cliente: entities.Cliente, Contacto: entities.Contacto, Sede: entities.Sede }, rows).rows;

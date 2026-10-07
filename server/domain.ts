@@ -4,3 +4,4 @@ export { entityNames } from '../src/domain/model';
 export { filterVisible } from '../src/domain/permissions';
 export { validateDatabase } from '../src/domain/validation';
 export { addClientSectors } from '../src/domain/client-profile';
+export { equipmentImageFields, isEquipmentImageReference, validEquipmentImage } from '../src/domain/equipment-images';

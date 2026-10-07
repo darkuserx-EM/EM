@@ -6,9 +6,10 @@ import { randomUUID } from 'node:crypto';
 import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames } from './generated/domain.mjs';
 import { readSnapshot, readDatabase, saveDatabase, consumeLoginAttempt } from './database.mjs';
 import { hashPassword, verifyPassword, digest, equal, token, cookieToken } from './security.mjs';
+import { presentDatabase, presentEquipment, resolveEquipmentImages, readEquipmentImage } from './equipment-images.mjs';
 
 const fail = (status, message) => Object.assign(new Error(message), { status });
-const visible = (db, actor) => ({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, filterVisible(actor, name, db.entities[name])])) });
+const visible = (db, actor) => presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, filterVisible(actor, name, db.entities[name])])) });
 const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, cliente_id: user.client_id || undefined, tecnico_id: user.technician_id || undefined });
 const cookieName = 'em_session';
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -71,6 +72,23 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf}));
   app.post('/api/logout', async (req,res) => { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); res.clearCookie(cookieName,{path:'/',secure:production,httpOnly:true,sameSite:'strict'}); res.json({ok:true}); });
   app.get('/api/database', async (req,res) => res.json(visible(await readSnapshot(pool),req.actor)));
+  app.get('/api/backup', async (req,res) => {
+    if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
+    res.json(await readSnapshot(pool));
+  });
+  app.post('/api/equipment-export', async (req,res) => {
+    if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
+    if (!Array.isArray(req.body.ids) || req.body.ids.length > 2000 || req.body.ids.some(id => typeof id !== 'string')) throw fail(400,'Selección de equipos inválida.');
+    const ids = new Set(req.body.ids); const db = await readSnapshot(pool);
+    res.json({ rows: db.entities.Equipo.filter(row => ids.has(row.id)) });
+  });
+  app.get('/api/equipment-images/:id/:field/:hash', async (req,res) => {
+    const db = await readSnapshot(pool);
+    const row = filterVisible(req.actor,'Equipo',db.entities.Equipo).find(item => item.id === req.params.id);
+    const image = readEquipmentImage(row,req.params.field,req.params.hash);
+    if (!image) throw fail(404,'Imagen no disponible.');
+    res.type(image.type).send(image.bytes);
+  });
   app.post('/api/mutate', async (req,res) => {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
     const body = req.body;
@@ -95,8 +113,10 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
           if (body.action==='import') await repo.import(body.rows,db.revision);
         }
       } catch (error) { throw fail(400,error.message); }
-      const next = JSON.parse(saved); await saveDatabase(conn,next,db); await conn.commit();
-      res.json({result,database:visible(next,req.actor)});
+      const next = JSON.parse(saved);
+      try { resolveEquipmentImages(next,db); } catch (error) { throw fail(400,error.message); }
+      await saveDatabase(conn,next,db); await conn.commit();
+      res.json({result:body.entity === 'Equipo' && result ? presentEquipment(next.entities.Equipo.find(row => row.id === result.id)) : result,database:visible(next,req.actor)});
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   });
   app.use('/api', (_req,_res,next)=>next(fail(404,'Ruta no encontrada.')));

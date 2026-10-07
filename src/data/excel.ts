@@ -4,6 +4,7 @@ import { assertAdmin } from '../domain/permissions';
 import { normalize, uniqueError, validateDatabase, validateRecord } from '../domain/validation';
 import type { ImportRow } from './repository';
 import type { EquipmentHistory } from '../domain/equipment-history';
+import { attachEquipmentImages, restoreEquipmentImages } from './equipment-image-workbook';
 
 export interface PreviewRow { line: number; values: ImportRow; action: 'Agregar' | 'Actualizar'; errors: string[] }
 const maxRows = 2000;
@@ -60,7 +61,7 @@ export function parseImport(entity: EntityName, workbook: XLSX.WorkBook, current
 export function makeBackup(database: Database) {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ schemaVersion: database.schemaVersion, revision: database.revision, exportado: new Date().toISOString(), aplicacion: 'Portal EM' }]), '_metadata');
-  for (const entity of entityNames) XLSX.utils.book_append_sheet(workbook, rowsToSheet(entity, database.entities[entity], false), entity);
+  for (const entity of entityNames) XLSX.utils.book_append_sheet(workbook, rowsToSheet(entity, entity === 'Equipo' ? attachEquipmentImages(workbook,database.entities[entity]) : database.entities[entity], false), entity);
   return workbook;
 }
 export function parseBackup(workbook: XLSX.WorkBook): Database {
@@ -72,6 +73,7 @@ export function parseBackup(workbook: XLSX.WorkBook): Database {
     if (!workbook.Sheets[entity]) throw new Error(`Falta la hoja ${entity}. El respaldo no está completo.`);
     database.entities[entity] = XLSX.utils.sheet_to_json<EntityRecord>(workbook.Sheets[entity], { defval: '', raw: true });
   }
+  restoreEquipmentImages(workbook,database.entities.Equipo);
   validateDatabase(database); return database;
 }
 export async function readWorkbook(file: File, inspectFormulas = false) {
@@ -82,15 +84,15 @@ export async function readWorkbook(file: File, inspectFormulas = false) {
 export function downloadWorkbook(workbook: XLSX.WorkBook, filename: string) { XLSX.writeFile(workbook, filename, { compression: true }); }
 export function exportRows(entity: EntityName, rows: EntityRecord[], actor: Actor) {
   assertAdmin(actor);
-  const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, rowsToSheet(entity, rows), entity); downloadWorkbook(workbook, `Portal-EM-${entity}.xlsx`);
+  const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, rowsToSheet(entity, entity === 'Equipo' ? attachEquipmentImages(workbook,rows) : rows), entity); downloadWorkbook(workbook, `Portal-EM-${entity}.xlsx`);
 }
 
 export function makeEquipmentHistoryWorkbook(equipment: EntityRecord, history: EquipmentHistory, from: string, to: string) {
   const workbook = XLSX.utils.book_new();
-  const sheets: [string, EntityRecord[]][] = [['Equipo', [equipment]], ['Reparaciones', history.repairs], ['Horometros', history.usage.map(item => item.row)], ['Repuestos', history.parts], ['Mano de obra', history.labor]];
+  const sheets: [string, EntityRecord[]][] = [['Equipo', attachEquipmentImages(workbook,[equipment])], ['Reparaciones', history.repairs], ['Horometros', history.usage.map(item => item.row)], ['Repuestos', history.parts], ['Mano de obra', history.labor]];
   for (const [name, rows] of sheets) XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), name);
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
-    { campo: 'Alcance', valor: 'Datos ficticios de demostración. Historial del equipo seleccionado.' },
+    { campo: 'Alcance', valor: 'Historial y adjuntos del equipo seleccionado.' },
     { campo: 'Desde / hasta (Guatemala)', valor: `${from || 'Sin límite'} / ${to || 'Sin límite'}` },
     { campo: 'Uso entre lecturas seleccionadas', valor: history.hoursUsed === null ? 'No calculable: faltan lecturas comparables' : `${history.hoursUsed} h` },
     { campo: 'Interpretación', valor: 'El horómetro es acumulado. El uso se calcula entre la primera y última lectura seleccionada; no supone horas diarias ni tiempo de mano de obra.' },

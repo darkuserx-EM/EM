@@ -3,6 +3,7 @@ import { catalogGroups, definitions, entityNames, type Database, type EntityName
 import { validClientLogo } from './client-profile';
 import { siteContactError } from './site-profile';
 import { synchronizeEquipmentUnits } from './equipment-specifications';
+import { equipmentImageFields, validEquipmentImage } from './equipment-images';
 
 export function normalize(value: unknown) { return String(value ?? '').trim().normalize('NFKC').toLocaleLowerCase('es'); }
 export function validateRecord(entity: EntityName, input: Record<string, unknown>): string[] {
@@ -15,9 +16,10 @@ export function validateRecord(entity: EntityName, input: Record<string, unknown
     if (column.type === 'boolean' && typeof value !== 'boolean') errors.push(`${column.label}: usa Sí o No`);
     if (column.type === 'text' && typeof value !== 'string') errors.push(`${column.label}: debe ser texto`);
     if (column.options && !column.options.includes(String(value))) errors.push(`${column.label}: valor no permitido`);
-    if (!(entity === 'Cliente' && column.key === 'logo') && typeof value === 'string' && value.length > 500) errors.push(`${column.label}: máximo 500 caracteres`);
+    if (!(entity === 'Cliente' && column.key === 'logo') && !(entity === 'Equipo' && equipmentImageFields.some(field => field === column.key)) && typeof value === 'string' && value.length > 500) errors.push(`${column.label}: máximo 500 caracteres`);
   }
   if (entity === 'Cliente' && !validClientLogo(input.logo)) errors.push('Logo: usa una imagen PNG, JPG o WebP válida y ajustada desde el formulario.');
+  if (entity === 'Equipo') for (const field of equipmentImageFields) if (!validEquipmentImage(input[field])) errors.push(`${field === 'foto_equipo' ? 'Foto del equipo' : 'Placa de datos'}: usa una imagen PNG, JPG o WebP válida y ajustada desde el formulario.`);
   if (entity === 'Cliente' && input.dia_facturacion !== undefined && input.dia_facturacion !== '' && input.dia_facturacion !== null && (!Number.isInteger(input.dia_facturacion) || Number(input.dia_facturacion) < 1 || Number(input.dia_facturacion) > 31)) errors.push('Día de facturación: debe ser un entero entre 1 y 31');
   if (entity === 'Contacto' && input.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(input.correo))) errors.push('Correo: ingresa una dirección válida');
   if (entity === 'Equipo' && typeof input.anio === 'number' && !Number.isInteger(input.anio)) errors.push('Año: debe ser un número entero');

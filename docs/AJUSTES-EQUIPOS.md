@@ -17,3 +17,13 @@ Cambios solicitados por EMSA el 7 de octubre de 2026:
 Una pulgada equivale a 0.0254 metros; una libra a 0.45359237 kilogramos. La presentación de metros se redondea a tres decimales. Las unidades anteriores (`capacidad_kg`, `altura_elevacion_m`) se conservan y sincronizan cuando se recibe una corrección, incluyendo borrados. Los registros anteriores se muestran mediante conversión sin migración masiva ni modificación al abrirlos. El texto anterior de `llantas` se conserva y aparece como referencia. Los campos nuevos viajan en los respaldos y exportaciones de equipo.
 
 La forma de guardar y los permisos de administración no cambian. Horómetros, contactos, clientes, sedes e historiales existentes no se modifican al publicar esta actualización.
+
+## Fotografías y placa de datos
+
+Cada equipo admite `foto_equipo` y `placa_datos`. Administración las carga, reemplaza o retira desde Nuevo/Editar equipo; los cambios se confirman al guardar. Se admiten PNG, JPEG y WebP de hasta 10 MB. Se conserva el archivo original si su data URL no supera 3 500 000 caracteres; las imágenes mayores se ajustan en el navegador, manteniendo hasta 2800 píxeles. La placa puede ampliarse en su visor. No se realiza OCR ni se cambian especificaciones automáticamente a partir de la fotografía.
+
+Las imágenes se guardan en MySQL junto al registro, no en archivos del despliegue ni en el repositorio público. Las respuestas normales sustituyen los bytes por una referencia SHA-256; el navegador solicita cada imagen por una ruta autenticada que comprueba la visibilidad del equipo. La bitácora describe carga o retiro sin copiar bytes. La fotografía sustituye al ícono de ese equipo en el encabezado, la flota, la ficha del cliente y los estados sin historial. Los demás equipos conservan su imagen propia o el ícono genérico.
+
+El respaldo completo y las exportaciones administrativas recuperan los archivos. Excel los divide en partes de 30 000 caracteres en `_imagenes_equipo` para respetar el tamaño de las celdas; al restaurar se comprueban equipo, campo, orden, duplicados, integridad de las partes y formato. El límite existente de importación/restauración sigue siendo 8 MB. Los respaldos sin fotografías continúan siendo compatibles. En una fase de mayor volumen, la lectura de imágenes puede separarse del registro MySQL detrás de estas mismas rutas.
+
+El documento maestro define **TCE** para equipo del cliente, **TCL** para equipo propio y **CLI** para cliente; no proporciona una expansión literal para cada letra. El sufijo numérico es el correlativo por prefijo. Se mantienen estos códigos y la serie del fabricante como identificadores distintos.

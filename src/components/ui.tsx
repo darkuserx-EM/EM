@@ -39,7 +39,7 @@ export function Toast() {
 export function SectionTitle({ eyebrow, title, description, children }: { eyebrow?: string; title: string; description: string; children?: ReactNode }) {
   return <div className="page-heading"><div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h1>{title}</h1><p>{description}</p></div>{children && <div className="heading-actions">{children}</div>}</div>;
 }
-export function EmptyState({ title, description }: { title: string; description: string }) { return <div className="empty-state"><div className="empty-icon"><Forklift size={30} /></div><h3>{title}</h3><p>{description}</p></div>; }
+export function EmptyState({ title, description, illustration }: { title: string; description: string; illustration?: ReactNode }) { return <div className="empty-state">{illustration ? <div className="empty-illustration">{illustration}</div> : <div className="empty-icon"><Forklift size={30} /></div>}<h3>{title}</h3><p>{description}</p></div>; }
 export function CardArrow() { return <ArrowUpRight size={17} aria-hidden="true" />; }
 export function ForkliftArt() {
   return <svg className="forklift-art" viewBox="0 0 500 290" fill="none" aria-hidden="true">

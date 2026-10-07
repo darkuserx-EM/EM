@@ -3,6 +3,7 @@ import { assertAdmin, filterVisible } from '../domain/permissions';
 import { cleanFields, normalize, uniqueError, validateDatabase, validateRecord } from '../domain/validation';
 import { addEquipmentHistoryDemo, createSeed } from './seed';
 import { clientImportEntities, planClientImport, type ClientImportRow } from '../domain/client-import';
+import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-images';
 
 export const STORAGE_KEY = 'portal-em.database.v1';
 export interface StorageAdapter { getItem(key: string): string | null; setItem(key: string, value: string): void }
@@ -100,7 +101,7 @@ export class LocalDataSource {
         const errors = validateRecord(entity, row); const duplicate = uniqueError(entity, row, next.entities[entity], id);
         if (errors.length || duplicate) throw new Error(errors.join('; ') || duplicate!);
         next.entities[entity][index] = row;
-        const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : `${key}: ${original[key]} → ${value}`).join('; ');
+        const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : equipmentImageFields.some(field => field === key) ? `${equipmentImageLabels[key as keyof typeof equipmentImageLabels]}: ${value ? 'actualizada' : 'retirada'}` : `${key}: ${original[key]} → ${value}`).join('; ');
         this.audit(next, actor, entity, 'Actualización', `${row.codigo} · ${changed || 'Sin cambios'}`); this.commit(next); return structuredClone(row);
       },
       remove: async id => { this.assertEditable(entity, actor); if (entity !== 'Catalogos') throw new Error('Conserva el registro y cambia su estado desde la ficha.'); await this.repository(entity, actor).update(id, { activo: false }); },
@@ -148,6 +149,7 @@ export class LocalDataSource {
     return plan.entities.Cliente.find(row => rows.some(item => item.entity === 'Cliente' && (item.id?.trim() ? item.id.trim() === row.id : normalize(item.fields.nombre) === normalize(row.nombre))))?.id;
   }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.database); }
+  async backup(actor: Actor) { return this.snapshot(actor); }
   restore(actor: Actor, candidate: unknown, expectedRevision: number) {
     assertAdmin(actor); validateDatabase(candidate);
     if (expectedRevision !== this.database.revision) throw new Error('Los datos cambiaron. Revisa nuevamente el respaldo antes de restaurarlo.');

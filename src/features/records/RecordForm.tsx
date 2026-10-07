@@ -9,6 +9,8 @@ import { departments } from '../../domain/site-profile';
 import { ClientLogoField } from './ClientLogo';
 import { equipmentFormValues } from '../../domain/equipment-specifications';
 import { EquipmentSpecField, equipmentSpecGroups, equipmentSpecKeys } from './EquipmentSpecField';
+import { EquipmentImagesField } from './EquipmentImages';
+import { equipmentImageFields } from '../../domain/equipment-images';
 import './client-directory.css';
 
 export type EditableRecord = 'Cliente' | 'Equipo' | 'Contacto' | 'Sede';
@@ -47,7 +49,10 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
   const save = async (event: FormEvent) => {
     event.preventDefault(); setError(''); setBusy(true);
     try {
-      const fields: Record<string, Scalar> = Object.fromEntries(definitions[entity].columns.filter(column => groups[entity].some(group => group.fields.includes(column.key)) || (entity === 'Cliente' && column.key === 'logo') || column.key === 'cliente_id').map(column => [column.key, column.type === 'number' ? values[column.key]?.trim() ? Number(values[column.key]) : column.required ? '' : null : values[column.key] ?? '']));
+      const fields: Record<string, Scalar> = Object.fromEntries(definitions[entity].columns.filter(column => {
+        if (entity === 'Equipo' && equipmentImageFields.some(field => field === column.key)) return (values[column.key] ?? '') !== (row?.[column.key] ?? '');
+        return groups[entity].some(group => group.fields.includes(column.key)) || (entity === 'Cliente' && column.key === 'logo') || column.key === 'cliente_id';
+      }).map(column => [column.key, column.type === 'number' ? values[column.key]?.trim() ? Number(values[column.key]) : column.required ? '' : null : values[column.key] ?? '']));
       const repo = getDataSource().repository(entity, actor);
       const saved = row ? await repo.update(row.id, fields) : await repo.create(fields);
       notify(`${saved.codigo} guardado ${serverMode ? 'en el servidor' : 'en este navegador'}.`); onSaved(saved);
@@ -90,6 +95,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
   return <Modal title={`${row ? 'Editar' : entity === 'Sede' ? 'Nueva' : 'Nuevo'} ${names[entity]}`} onClose={() => { if (!busy && !logoBusy) onClose(); }} wide><form onSubmit={save} className="record-form"><p className="record-intro">{row ? `Código ${row.codigo}. ` : 'El código se genera automáticamente. '}Los campos con <strong>*</strong> son obligatorios.</p>
     {entity === 'Cliente' && <><div className="client-auto-code"><span>Código de cliente</span><strong>{row?.codigo || 'Automático al guardar'}</strong></div><ClientLogoField value={String(values.logo || '')} onChange={value => change('logo',value)} disabled={busy || logoBusy} onBusy={setLogoBusy} /></>}
     {clientId && <div className="record-parent"><Info size={16} />{clientDisplayName(clients.rows.find(client => client.id === clientId))}</div>}
+    {entity === 'Equipo' && <EquipmentImagesField equipment={values} disabled={busy || logoBusy} onChange={change} onBusy={setLogoBusy} />}
     {groups[entity].map(group => <fieldset className="record-section" key={group.title}><legend>{group.title}</legend><div className="record-fields">{group.fields.map(renderField)}</div>{entity === 'Equipo' && group.title === 'Llantas y rodos' && row?.llantas && <p className="equipment-legacy-note">Dato anterior de llantas (conservado): {row.llantas}</p>}</fieldset>)}
     {['marca','tipo'].map(key => <datalist id={`suggestions-${key}`} key={key}>{catalogs.rows.filter(item => item.activo && item.categoria === (key === 'marca' ? 'Marcas' : 'Tipos de equipo')).map(item => <option key={item.id} value={String(item.nombre)} />)}</datalist>)}
     {entity === 'Cliente' && !row && <p className="record-footer-note">Al guardar se abrirá la ficha para agregar sus contactos, sedes y equipos.</p>}
