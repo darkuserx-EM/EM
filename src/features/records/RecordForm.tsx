@@ -19,7 +19,7 @@ export const fieldLabels: Record<string, string> = {
   referencia_ubicacion: 'Referencia de ubicación / Plus Code',
   nombre_comercial: 'Nombre comercial / nombre conocido', plus_code: 'Plus Code',
   autoriza_contacto_id: 'Quién autoriza el ingreso',
-  nombre: 'Nombre', sector: 'Sector / actividad', estado: 'Estado', ubicacion: 'Ubicación principal', referencia_cliente: 'Referencia del cliente', nit: 'NIT', direccion_fiscal: 'Dirección fiscal', dia_facturacion: 'Día de facturación', reporte_mensual_horas: '¿Requiere reporte mensual de horas?', notas_operativas: 'Notas operativas', cliente_id: 'Cliente', cargo: 'Cargo / área', telefono: 'Teléfono', correo: 'Correo electrónico', principal: '¿Es el contacto principal?', direccion: 'Dirección', municipio: 'Municipio', departamento: 'Departamento', horario_atencion: 'Horario de atención', autoriza_ingreso: 'Quién autoriza el ingreso', marca: 'Marca', modelo: 'Modelo', serie: 'Número de serie', tipo: 'Tipo de equipo', propiedad: 'Propiedad', horometro: 'Horómetro (horas)', sede_id: 'Sede del cliente', anio: 'Año', capacidad_kg: 'Capacidad (kg)', altura_elevacion_m: 'Altura de elevación (m)', voltaje: 'Voltaje (V)', bateria: 'Batería', cargador: 'Cargador', combustible: 'Combustible', llantas: 'Llantas', notas: 'Observaciones',
+  nombre: 'Nombre', sector: 'Sector / actividad', estado: 'Estado', ubicacion: 'Ubicación principal', referencia_cliente: 'Referencia del cliente', nit: 'NIT', direccion_fiscal: 'Dirección fiscal', dia_facturacion: 'Día de facturación', reporte_mensual_horas: '¿Requiere reporte mensual de horas?', notas_operativas: 'Notas operativas', cliente_id: 'Cliente', cargo: 'Cargo / área', telefono: 'Teléfono', correo: 'Correo electrónico', principal: '¿Es el contacto principal?', direccion: 'Dirección', municipio: 'Municipio', departamento: 'Departamento', horario_atencion: 'Horario de atención', autoriza_ingreso: 'Quién autoriza el ingreso', marca: 'Marca', modelo: 'Modelo', serie: 'Número de serie', id_interno_cliente: 'ID interno del cliente', tipo: 'Tipo de equipo', propiedad: 'Propiedad', horometro: 'Horómetro (horas)', sede_id: 'Sede del cliente', anio: 'Año', capacidad_kg: 'Capacidad (kg)', altura_elevacion_m: 'Altura de elevación (m)', voltaje: 'Voltaje (V)', bateria: 'Batería', cargador: 'Cargador', combustible: 'Combustible', llantas: 'Llantas', notas: 'Observaciones',
 };
 const groups: Record<EditableRecord, { title: string; fields: string[] }[]> = {
   Cliente: [
@@ -27,7 +27,7 @@ const groups: Record<EditableRecord, { title: string; fields: string[] }[]> = {
     { title: 'Ubicación y atención', fields: ['ubicacion', 'plus_code', 'direccion_fiscal', 'notas_operativas'] },
   ],
   Equipo: [
-    { title: 'Identificación', fields: ['propiedad', 'marca', 'modelo', 'serie', 'anio', 'tipo'] },
+    { title: 'Identificación', fields: ['propiedad', 'marca', 'modelo', 'serie', 'id_interno_cliente', 'tipo', 'anio'] },
     { title: 'Asignación y horómetro', fields: ['estado', 'cliente_id', 'sede_id', 'horometro'] },
     ...equipmentSpecGroups,
     { title: 'Observaciones', fields: ['notas'] },
@@ -67,7 +67,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
     const disabled = busy || logoBusy || (entity === 'Equipo' && !!row && ['horometro', 'propiedad'].includes(key));
     const multiline = ['direccion_fiscal', 'notas_operativas', 'direccion', 'notas'].includes(key);
     const label = key === 'nombre' && entity === 'Cliente' ? 'Razón social' : fieldLabels[key] || column.label;
-    const common = { value: values[key] ?? '', required, disabled, id: `record-${key}`, placeholder: key === 'nombre_comercial' ? 'Ej.: Lamfer' : key === 'ubicacion' ? 'Ej.: planta principal o municipio' : key === 'plus_code' ? 'Ej.: código y localidad de Google Maps' : key === 'referencia_ubicacion' ? 'Ej.: G96Q+P5 Villa Nueva' : key === 'nombre' ? entity === 'Cliente' ? 'Ej.: Distelsa' : entity === 'Sede' ? 'Ej.: Bodega A' : '' : key === 'direccion' ? 'Ej.: Parque Logística Unisur 4, CA-9 zona 10' : undefined };
+    const common = { value: values[key] ?? '', required, disabled, id: `record-${key}`, placeholder: key === 'id_interno_cliente' ? 'Ej.: FC 1 o M-001' : key === 'nombre_comercial' ? 'Ej.: Lamfer' : key === 'ubicacion' ? 'Ej.: planta principal o municipio' : key === 'plus_code' ? 'Ej.: código y localidad de Google Maps' : key === 'referencia_ubicacion' ? 'Ej.: G96Q+P5 Villa Nueva' : key === 'nombre' ? entity === 'Cliente' ? 'Ej.: Distelsa' : entity === 'Sede' ? 'Ej.: Bodega A' : '' : key === 'direccion' ? 'Ej.: Parque Logística Unisur 4, CA-9 zona 10' : undefined };
     let control;
     if (key === 'cliente_id') control = <select {...common} disabled={disabled || clients.loading || !!clientId} onChange={event => change(key, event.target.value)}><option value="">{needsClient ? 'Selecciona un cliente' : 'Sin asignar / patio EMSA'}</option>{clients.rows.map(client => <option key={client.id} value={client.id}>{clientDisplayName(client)} · {client.codigo}</option>)}</select>;
     else if (key === 'sede_id') control = <select {...common} disabled={disabled || !values.cliente_id || sites.loading} onChange={event => change(key, event.target.value)}><option value="">Sin sede asignada</option>{sites.rows.filter(site => site.cliente_id === values.cliente_id).map(site => <option key={site.id} value={site.id}>{site.nombre}</option>)}</select>;
@@ -88,6 +88,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
       {key === 'autoriza_contacto_id' && <small>{contacts.error ? 'No se pudieron cargar los contactos. Intenta abrir la sede nuevamente.' : contacts.loading ? 'Cargando contactos…' : contacts.rows.some(contact => contact.cliente_id === values.cliente_id) ? 'Selecciona una persona registrada en Contactos de este cliente.' : 'Agrega primero una persona en Contactos de este cliente. Puedes guardar la sede sin asignarla.'}{row?.autoriza_ingreso && row.autoriza_contacto_id === undefined ? ` Dato anterior: ${row.autoriza_ingreso}.` : ''}</small>}
       {key === 'referencia_cliente' && <small>Opcional: referencia usada en tu Excel. El código CLI se genera al guardar.</small>}
       {key === 'propiedad' && <small>{row ? 'La corrección de propiedad se habilitará con su flujo de auditoría.' : 'Propio: código TCL. De cliente: código TCE.'}</small>}
+      {key === 'id_interno_cliente' && <small>Opcional. Código con el que el cliente identifica este equipo.</small>}
       {key === 'horometro' && <small>{row ? 'Valor registrado. Las nuevas lecturas y correcciones se habilitan en la etapa de horómetros.' : 'Indica la lectura actual; se guardará como primera lectura del equipo.'}</small>}
       {key === 'sede_id' && values.cliente_id && !sites.rows.some(site => site.cliente_id === values.cliente_id) && <small>Puedes agregar sedes desde la ficha del cliente.</small>}
     </div>;
