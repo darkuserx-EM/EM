@@ -40,6 +40,12 @@ No hay migración de tablas ni transformación de registros. Antes de publicar, 
 
 El issue #6 (preservar auditoría durante una restauración), el cambio de contraseñas/sesiones y la recuperación integral de MySQL siguen siendo trabajo prioritario del bloque siguiente.
 
+## Verificación en línea y dependencias
+
+El PR #16 pasó la instalación limpia, las 113 pruebas (89 de dominio/cliente y 24 del servidor) y la compilación en GitHub Actions. Al integrarlo, Hostinger publicó automáticamente `7538d948` el 08/10/2026. Se verificaron salud 200, sincronización sin cambios 204, rechazo de lectura anónima 401 y diagnóstico de red deshabilitado 404. La comparación completa de los respaldos privados antes/después confirmó que todos los registros se conservaron. La ficha del equipo y su historial cargaron sin errores de consola.
+
+El escáner de Hostinger señaló cuatro avisos en herramientas de prueba: dos de Tinypool 1.1.1 y dos de Vitest/@vitest/mocker 3.2.7. Se incorpora la actualización pendiente a Vitest 4.1.11, que corrige el aviso de mocker y elimina Tinypool de este árbol de dependencias. Referencias de los fabricantes: [Vitest](https://github.com/vitest-dev/vitest/security/advisories/GHSA-82fw-gwwq-j7x9) y [Tinypool](https://github.com/tinylibs/tinypool/security/advisories/GHSA-85c8-ppgw-ccpr). El número de avisos de un escáner no equivale a una garantía de ausencia de vulnerabilidades.
+
 ## Medición local
 
 Con Node 24.19.0, datos sintéticos y el validador compilado: 1,000 movimientos en 27 ms, 25,000 en 166 ms y 100,000 en 360 ms (una ejecución local del 08/10/2026). Estos valores miden solo validación, con calentamiento progresivo del proceso; no son una prueba de carga de Hostinger ni un compromiso de tiempo de respuesta. Las pruebas funcionales comprueban también guardar y restaurar más de 20,000 movimientos y conservar el límite del navegador.
