@@ -25,8 +25,10 @@ function poolFor(user, prepare = () => {}) {
     async execute(sql, args) {
       if(sql.includes('em_sessions s')) return [user?[user]:[]];
       if(sql.startsWith('INSERT INTO em_records')) {
-        const [entity,id,payload]=args; const row=JSON.parse(payload); const index=db.entities[entity].findIndex(item=>item.id===id);
-        if(index < 0) db.entities[entity].push(row); else db.entities[entity][index]=row;
+        for(let i=0;i<args.length;i+=3) {
+          const [entity,id,payload]=args.slice(i,i+3); const row=JSON.parse(payload); const index=db.entities[entity].findIndex(item=>item.id===id);
+          if(index < 0) db.entities[entity].push(row); else db.entities[entity][index]=row;
+        }
         return [{}];
       }
       if(sql.startsWith('UPDATE em_meta SET revision=')) { db.revision=args[0]; return [{}]; }
@@ -244,4 +246,23 @@ test('network diagnostics are off by default, administrator-only and show the co
   const response=await enabled('/api/diagnostico/red',{headers:{Cookie:'em_session=x','X-Forwarded-For':'198.51.100.20, 203.0.113.10'}});
   assert.equal(response.status,200);const body=await response.json();assert.equal(body.ip,'203.0.113.10');assert.equal(body.trustProxy,1);
   assert.equal(response.headers.get('cache-control'),'no-store');
+});
+
+
+test('public endpoints reject oversized JSON and protected routes authenticate before parsing it', async t=>{
+  const request=await fixture(t,null);
+  const body=JSON.stringify({padding:'x'.repeat(110*1024)});
+  for(const path of ['/api/login','/api/setup']) {
+    const response=await request(path,{method:'POST',headers:jsonHeaders,body});
+    assert.equal(response.status,413); assert.match((await response.json()).error,/tamaño/);
+  }
+  for(const path of ['/api/logout','/api/password','/api/sessions/revoke','/api/mutate']) {
+    assert.equal((await request(path,{method:'POST',headers:jsonHeaders,body})).status,401);
+  }
+});
+test('account operations require CSRF even for a valid session',async t=>{
+  const request=await fixture(t,coordinator);
+  for(const path of ['/api/password','/api/sessions/revoke']) {
+    assert.equal((await request(path,{method:'POST',headers:{...jsonHeaders,'X-CSRF-Token':'invalid'},body:'{}'})).status,403);
+  }
 });

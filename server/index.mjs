@@ -1,6 +1,7 @@
 import { createApp } from './app.mjs';
 import { connectDatabase, migrate } from './database.mjs';
 import { logFailure } from './diagnostics.mjs';
+import { startMaintenance } from './maintenance.mjs';
 const production = process.env.NODE_ENV !== 'development';
 const origin = process.env.APP_ORIGIN || 'https://portal.expertosenmontacargas.com';
 let pool;
@@ -12,7 +13,9 @@ try {
   const server = app.listen(Number(process.env.PORT || 3000),'0.0.0.0');
   await new Promise((resolve,reject)=>{server.once('listening',resolve);server.once('error',reject);});
   console.log('Portal EM: servidor iniciado.');
-  process.on('SIGTERM',()=>server.close(async()=>{await pool.end();process.exit(0);}));
+  const stopMaintenance = startMaintenance(pool);
+  const shutdown = () => server.close(async()=>{await stopMaintenance();await pool.end();process.exit(0);});
+  process.once('SIGTERM',shutdown); process.once('SIGINT',shutdown);
 } catch (error) {
   logFailure(error, {event:'startup',status:500});
   if (pool) await pool.end();

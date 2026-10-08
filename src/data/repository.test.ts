@@ -42,3 +42,21 @@ describe('Excel y restauración', () => {
 describe('formato de Guatemala', () => {
   it('usa quetzales y la zona horaria correcta', () => { expect(formatMoney(1234.5)).toBe('Q 1,234.50'); expect(formatDate('2026-10-05T01:15:00Z')).toBe('04/10/2026'); expect(formatTime('2026-10-05T01:15:00Z')).toBe('19:15'); });
 });
+
+
+it('restaurar conserva toda la auditoría actual sin aceptar alteraciones de la bitácora del respaldo', async () => {
+  const {source,repo} = fixture(); const backup=source.snapshot(admin);
+  await repo.create(catalog); const before=source.snapshot(admin);
+  backup.entities.Bitacora=[];
+  source.restore(admin,backup,source.getRevision(),'2026-10-08T12:00:00.000Z');
+  const after=source.snapshot(admin);
+  expect(after.entities.Bitacora.slice(0,-1)).toEqual(before.entities.Bitacora);
+  expect(after.entities.Bitacora.at(-1)?.detalle).toContain(`Respaldo revisión ${backup.revision}`);
+  expect(after.entities.Bitacora.at(-1)?.detalle).toContain('2026-10-08T12:00:00.000Z');
+  expect(after.revision).toBe(before.revision+1);
+  source.restore(admin,backup,source.getRevision());
+  expect(source.snapshot(admin).entities.Bitacora).toHaveLength(before.entities.Bitacora.length+2);
+  const stable=source.snapshot(admin);
+  expect(()=>source.restore(admin,backup,source.getRevision(),'invalid')).toThrow('fecha');
+  expect(source.snapshot(admin)).toEqual(stable);
+});

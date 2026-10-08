@@ -6,28 +6,28 @@ Base navegable para Expertos en Montacargas, S.A. (EMSA). Versión 0.2: prototip
 
 Repositorio: https://github.com/darkuserx-EM/EM
 
-El primer bloque de estabilización, sus comprobaciones y límites pendientes están en [docs/ESTABILIZACION.md](docs/ESTABILIZACION.md). GitHub Actions ejecuta pruebas y compilación con Node 24 en cada solicitud de cambios y actualización de `main`.
+El primer bloque de estabilización, sus comprobaciones y límites pendientes están en [docs/ESTABILIZACION.md](docs/ESTABILIZACION.md). GitHub Actions ejecuta pruebas y compilación con Node 24 en cada solicitud de cambios y actualización de `main`. El segundo bloque se describe en [docs/SEGURIDAD-Y-OPERACION.md](docs/SEGURIDAD-Y-OPERACION.md), incluidas las pruebas de MySQL y las decisiones sobre pendientes.
 
 ```sh
 git clone https://github.com/darkuserx-EM/EM.git
 cd EM
 git switch -c cambio/nombre-del-cambio
-corepack pnpm install --frozen-lockfile
-corepack pnpm dev
+npx pnpm@10.18.3 install --frozen-lockfile
+npx pnpm@10.18.3 dev
 ```
 
-Antes de subir cambios, ejecuta `corepack pnpm test` y `corepack pnpm build`. Guarda el trabajo en tu rama y abre una solicitud de cambios hacia `main` para revisarlo. El repositorio es público: contiene código, documentación y una plantilla vacía de clientes. Los reportes reales, archivos de clientes, respaldos y credenciales deben conservarse fuera del repositorio. El despliegue en Hostinger se configura por separado.
+Antes de subir cambios, ejecuta `npx pnpm@10.18.3 test` y `npx pnpm@10.18.3 build`. Guarda el trabajo en tu rama y abre una solicitud de cambios hacia `main` para revisarlo. El repositorio es público: contiene código, documentación y una plantilla vacía de clientes. Los reportes reales, archivos de clientes, respaldos y credenciales deben conservarse fuera del repositorio. El despliegue en Hostinger se configura por separado.
 
 ## Iniciar
 
-Requiere Node.js 24 o superior. Dependencias fijadas en `pnpm-lock.yaml`. La configuración TypeScript se carga de forma nativa para evitar búsquedas innecesarias fuera del proyecto en entornos restringidos.
+Se recomienda Node.js 24 LTS, igual que Hostinger y GitHub Actions. Dependencias fijadas en `pnpm-lock.yaml`. La configuración TypeScript se carga de forma nativa para evitar búsquedas innecesarias fuera del proyecto en entornos restringidos.
 
 ```sh
-corepack pnpm install --frozen-lockfile
-corepack pnpm dev
+npx pnpm@10.18.3 install --frozen-lockfile
+npx pnpm@10.18.3 dev
 ```
 
-Si no usas Corepack, instala pnpm y ejecuta `pnpm install --frozen-lockfile` y `pnpm dev`. También se puede usar `npm install` y `npm run dev`, aunque el archivo de bloqueo de esta entrega es de pnpm.
+Los comandos anteriores no dependen de Corepack (Node 25 y posteriores no lo incluyen). También puedes instalar `pnpm@10.18.3` y usar `pnpm` directamente. Conserva `pnpm-lock.yaml` y la misma versión fijada en `packageManager`.
 
 ```sh
 pnpm test
