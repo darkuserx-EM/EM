@@ -16,6 +16,10 @@ Cambios solicitados por EMSA el 7 de octubre de 2026:
 
 Campo opcional de texto `id_interno_cliente` en Nuevo/Editar equipo. Conserva letras, guiones y ceros iniciales; es el identificador que utiliza el cliente, distinto del código automático EMSA (`TCE`/`TCL`), de la serie del fabricante y del ID técnico del registro. Se muestra en la ficha, la flota y los equipos del cliente, y se incluye en la búsqueda de flota, exportaciones y respaldos. No se impone unicidad global porque distintos clientes pueden utilizar el mismo identificador. Los registros anteriores quedan sin este dato hasta que administración lo complete.
 
+## Altas con información básica
+
+El horómetro admite un valor pendiente (vacío o nulo), que se muestra como Pendiente sin convertirse a cero ni crear una lectura ficticia. Administración puede completar el primer valor desde Editar equipo si aún no hay lecturas; el guardado crea una sola lectura inicial. Un cero numérico explícito sí es una lectura real y queda protegido igual que cualquier otro valor ya registrado. Se agrega el estado Pendiente de revisión para equipos cuyo estado operativo aún no se ha confirmado. Los registros existentes conservan su estado e historial.
+
 ## Compatibilidad
 
 Una pulgada equivale a 0.0254 metros; una libra a 0.45359237 kilogramos. La presentación de metros se redondea a tres decimales. Las unidades anteriores (`capacidad_kg`, `altura_elevacion_m`) se conservan y sincronizan cuando se recibe una corrección, incluyendo borrados. Los registros anteriores se muestran mediante conversión sin migración masiva ni modificación al abrirlos. El texto anterior de `llantas` se conserva y aparece como referencia. Los campos nuevos viajan en los respaldos y exportaciones de equipo.

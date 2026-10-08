@@ -6,7 +6,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
   return <div className={`brand ${compact ? 'brand-compact' : ''}`}><div className="brand-mark">EM<span /></div><div><strong>Portal EM</strong><small>EXPERTOS EN MONTACARGAS</small></div></div>;
 }
 export function Status({ value }: { value: string }) {
-  const tone = ['En renta', 'Activo', 'Disponible'].includes(value) ? value === 'Disponible' ? 'blue' : 'green' : ['En mantenimiento', 'Prospecto', 'En tránsito'].includes(value) ? 'amber' : value === 'En taller' ? 'red' : 'neutral';
+  const tone = ['En renta', 'Activo', 'Disponible'].includes(value) ? value === 'Disponible' ? 'blue' : 'green' : ['Pendiente de revisión', 'En mantenimiento', 'Prospecto', 'En tránsito'].includes(value) ? 'amber' : value === 'En taller' ? 'red' : 'neutral';
   return <span className={`status ${tone}`}><i />{value}</span>;
 }
 export function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {

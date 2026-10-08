@@ -62,6 +62,13 @@ export class LocalDataSource {
   private audit(db: Database, actor: Actor, entity: string, action: string, detail: string) {
     db.entities.Bitacora.push(this.record('Bitacora', actor, { entidad: entity, accion: action, detalle: detail.slice(0, 500) }, db.entities.Bitacora));
   }
+  private initialEquipmentReading(db: Database, actor: Actor, row: EntityRecord) {
+    if (typeof row.horometro !== 'number') return;
+    if (db.entities.LecturaHorometro.some(reading => reading.equipo_id === row.id)) throw new Error('El equipo ya tiene lecturas. Revisa su historial antes de registrar el horómetro.');
+    const reading = this.record('LecturaHorometro', actor, {}, db.entities.LecturaHorometro);
+    Object.assign(reading, { equipo_id: row.id, cliente_id: row.cliente_id || '', fecha: row.fecha_actualizacion, valor: row.horometro, origen: 'Ingreso de equipo', orden_id: '', registrado_por: actor.nombre, ubicacion: db.entities.Sede.find(site => site.id === row.sede_id)?.nombre ?? db.entities.Cliente.find(client => client.id === row.cliente_id)?.nombre ?? 'Patio EMSA' });
+    db.entities.LecturaHorometro.push(reading);
+  }
   private assertEditable(entity: EntityName, actor: Actor) {
     assertAdmin(actor);
     if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo'].includes(entity)) throw new Error('La edición de este módulo se habilitará en su etapa de desarrollo.');
@@ -81,8 +88,7 @@ export class LocalDataSource {
         next.entities[entity].push(row);
         if (entity === 'Equipo') {
           if ((row.propiedad === 'De cliente' || row.estado === 'En renta') && !row.cliente_id) throw new Error('Selecciona el cliente propietario o el cliente de la renta.');
-          next.entities.LecturaHorometro.push(this.record('LecturaHorometro', actor, {}, next.entities.LecturaHorometro));
-          Object.assign(next.entities.LecturaHorometro.at(-1)!, { equipo_id: row.id, cliente_id: row.cliente_id || '', fecha: row.fecha_creacion, valor: row.horometro, origen: 'Ingreso de equipo', orden_id: '', registrado_por: actor.nombre, ubicacion: next.entities.Sede.find(site => site.id === row.sede_id)?.nombre ?? next.entities.Cliente.find(client => client.id === row.cliente_id)?.nombre ?? 'Patio EMSA' });
+          this.initialEquipmentReading(next, actor, row);
         }
         this.audit(next, actor, entity, 'Creación', `${row.codigo} · ${row.nombre || `${row.marca} ${row.modelo}`}`); this.commit(next);
         return structuredClone(row);
@@ -93,7 +99,7 @@ export class LocalDataSource {
         if (index < 0) throw new Error('No se encontró el registro.');
         const original = next.entities[entity][index]; const fields = cleanFields(entity, input);
         if (entity === 'Equipo') {
-          if (fields.horometro !== undefined && fields.horometro !== original.horometro) throw new Error('El horómetro se actualiza desde las lecturas. La ficha conserva el valor registrado.');
+          if (typeof original.horometro === 'number' && fields.horometro !== undefined && fields.horometro !== original.horometro) throw new Error('El horómetro se actualiza desde las lecturas. La ficha conserva el valor registrado.');
           if (fields.propiedad !== undefined && fields.propiedad !== original.propiedad) throw new Error('La corrección de propiedad aún no está habilitada; el código original se conserva.');
         }
         const row: EntityRecord = { ...original, ...fields, actualizado_por: actor.id, fecha_actualizacion: new Date().toISOString() };
@@ -101,6 +107,7 @@ export class LocalDataSource {
         const errors = validateRecord(entity, row); const duplicate = uniqueError(entity, row, next.entities[entity], id);
         if (errors.length || duplicate) throw new Error(errors.join('; ') || duplicate!);
         next.entities[entity][index] = row;
+        if (entity === 'Equipo' && typeof original.horometro !== 'number') this.initialEquipmentReading(next, actor, row);
         const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : equipmentImageFields.some(field => field === key) ? `${equipmentImageLabels[key as keyof typeof equipmentImageLabels]}: ${value ? 'actualizada' : 'retirada'}` : `${key}: ${original[key]} → ${value}`).join('; ');
         this.audit(next, actor, entity, 'Actualización', `${row.codigo} · ${changed || 'Sin cambios'}`); this.commit(next); return structuredClone(row);
       },

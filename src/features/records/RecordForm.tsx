@@ -40,7 +40,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
   const actor = useActor(); const notify = useToast(state => state.notify);
   const clients = useRows('Cliente'); const sites = useRows('Sede'); const catalogs = useRows('Catalogos'); const contacts = useRows('Contacto');
   const [values, setValues] = useState<Record<string, string>>(() => {
-    const defaults: Record<string, string> = entity === 'Equipo' ? { estado: 'Disponible', propiedad: 'Propio' } : entity === 'Cliente' ? { estado: 'Activo' } : entity === 'Sede' && !row ? { departamento: 'Guatemala' } : {};
+    const defaults: Record<string, string> = entity === 'Equipo' ? { estado: 'Pendiente de revisión', propiedad: 'Propio' } : entity === 'Cliente' ? { estado: 'Activo' } : entity === 'Sede' && !row ? { departamento: 'Guatemala' } : {};
     return { ...defaults, ...Object.fromEntries(Object.entries(row ?? {}).map(([key, value]) => [key, value === null ? '' : String(value)])), ...(entity === 'Equipo' ? equipmentFormValues(row) : {}), ...(clientId ? { cliente_id: clientId } : {}) };
   });
   const [logoBusy, setLogoBusy] = useState(false);
@@ -64,7 +64,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
     const column = definitions[entity].columns.find(item => item.key === key)!;
     const needsClient = entity === 'Equipo' && (values.propiedad === 'De cliente' || values.estado === 'En renta');
     const required = !!column.required || (key === 'cliente_id' && needsClient);
-    const disabled = busy || logoBusy || (entity === 'Equipo' && !!row && ['horometro', 'propiedad'].includes(key));
+    const disabled = busy || logoBusy || (entity === 'Equipo' && !!row && (key === 'propiedad' || (key === 'horometro' && typeof row.horometro === 'number')));
     const multiline = ['direccion_fiscal', 'notas_operativas', 'direccion', 'notas'].includes(key);
     const label = key === 'nombre' && entity === 'Cliente' ? 'Razón social' : fieldLabels[key] || column.label;
     const common = { value: values[key] ?? '', required, disabled, id: `record-${key}`, placeholder: key === 'id_interno_cliente' ? 'Ej.: FC 1 o M-001' : key === 'nombre_comercial' ? 'Ej.: Lamfer' : key === 'ubicacion' ? 'Ej.: planta principal o municipio' : key === 'plus_code' ? 'Ej.: código y localidad de Google Maps' : key === 'referencia_ubicacion' ? 'Ej.: G96Q+P5 Villa Nueva' : key === 'nombre' ? entity === 'Cliente' ? 'Ej.: Distelsa' : entity === 'Sede' ? 'Ej.: Bodega A' : '' : key === 'direccion' ? 'Ej.: Parque Logística Unisur 4, CA-9 zona 10' : undefined };
@@ -89,7 +89,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
       {key === 'referencia_cliente' && <small>Opcional: referencia usada en tu Excel. El código CLI se genera al guardar.</small>}
       {key === 'propiedad' && <small>{row ? 'La corrección de propiedad se habilitará con su flujo de auditoría.' : 'Propio: código TCL. De cliente: código TCE.'}</small>}
       {key === 'id_interno_cliente' && <small>Opcional. Código con el que el cliente identifica este equipo.</small>}
-      {key === 'horometro' && <small>{row ? 'Valor registrado. Las nuevas lecturas y correcciones se habilitan en la etapa de horómetros.' : 'Indica la lectura actual; se guardará como primera lectura del equipo.'}</small>}
+      {key === 'horometro' && <small>{row && typeof row.horometro === 'number' ? 'Valor registrado. Las nuevas lecturas y correcciones se habilitan en la etapa de horómetros.' : 'Opcional. Déjalo vacío si no tienes la lectura. Al completarlo se guardará la primera lectura real del equipo.'}</small>}
       {key === 'sede_id' && values.cliente_id && !sites.rows.some(site => site.cliente_id === values.cliente_id) && <small>Puedes agregar sedes desde la ficha del cliente.</small>}
     </div>;
   };

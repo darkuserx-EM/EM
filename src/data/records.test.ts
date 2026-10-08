@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { LocalDataSource, STORAGE_KEY, type StorageAdapter } from './repository';
 import { createSeed, demoUsers } from './seed';
 import { makeBackup, parseBackup } from './excel';
+import { formatHourMeter } from '../domain/format';
 const admin = demoUsers[0];
 function fixture() {
   let value: string | null = null;
@@ -13,6 +14,41 @@ function fixture() {
 const equipment = { marca: 'Marca de prueba', modelo: 'Modelo A', serie: 'SERIE-WEB-01', tipo: 'Reach', propiedad: 'Propio', estado: 'Disponible', horometro: 125.5 };
 
 describe('captura web de clientes y equipos', () => {
+  it('registra datos básicos sin inventar horas y permite capturar una sola lectura inicial después', async () => {
+    const {source,fleet} = fixture();
+    const row=await fleet.create({...equipment,horometro:null,estado:'Pendiente de revisión'});
+    expect(formatHourMeter(row.horometro)).toBe('Pendiente');
+    await fleet.update(row.id,{notas:'Datos complementarios pendientes'});
+    expect(source.snapshot(admin).entities.LecturaHorometro.filter(reading=>reading.equipo_id===row.id)).toHaveLength(0);
+    const backup=parseBackup(XLSX.read(XLSX.write(makeBackup(source.snapshot(admin)),{type:'array',bookType:'xlsx'}),{type:'array'}));
+    expect(formatHourMeter(backup.entities.Equipo.find(item=>item.id===row.id)?.horometro)).toBe('Pendiente');
+    await fleet.update(row.id,{horometro:875.5});
+    await fleet.update(row.id,{horometro:875.5,notas:'Lectura completada'});
+    const readings=source.snapshot(admin).entities.LecturaHorometro.filter(reading=>reading.equipo_id===row.id);
+    expect(readings).toHaveLength(1); expect(readings[0].valor).toBe(875.5);
+    expect((await fleet.getById(row.id))?.horometro).toBe(875.5);
+    await expect(fleet.update(row.id,{horometro:null})).rejects.toThrow('lecturas');
+    await expect(fleet.update(row.id,{horometro:900})).rejects.toThrow('lecturas');
+  });
+  it('distingue cero explícito de lectura desconocida y conserva su protección', async () => {
+    const {source,fleet}=fixture();
+    const {horometro:unused,...basic}=equipment;
+    const pending=await fleet.create(basic);
+    expect(formatHourMeter(pending.horometro)).toBe('Pendiente');
+    await fleet.update(pending.id,{horometro:0});
+    expect(formatHourMeter((await fleet.getById(pending.id))?.horometro)).toBe('0 h');
+    expect(source.snapshot(admin).entities.LecturaHorometro.filter(reading=>reading.equipo_id===pending.id).map(reading=>reading.valor)).toEqual([0]);
+    await expect(fleet.update(pending.id,{horometro:1})).rejects.toThrow('lecturas');
+  });
+  it('no sustituye un historial existente aunque el horómetro de la ficha esté pendiente', async () => {
+    const {source,storage}=fixture();const snapshot=source.snapshot(admin);
+    const equipmentId=String(snapshot.entities.LecturaHorometro[0].equipo_id);
+    snapshot.entities.Equipo.find(row=>row.id===equipmentId)!.horometro=null;
+    storage.setItem(STORAGE_KEY,JSON.stringify(snapshot));
+    const reloaded=new LocalDataSource(storage,{demoHistory:false});
+    await expect(reloaded.repository('Equipo',admin).update(equipmentId,{horometro:999})).rejects.toThrow('ya tiene lecturas');
+    expect(reloaded.snapshot(admin)).toEqual(snapshot);
+  });
   it('guarda clientes, datos opcionales y auditoría, y los conserva al reabrir', async () => {
     const { source, storage, clients } = fixture();
     const row = await clients.create({ nombre: 'Empresa de prueba', estado: 'Activo', nit: '000123-4', referencia_cliente: 'WEB-01', dia_facturacion: 15 });
