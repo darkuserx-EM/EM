@@ -11,11 +11,13 @@ import { equipmentFormValues } from '../../domain/equipment-specifications';
 import { EquipmentSpecField, equipmentSpecGroups, equipmentSpecKeys } from './EquipmentSpecField';
 import { EquipmentImagesField } from './EquipmentImages';
 import { equipmentImageFields } from '../../domain/equipment-images';
+import { equipmentStatusValues } from '../../domain/equipment-status';
 import './client-directory.css';
 
 export type EditableRecord = 'Cliente' | 'Equipo' | 'Contacto' | 'Sede';
 const names = { Cliente: 'cliente', Equipo: 'equipo', Contacto: 'contacto', Sede: 'sede' };
 export const fieldLabels: Record<string, string> = {
+  estado_operativo: 'Estado operativo', estado_administrativo: 'Situación administrativa', estado_mantenimiento: 'Aviso de mantenimiento', motivo_estado: 'Motivo / observación del estado',
   referencia_ubicacion: 'Referencia de ubicación / Plus Code',
   nombre_comercial: 'Nombre comercial / nombre conocido', plus_code: 'Plus Code',
   autoriza_contacto_id: 'Quién autoriza el ingreso',
@@ -28,7 +30,8 @@ const groups: Record<EditableRecord, { title: string; fields: string[] }[]> = {
   ],
   Equipo: [
     { title: 'Identificación', fields: ['propiedad', 'marca', 'modelo', 'serie', 'id_interno_cliente', 'tipo', 'anio'] },
-    { title: 'Asignación y horómetro', fields: ['estado', 'cliente_id', 'sede_id', 'horometro'] },
+    { title: 'Estado y mantenimiento', fields: ['estado_operativo', 'estado_mantenimiento', 'motivo_estado'] },
+    { title: 'Asignación y horómetro', fields: ['estado_administrativo', 'cliente_id', 'sede_id', 'horometro'] },
     ...equipmentSpecGroups,
     { title: 'Observaciones', fields: ['notas'] },
   ],
@@ -41,7 +44,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
   const clients = useRows('Cliente'); const sites = useRows('Sede'); const catalogs = useRows('Catalogos'); const contacts = useRows('Contacto');
   const [values, setValues] = useState<Record<string, string>>(() => {
     const defaults: Record<string, string> = entity === 'Equipo' ? { estado: 'Pendiente de revisión', propiedad: 'Propio' } : entity === 'Cliente' ? { estado: 'Activo' } : entity === 'Sede' && !row ? { departamento: 'Guatemala' } : {};
-    return { ...defaults, ...Object.fromEntries(Object.entries(row ?? {}).map(([key, value]) => [key, value === null ? '' : String(value)])), ...(entity === 'Equipo' ? equipmentFormValues(row) : {}), ...(clientId ? { cliente_id: clientId } : {}) };
+    return { ...defaults, ...Object.fromEntries(Object.entries(row ?? {}).map(([key, value]) => [key, value === null ? '' : String(value)])), ...(entity === 'Equipo' ? { ...equipmentFormValues(row), ...equipmentStatusValues(row) } : {}), ...(clientId ? { cliente_id: clientId } : {}) };
   });
   const [logoBusy, setLogoBusy] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
@@ -53,6 +56,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
         if (entity === 'Equipo' && equipmentImageFields.some(field => field === column.key)) return (values[column.key] ?? '') !== (row?.[column.key] ?? '');
         return groups[entity].some(group => group.fields.includes(column.key)) || (entity === 'Cliente' && column.key === 'logo') || column.key === 'cliente_id';
       }).map(column => [column.key, column.type === 'number' ? values[column.key]?.trim() ? Number(values[column.key]) : column.required ? '' : null : values[column.key] ?? '']));
+      if (entity === 'Equipo' && !row) fields.estado = 'Pendiente de revisión';
       const repo = getDataSource().repository(entity, actor);
       const saved = row ? await repo.update(row.id, fields) : await repo.create(fields);
       notify(`${saved.codigo} guardado ${serverMode ? 'en el servidor' : 'en este navegador'}.`); onSaved(saved);
@@ -62,10 +66,10 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
   const renderField = (key: string) => {
     if (entity === 'Equipo' && equipmentSpecKeys.includes(key)) return <EquipmentSpecField key={key} field={key} value={values[key] ?? ''} disabled={busy} onChange={value => change(key, value)} />;
     const column = definitions[entity].columns.find(item => item.key === key)!;
-    const needsClient = entity === 'Equipo' && (values.propiedad === 'De cliente' || values.estado === 'En renta');
-    const required = !!column.required || (key === 'cliente_id' && needsClient);
+    const needsClient = entity === 'Equipo' && (values.propiedad === 'De cliente' || values.estado_administrativo === 'En renta');
+    const required = (entity === 'Equipo' && ['estado_operativo', 'estado_mantenimiento'].includes(key)) || !!column.required || (key === 'cliente_id' && needsClient);
     const disabled = busy || logoBusy || (entity === 'Equipo' && !!row && (key === 'propiedad' || (key === 'horometro' && typeof row.horometro === 'number')));
-    const multiline = ['direccion_fiscal', 'notas_operativas', 'direccion', 'notas'].includes(key);
+    const multiline = ['direccion_fiscal', 'notas_operativas', 'direccion', 'notas', 'motivo_estado'].includes(key);
     const label = key === 'nombre' && entity === 'Cliente' ? 'Razón social' : fieldLabels[key] || column.label;
     const common = { value: values[key] ?? '', required, disabled, id: `record-${key}`, placeholder: key === 'id_interno_cliente' ? 'Ej.: FC 1 o M-001' : key === 'nombre_comercial' ? 'Ej.: Lamfer' : key === 'ubicacion' ? 'Ej.: planta principal o municipio' : key === 'plus_code' ? 'Ej.: código y localidad de Google Maps' : key === 'referencia_ubicacion' ? 'Ej.: G96Q+P5 Villa Nueva' : key === 'nombre' ? entity === 'Cliente' ? 'Ej.: Distelsa' : entity === 'Sede' ? 'Ej.: Bodega A' : '' : key === 'direccion' ? 'Ej.: Parque Logística Unisur 4, CA-9 zona 10' : undefined };
     let control;
@@ -83,6 +87,10 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
     else if (multiline) control = <textarea {...common} rows={3} maxLength={500} onChange={event => change(key, event.target.value)} />;
     else control = <input {...common} type={column.type === 'number' ? 'number' : key === 'correo' ? 'email' : key === 'telefono' ? 'tel' : 'text'} min={key === 'dia_facturacion' ? 1 : column.type === 'number' ? 0 : undefined} max={key === 'dia_facturacion' ? 31 : undefined} step={column.type === 'number' ? ['dia_facturacion', 'anio'].includes(key) ? '1' : 'any' : undefined} maxLength={column.type === 'number' ? undefined : 500} list={['marca','tipo'].includes(key) ? `suggestions-${key}` : undefined} onChange={event => change(key, event.target.value)} />;
     return <div className={`record-field ${multiline ? 'record-field-wide' : ''}`} key={key}><label htmlFor={`record-${key}`}>{label}{required && <span className="required-mark"> *</span>}</label>{control}
+      {key === 'estado_operativo' && <small>Condición reportada del equipo. Conserva Pendiente de revisión si aún no la has confirmado.</small>}
+      {key === 'estado_mantenimiento' && <small>Aviso manual. Un equipo puede estar operativo y tener mantenimiento pendiente.</small>}
+      {key === 'estado_administrativo' && <small>Gestión interna, independiente de su funcionamiento. Vendido y Baja se excluyen de la flota actual.</small>}
+      {key === 'motivo_estado' && <small>Opcional. Explica el motivo del estado o del aviso; esta observación será visible para el cliente.</small>}
       {key === 'ubicacion' && <small>Referencia de la sede principal. Agrega las direcciones de atención en Sedes.</small>}
       {key === 'plus_code' && <small>Copia el Plus Code con su localidad desde Google Maps.</small>}
       {key === 'autoriza_contacto_id' && <small>{contacts.error ? 'No se pudieron cargar los contactos. Intenta abrir la sede nuevamente.' : contacts.loading ? 'Cargando contactos…' : contacts.rows.some(contact => contact.cliente_id === values.cliente_id) ? 'Selecciona una persona registrada en Contactos de este cliente.' : 'Agrega primero una persona en Contactos de este cliente. Puedes guardar la sede sin asignarla.'}{row?.autoriza_ingreso && row.autoriza_contacto_id === undefined ? ` Dato anterior: ${row.autoriza_ingreso}.` : ''}</small>}

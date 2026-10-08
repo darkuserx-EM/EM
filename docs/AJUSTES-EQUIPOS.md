@@ -20,6 +20,18 @@ Campo opcional de texto `id_interno_cliente` en Nuevo/Editar equipo. Conserva le
 
 El horómetro admite un valor pendiente (vacío o nulo), que se muestra como Pendiente sin convertirse a cero ni crear una lectura ficticia. Administración puede completar el primer valor desde Editar equipo si aún no hay lecturas; el guardado crea una sola lectura inicial. Un cero numérico explícito sí es una lectura real y queda protegido igual que cualquier otro valor ya registrado. Se agrega el estado Pendiente de revisión para equipos cuyo estado operativo aún no se ha confirmado. Los registros existentes conservan su estado e historial.
 
+## Estado operativo y mantenimiento
+
+Desde el 8 de octubre de 2026, la condición del equipo se registra en `estado_operativo`: Operativo, No operativo, En reparación, En mantenimiento o Pendiente de revisión. `estado_mantenimiento` es un aviso manual independiente: Por revisar, Sin pendientes reportados o Mantenimiento pendiente. No se calcula vencimiento por fechas ni horas hasta definir las frecuencias de preventivos.
+
+`estado_administrativo` conserva la gestión interna: Disponible, En renta, En tránsito, Vendido o Baja, con opción sin especificar. La validación de cliente obligatorio para En renta utiliza esta situación. Vendido y Baja se excluyen por defecto del resumen y filtros de flota actual; la opción Incluir vendidos y bajas permite consultarlos.
+
+La apertura de registros anteriores no modifica MySQL ni genera auditoría. El campo anterior `estado` permanece intacto: Disponible/En renta/En tránsito/Vendido/Baja aportan únicamente su situación administrativa; En mantenimiento conserva su significado operativo explícito; En taller y demás estados ambiguos requieren revisión. Disponible nunca se convierte automáticamente a Operativo. Un aviso de mantenimiento ausente se muestra Por revisar, sin asumir que está al día.
+
+Administración edita los estados y el motivo desde Editar equipo. Los cambios efectivos de estado, aviso, situación o motivo registran autor y fecha desde el servidor, más un evento de bitácora vinculado al equipo. Otras ediciones no alteran la fecha del estado. Los campos de autoría enviados por el navegador se ignoran. El historial y la autoría interna se muestran a administración; el cliente recibe su condición, aviso, motivo y fecha, solo para sus propios equipos, sin los campos administrativos internos. No se crean usuarios ni se amplían accesos.
+
+El resumen y los filtros están en Flota, ficha del cliente y vista previa del portal del cliente; Inicio incluye el resumen. Los estados operativos suman una sola vez cada equipo del conjunto mostrado. El contador de mantenimiento es independiente y puede coincidir con cualquier estado. Los campos nuevos y eventos de bitácora se conservan en exportaciones y respaldos.
+
 ## Compatibilidad
 
 Una pulgada equivale a 0.0254 metros; una libra a 0.45359237 kilogramos. La presentación de metros se redondea a tres decimales. Las unidades anteriores (`capacidad_kg`, `altura_elevacion_m`) se conservan y sincronizan cuando se recibe una corrección, incluyendo borrados. Los registros anteriores se muestran mediante conversión sin migración masiva ni modificación al abrirlos. El texto anterior de `llantas` se conserva y aparece como referencia. Los campos nuevos viajan en los respaldos y exportaciones de equipo.

@@ -1,3 +1,4 @@
+import { operationalState, maintenanceState } from './equipment-status';
 import type { Actor, EntityName, EntityRecord } from './model';
 
 export function canAccessModule(actor: Actor, module: string): boolean {
@@ -14,7 +15,11 @@ export function filterVisible(actor: Actor, entity: EntityName, rows: EntityReco
   if (entity === 'Usuario') return rows.filter(row => row.id === actor.id);
   if (actor.rol === 'Cliente') {
     if (entity === 'Cliente') return rows.filter(row => row.id === actor.cliente_id);
-    if (['Equipo', 'Ticket', 'OrdenServicio', 'CheckList'].includes(entity)) return rows.filter(row => row.cliente_id === actor.cliente_id);
+    if (entity === 'Equipo') return rows.filter(row => row.cliente_id === actor.cliente_id).map(row => {
+      const { estado, estado_administrativo, estado_actualizado_por, ...visible } = row;
+      return { ...visible, estado_operativo: operationalState(row), estado_mantenimiento: maintenanceState(row), fuera_de_flota: ['Vendido', 'Baja'].includes(String(estado_administrativo ?? estado)) } as EntityRecord;
+    });
+    if (['Ticket', 'OrdenServicio', 'CheckList'].includes(entity)) return rows.filter(row => row.cliente_id === actor.cliente_id);
     return [];
   }
   if (actor.rol === 'Técnico') {

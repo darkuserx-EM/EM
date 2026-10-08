@@ -1,5 +1,6 @@
 import { catalogGroups, definitions, entityNames, type Database, type EntityName, type EntityRecord, type Scalar } from './model';
 
+import { statusMetadataFields } from './equipment-status';
 import { validClientLogo } from './client-profile';
 import { siteContactError } from './site-profile';
 import { synchronizeEquipmentUnits } from './equipment-specifications';
@@ -34,7 +35,7 @@ export function uniqueError(entity: EntityName, input: Record<string, unknown>, 
   return null;
 }
 export function cleanFields(entity: EntityName, input: Record<string, unknown>): Record<string, Scalar> {
-  const fields = Object.fromEntries(definitions[entity].columns.filter(column => input[column.key] !== undefined).map(column => [column.key, typeof input[column.key] === 'string' ? String(input[column.key]).trim() : input[column.key] as Scalar]));
+  const fields = Object.fromEntries(definitions[entity].columns.filter(column => input[column.key] !== undefined && !(entity === 'Equipo' && statusMetadataFields.some(key => key === column.key))).map(column => [column.key, typeof input[column.key] === 'string' ? String(input[column.key]).trim() : input[column.key] as Scalar]));
   return entity === 'Equipo' ? synchronizeEquipmentUnits(fields) : fields;
 }
 export function validateDatabase(value: unknown): asserts value is Database {

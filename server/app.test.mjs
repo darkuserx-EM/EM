@@ -77,6 +77,35 @@ test('shared engine does not inject demo records into an empty online workspace'
 const picture='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jp9sAAAAASUVORK5CYII=';
 const imageHash=imageReference(picture).slice(6);
 const withImages=db=>{for(const field of equipmentImageFields) db.entities.Equipo[0][field]=picture;db.entities.Equipo[0].cliente_id='client-1';};
+
+test('operational status persists independently through the HTTP API with trusted authorship and concurrency checks',async t=>{
+  const request=await fixture(t,{...coordinator,role:'Administrador'},withImages);
+  const original=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  const equipment=original.entities.Equipo[0];
+  const response=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'update',entity:'Equipo',id:equipment.id,revision:original.revision,fields:{estado_operativo:'Operativo',estado_mantenimiento:'Mantenimiento pendiente',motivo_estado:'Preventivo por programar',estado_actualizado_por:'Impostor',estado_actualizado_el:'2000-01-01T00:00:00.000Z'}})});
+  assert.equal(response.status,200);const saved=await response.json();
+  assert.equal(saved.result.estado_operativo,'Operativo');assert.equal(saved.result.estado_mantenimiento,'Mantenimiento pendiente');assert.equal(saved.result.estado,equipment.estado);
+  assert.equal(saved.result.estado_actualizado_por,'Prueba');assert.notEqual(saved.result.estado_actualizado_el,'2000-01-01T00:00:00.000Z');
+  const after=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  assert.deepEqual(after.entities.LecturaHorometro,original.entities.LecturaHorometro);
+  for(const field of equipmentImageFields) assert.equal(after.entities.Equipo[0][field],picture);
+  assert.equal(after.entities.Bitacora.find(row=>row.accion==='Cambio de estado').equipo_id,equipment.id);
+  const conflict=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'update',entity:'Equipo',id:equipment.id,revision:original.revision,fields:{estado_operativo:'No operativo'}})});
+  assert.equal(conflict.status,409);
+  const invalid=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'update',entity:'Equipo',id:equipment.id,revision:saved.database.revision,fields:{estado_operativo:'Valor desconocido'}})});
+  assert.equal(invalid.status,400);
+});
+
+test('client HTTP view includes only its operational status and maintenance alert and rejects status edits',async t=>{
+  const request=await fixture(t,client,db=>{withImages(db);Object.assign(db.entities.Equipo[0],{estado_operativo:'En reparación',estado_mantenimiento:'Mantenimiento pendiente',estado_administrativo:'En renta',estado_actualizado_por:'Administrador interno'});});
+  const db=await (await request('/api/database',{headers:{Cookie:'em_session=x'}})).json();
+  assert.ok(db.entities.Equipo.every(row=>row.cliente_id==='client-1'));
+  const row=db.entities.Equipo.find(row=>row.id==='equipment-1');
+  assert.equal(row.estado_operativo,'En reparación');assert.equal(row.estado_mantenimiento,'Mantenimiento pendiente');
+  for(const key of ['estado','estado_administrativo','estado_actualizado_por']) assert.equal(key in row,false);
+  const denied=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'update',entity:'Equipo',id:row.id,revision:db.revision,fields:{estado_operativo:'Operativo'}})});
+  assert.equal(denied.status,403);
+});
 test('equipment images require authentication and equipment visibility, including knowledge of the hash',async t=>{
   const path=`/api/equipment-images/equipment-1/foto_equipo/${imageHash}`;
   const anon=await fixture(t,null,withImages); assert.equal((await anon(path)).status,401);

@@ -3,6 +3,7 @@ import { assertAdmin, filterVisible } from '../domain/permissions';
 import { cleanFields, normalize, uniqueError, validateDatabase, validateRecord } from '../domain/validation';
 import { addEquipmentHistoryDemo, createSeed } from './seed';
 import { clientImportEntities, planClientImport, type ClientImportRow } from '../domain/client-import';
+import { administrativeState, equipmentStatusChanges, equipmentStatusValues } from '../domain/equipment-status';
 import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-images';
 
 export const STORAGE_KEY = 'portal-em.database.v1';
@@ -62,6 +63,17 @@ export class LocalDataSource {
   private audit(db: Database, actor: Actor, entity: string, action: string, detail: string) {
     db.entities.Bitacora.push(this.record('Bitacora', actor, { entidad: entity, accion: action, detalle: detail.slice(0, 500) }, db.entities.Bitacora));
   }
+  private recordEquipmentStatus(db: Database, actor: Actor, row: EntityRecord, previous?: EntityRecord) {
+    const changed = equipmentStatusChanges(previous ?? {}, row);
+    if (!changed.length) return;
+    row.estado_actualizado_por = actor.nombre;
+    row.estado_actualizado_el = row.fecha_actualizacion;
+    const before = equipmentStatusValues(previous ?? {}); const after = equipmentStatusValues(row);
+    const labels: Record<string, string> = { estado_operativo: 'Operación', estado_administrativo: 'Administración', estado_mantenimiento: 'Mantenimiento', motivo_estado: 'Motivo' };
+    const detail = changed.map(key => key === 'motivo_estado' ? 'Motivo: ' + (after[key] || 'retirado') : labels[key] + ': ' + (before[key] || 'Sin especificar') + ' → ' + (after[key] || 'Sin especificar')).join('; ');
+    this.audit(db, actor, 'Equipo', 'Cambio de estado', row.codigo + ' · ' + detail);
+    Object.assign(db.entities.Bitacora.at(-1)!, { equipo_id: row.id, registrado_por: actor.nombre, motivo: row.motivo_estado || '' });
+  }
   private initialEquipmentReading(db: Database, actor: Actor, row: EntityRecord) {
     if (typeof row.horometro !== 'number') return;
     if (db.entities.LecturaHorometro.some(reading => reading.equipo_id === row.id)) throw new Error('El equipo ya tiene lecturas. Revisa su historial antes de registrar el horómetro.');
@@ -87,8 +99,9 @@ export class LocalDataSource {
         const next = structuredClone(this.database); const row = this.record(entity, actor, fields, next.entities[entity]);
         next.entities[entity].push(row);
         if (entity === 'Equipo') {
-          if ((row.propiedad === 'De cliente' || row.estado === 'En renta') && !row.cliente_id) throw new Error('Selecciona el cliente propietario o el cliente de la renta.');
+          if ((row.propiedad === 'De cliente' || administrativeState(row) === 'En renta') && !row.cliente_id) throw new Error('Selecciona el cliente propietario o el cliente de la renta.');
           this.initialEquipmentReading(next, actor, row);
+          this.recordEquipmentStatus(next, actor, row);
         }
         this.audit(next, actor, entity, 'Creación', `${row.codigo} · ${row.nombre || `${row.marca} ${row.modelo}`}`); this.commit(next);
         return structuredClone(row);
@@ -103,9 +116,10 @@ export class LocalDataSource {
           if (fields.propiedad !== undefined && fields.propiedad !== original.propiedad) throw new Error('La corrección de propiedad aún no está habilitada; el código original se conserva.');
         }
         const row: EntityRecord = { ...original, ...fields, actualizado_por: actor.id, fecha_actualizacion: new Date().toISOString() };
-        if (entity === 'Equipo' && (row.propiedad === 'De cliente' || row.estado === 'En renta') && !row.cliente_id) throw new Error('Selecciona el cliente propietario o el cliente de la renta.');
+        if (entity === 'Equipo' && (row.propiedad === 'De cliente' || administrativeState(row) === 'En renta') && !row.cliente_id) throw new Error('Selecciona el cliente propietario o el cliente de la renta.');
         const errors = validateRecord(entity, row); const duplicate = uniqueError(entity, row, next.entities[entity], id);
         if (errors.length || duplicate) throw new Error(errors.join('; ') || duplicate!);
+        if (entity === 'Equipo') this.recordEquipmentStatus(next, actor, row, original);
         next.entities[entity][index] = row;
         if (entity === 'Equipo' && typeof original.horometro !== 'number') this.initialEquipmentReading(next, actor, row);
         const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : equipmentImageFields.some(field => field === key) ? `${equipmentImageLabels[key as keyof typeof equipmentImageLabels]}: ${value ? 'actualizada' : 'retirada'}` : `${key}: ${original[key]} → ${value}`).join('; ');
