@@ -9,7 +9,7 @@ export function Status({ value }: { value: string }) {
   const tone = ['Operativo', 'En renta', 'Activo'].includes(value) ? 'green' : ['Disponible', 'En mantenimiento'].includes(value) ? 'blue' : ['En reparación', 'Mantenimiento pendiente', 'Prospecto', 'En tránsito'].includes(value) ? 'amber' : ['No operativo', 'En taller'].includes(value) ? 'red' : 'neutral';
   return <span className={`status ${tone}`}><i />{value}</span>;
 }
-export function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
+export function Modal({ title, children, onClose, wide = false, className = '' }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; className?: string }) {
   const ref = useRef<HTMLDivElement>(null); const closer = useRef(onClose); closer.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -18,7 +18,8 @@ export function Modal({ title, children, onClose, wide = false }: { title: strin
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closer.current();
       if (event.key === 'Tab') {
-        const items = ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex="0"]');
+        const items = Array.from(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex="0"]') ?? [])
+          .filter(item => item.tabIndex >= 0 && item.getClientRects().length > 0 && !item.closest('[hidden]'));
         if (!items?.length) { event.preventDefault(); return; }
         const first = items[0]; const last = items[items.length - 1];
         if (event.shiftKey && (document.activeElement === first || document.activeElement === ref.current)) { event.preventDefault(); last.focus(); }
@@ -28,7 +29,7 @@ export function Modal({ title, children, onClose, wide = false }: { title: strin
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = overflow; previous?.focus(); };
   }, []);
-  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><div className={`modal ${wide ? 'modal-wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}><div className="modal-heading"><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="Cerrar ventana"><X size={20} /></button></div>{children}</div></div>;
+  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><div className={`modal ${wide ? 'modal-wide' : ''} ${className}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}><div className="modal-heading"><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="Cerrar ventana"><X size={20} /></button></div>{children}</div></div>;
 }
 export function ErrorNotice({ message }: { message: string }) { return message ? <div className="error-notice" role="alert"><AlertCircle size={18} /><span>{message}</span></div> : null; }
 export function Toast() {

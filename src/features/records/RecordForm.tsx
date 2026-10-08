@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { Check, Info } from 'lucide-react';
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { Check, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
 import { ErrorNotice, Modal } from '../../components/ui';
 import { definitions, type EntityRecord, type Scalar } from '../../domain/model';
@@ -8,11 +8,13 @@ import { clientDisplayName, clientSectors } from '../../domain/client-profile';
 import { departments } from '../../domain/site-profile';
 import { ClientLogoField } from './ClientLogo';
 import { equipmentFormValues } from '../../domain/equipment-specifications';
-import { EquipmentSpecField, equipmentSpecGroups, equipmentSpecKeys } from './EquipmentSpecField';
+import { EquipmentSpecField, equipmentSpecKeys } from './EquipmentSpecField';
+import { EquipmentFormTabs, equipmentFormSteps, firstInvalidEquipmentControl } from './EquipmentFormSteps';
 import { EquipmentImagesField } from './EquipmentImages';
 import { equipmentImageFields } from '../../domain/equipment-images';
 import { equipmentStatusValues } from '../../domain/equipment-status';
 import './client-directory.css';
+import './equipment-form.css';
 
 export type EditableRecord = 'Cliente' | 'Equipo' | 'Contacto' | 'Sede';
 const names = { Cliente: 'cliente', Equipo: 'equipo', Contacto: 'contacto', Sede: 'sede' };
@@ -28,13 +30,7 @@ const groups: Record<EditableRecord, { title: string; fields: string[] }[]> = {
     { title: 'Identificación de la empresa', fields: ['nombre', 'nombre_comercial', 'nit', 'estado', 'sector'] },
     { title: 'Ubicación y atención', fields: ['ubicacion', 'plus_code', 'direccion_fiscal', 'notas_operativas'] },
   ],
-  Equipo: [
-    { title: 'Identificación', fields: ['propiedad', 'marca', 'modelo', 'serie', 'id_interno_cliente', 'tipo', 'anio'] },
-    { title: 'Estado y mantenimiento', fields: ['estado_operativo', 'estado_mantenimiento', 'motivo_estado'] },
-    { title: 'Asignación y horómetro', fields: ['estado_administrativo', 'cliente_id', 'sede_id', 'horometro'] },
-    ...equipmentSpecGroups,
-    { title: 'Observaciones', fields: ['notas'] },
-  ],
+  Equipo: equipmentFormSteps.flatMap(step => step.groups),
   Contacto: [{ title: 'Datos de contacto', fields: ['nombre', 'cargo', 'telefono', 'correo', 'principal'] }],
   Sede: [{ title: 'Ubicación y acceso', fields: ['nombre', 'direccion', 'municipio', 'departamento', 'referencia_ubicacion', 'autoriza_contacto_id'] }],
 };
@@ -48,9 +44,42 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
   });
   const [logoBusy, setLogoBusy] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [activeStep, setActiveStep] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null); const bodyRef = useRef<HTMLDivElement>(null);
+  const pendingInvalid = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
+  const focusPanel = useRef(false);
+  useLayoutEffect(() => {
+    if (entity !== 'Equipo') return;
+    if (bodyRef.current) bodyRef.current.scrollTop = 0;
+    formRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (pendingInvalid.current) {
+      pendingInvalid.current.focus(); pendingInvalid.current.reportValidity(); pendingInvalid.current = null;
+    } else if (focusPanel.current) {
+      formRef.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])')?.focus();
+    }
+    focusPanel.current = false;
+  }, [activeStep, entity]);
+  const changeStep = (step: number, moveFocus = false) => {
+    if (busy || logoBusy) return;
+    setError(''); focusPanel.current = moveFocus; setActiveStep(step);
+  };
+  const validateEquipment = (currentOnly = false) => {
+    const form = formRef.current; if (!form) return false;
+    const scope = currentOnly ? form.querySelector('[role="tabpanel"]:not([hidden])') : form;
+    const invalid = scope && firstInvalidEquipmentControl(scope);
+    if (!invalid) return true;
+    const step = Number(invalid.closest<HTMLElement>('[data-equipment-step]')?.dataset.equipmentStep ?? 0);
+    const label = invalid.closest('.record-field')?.querySelector('label')?.textContent?.replace(' *', '') || 'el campo señalado';
+    setError(`Revisa ${label} en «${equipmentFormSteps[step].label}». ${invalid.validationMessage}`);
+    if (step === activeStep) { invalid.focus(); invalid.reportValidity(); }
+    else { pendingInvalid.current = invalid; setActiveStep(step); }
+    return false;
+  };
   const change = (key: string, value: string) => setValues(previous => ({ ...previous, [key]: value, ...(key === 'cliente_id' ? { sede_id: '' } : {}) }));
   const save = async (event: FormEvent) => {
-    event.preventDefault(); setError(''); setBusy(true);
+    event.preventDefault();
+    if (busy || logoBusy || (entity === 'Equipo' && !validateEquipment())) return;
+    setError(''); setBusy(true);
     try {
       const fields: Record<string, Scalar> = Object.fromEntries(definitions[entity].columns.filter(column => {
         if (entity === 'Equipo' && equipmentImageFields.some(field => field === column.key)) return (values[column.key] ?? '') !== (row?.[column.key] ?? '');
@@ -64,7 +93,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
     finally { setBusy(false); }
   };
   const renderField = (key: string) => {
-    if (entity === 'Equipo' && equipmentSpecKeys.includes(key)) return <EquipmentSpecField key={key} field={key} value={values[key] ?? ''} disabled={busy} onChange={value => change(key, value)} />;
+    if (entity === 'Equipo' && equipmentSpecKeys.includes(key)) return <EquipmentSpecField key={key} field={key} value={values[key] ?? ''} disabled={busy || logoBusy} onChange={value => change(key, value)} />;
     const column = definitions[entity].columns.find(item => item.key === key)!;
     const needsClient = entity === 'Equipo' && (values.propiedad === 'De cliente' || values.estado_administrativo === 'En renta');
     const required = (entity === 'Equipo' && ['estado_operativo', 'estado_mantenimiento'].includes(key)) || !!column.required || (key === 'cliente_id' && needsClient);
@@ -101,13 +130,29 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
       {key === 'sede_id' && values.cliente_id && !sites.rows.some(site => site.cliente_id === values.cliente_id) && <small>Puedes agregar sedes desde la ficha del cliente.</small>}
     </div>;
   };
-  return <Modal title={`${row ? 'Editar' : entity === 'Sede' ? 'Nueva' : 'Nuevo'} ${names[entity]}`} onClose={() => { if (!busy && !logoBusy) onClose(); }} wide><form onSubmit={save} className="record-form"><p className="record-intro">{row ? `Código ${row.codigo}. ` : 'El código se genera automáticamente. '}Los campos con <strong>*</strong> son obligatorios.</p>
+  const renderGroup = (group: { title: string; fields: string[] }) => <fieldset className="record-section" key={group.title}><legend>{group.title}</legend><div className="record-fields">{group.fields.map(renderField)}</div>{entity === 'Equipo' && group.title === 'Llantas y rodos' && row?.llantas && <p className="equipment-legacy-note">Dato anterior de llantas (conservado): {row.llantas}</p>}</fieldset>;
+  return <Modal title={`${row ? 'Editar' : entity === 'Sede' ? 'Nueva' : 'Nuevo'} ${names[entity]}`} onClose={() => { if (!busy && !logoBusy) onClose(); }} wide className={entity === 'Equipo' ? 'equipment-form-modal' : ''}><form ref={formRef} onSubmit={save} noValidate={entity === 'Equipo'} className="record-form"><p className="record-intro">{row ? `Código ${row.codigo}. ` : 'El código se genera automáticamente. '}Los campos con <strong>*</strong> son obligatorios.</p>
     {entity === 'Cliente' && <><div className="client-auto-code"><span>Código de cliente</span><strong>{row?.codigo || 'Automático al guardar'}</strong></div><ClientLogoField value={String(values.logo || '')} onChange={value => change('logo',value)} disabled={busy || logoBusy} onBusy={setLogoBusy} /></>}
     {clientId && <div className="record-parent"><Info size={16} />{clientDisplayName(clients.rows.find(client => client.id === clientId))}</div>}
-    {entity === 'Equipo' && <EquipmentImagesField equipment={values} disabled={busy || logoBusy} onChange={change} onBusy={setLogoBusy} />}
-    {groups[entity].map(group => <fieldset className="record-section" key={group.title}><legend>{group.title}</legend><div className="record-fields">{group.fields.map(renderField)}</div>{entity === 'Equipo' && group.title === 'Llantas y rodos' && row?.llantas && <p className="equipment-legacy-note">Dato anterior de llantas (conservado): {row.llantas}</p>}</fieldset>)}
+    {entity === 'Equipo' ? <>
+      <EquipmentFormTabs active={activeStep} disabled={busy || logoBusy} onChange={changeStep} />
+      <div className="equipment-form-body" ref={bodyRef}>
+        {equipmentFormSteps.map((step, index) => <section key={step.id} className="equipment-form-panel" id={`equipment-panel-${step.id}`} role="tabpanel" aria-labelledby={`equipment-tab-${step.id}`} data-equipment-step={index} hidden={activeStep !== index} tabIndex={-1}>
+          <div className="equipment-step-intro"><span>Paso {index + 1} de {equipmentFormSteps.length}</span><p>{step.description}</p></div>
+          {step.groups.map(renderGroup)}
+          {step.images && <EquipmentImagesField section={step.images} equipment={values} disabled={busy || logoBusy} onChange={change} onBusy={setLogoBusy} />}
+        </section>)}
+      </div>
+    </> : groups[entity].map(renderGroup)}
     {['marca','tipo'].map(key => <datalist id={`suggestions-${key}`} key={key}>{catalogs.rows.filter(item => item.activo && item.categoria === (key === 'marca' ? 'Marcas' : 'Tipos de equipo')).map(item => <option key={item.id} value={String(item.nombre)} />)}</datalist>)}
     {entity === 'Cliente' && !row && <p className="record-footer-note">Al guardar se abrirá la ficha para agregar sus contactos, sedes y equipos.</p>}
-    <ErrorNotice message={error} /><div className="modal-actions record-actions"><button type="button" className="button" onClick={onClose} disabled={busy || logoBusy}>Cancelar</button><button type="submit" className="button button-dark" disabled={busy || logoBusy}><Check size={16} />{busy ? 'Guardando…' : `Guardar ${names[entity]}`}</button></div>
+    <ErrorNotice message={error} /><div className="modal-actions record-actions"><button type="button" className="button" onClick={onClose} disabled={busy || logoBusy}>Cancelar</button><div className="equipment-step-actions">
+      {entity === 'Equipo' && <>
+        <button type="button" className="button" disabled={busy || logoBusy || activeStep === 0} onClick={() => changeStep(activeStep - 1, true)}><ChevronLeft size={16} />Anterior</button>
+        {activeStep < equipmentFormSteps.length - 1 && <button type="button" className="button" disabled={busy || logoBusy} onClick={() => { if (validateEquipment(true)) changeStep(activeStep + 1, true); }}>Siguiente<ChevronRight size={16} /></button>}
+      </>}
+      <button type="submit" className="button button-dark" disabled={busy || logoBusy}><Check size={16} />{busy ? 'Guardando…' : `Guardar ${names[entity]}`}</button>
+    </div></div>
+    {entity === 'Equipo' && <p className="equipment-form-save-note">Puedes guardar desde cualquier pestaña. Las imágenes son opcionales. Los cambios se conservan al cambiar de pestaña y se guardan al pulsar «Guardar equipo».</p>}
   </form></Modal>;
 }
