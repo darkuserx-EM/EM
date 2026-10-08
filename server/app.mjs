@@ -1,6 +1,6 @@
 import express from 'express';
 import helmet from 'helmet';
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames, ValidationError } from './generated/domain.mjs';
@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword, digest, equal, token, cookieToken } from 
 import { presentDatabase, presentEquipment, resolveEquipmentImages, readEquipmentImage } from './equipment-images.mjs';
 import { logFailure, parseTrustProxy } from './diagnostics.mjs';
 import { createSnapshotCache } from './snapshot-cache.mjs';
+import { registerAccountRoutes } from './account.mjs';
 
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
 const syncToken = (revision, actor) => digest(JSON.stringify(['portal-sync-v1', revision, actor]));
@@ -18,6 +19,7 @@ const cookieName = 'em_session';
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
 export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error }) {
   const app = express();
+  app.set('portal production', production);
   app.disable('x-powered-by'); app.set('trust proxy', parseTrustProxy(String(trustProxy)));
   const snapshots = createSnapshotCache(pool);
   app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null } } }));
@@ -32,12 +34,10 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || !req.is('application/json'))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
     next();
   });
-  const smallJson = express.json({ limit:'8mb' });
-  // Los adjuntos grandes se leen únicamente tras autenticar al administrador.
-  app.use('/api', (req,res,next) => req.path === '/mutate' && req.method === 'POST' ? next() : smallJson(req,res,next));
+  const smallJson = express.json({ limit:'100kb' });
   const loginLimit = rateLimit({ windowMs:900000, limit:30, standardHeaders:'draft-8', legacyHeaders:false, message:{error:'Demasiados intentos. Espera 15 minutos.'} });
   app.get('/api/setup-status', async (_req,res) => { const [rows] = await pool.query('SELECT COUNT(*) AS n FROM em_users'); res.json({ needsSetup:Number(rows[0].n) === 0 }); });
-  app.post('/api/setup', loginLimit, async (req,res) => {
+  app.post('/api/setup', loginLimit, smallJson, async (req,res) => {
     if (!setupToken || setupToken.length < 32 || !equal(req.body?.setupToken,setupToken)) throw fail(403,'La clave de instalación no es válida.');
     const email = emailOf(req.body.email);
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
@@ -54,18 +54,25 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       await conn.commit(); res.status(201).json({created:true});
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   });
-  app.post('/api/login', loginLimit, async (req,res) => {
+  app.post('/api/login', loginLimit, smallJson, async (req,res) => {
     const email = emailOf(req.body?.email);
     if (!email || email.length>254 || typeof req.body.password !== 'string' || req.body.password.length>128) throw fail(401,'Correo o contraseña incorrectos.');
-    if (!await consumeLoginAttempt(pool,digest(email))) throw fail(429,'Demasiados intentos para esta cuenta. Espera 15 minutos.');
+    const attemptKey = digest(JSON.stringify(['login-v2',email,ipKeyGenerator(req.ip)]));
+    if (!await consumeLoginAttempt(pool,attemptKey)) throw fail(429,'Demasiados intentos. Espera 15 minutos.');
     const [rows] = await pool.execute('SELECT * FROM em_users WHERE email=? AND active=TRUE',[email]);
     // Derive even for an unknown account to avoid fast username enumeration.
     const dummy = `scrypt:${'0'.repeat(32)}:${'0'.repeat(128)}`;
     if (!await verifyPassword(req.body.password,rows[0]?.password_hash || dummy) || !rows[0]) throw fail(401,'Correo o contraseña incorrectos.');
     const session = token();
-    await pool.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at) VALUES (?,?,?,?)',[digest(session),rows[0].id,token(),Date.now()+8*3600000]);
-    await pool.execute('DELETE FROM em_login_limits WHERE bucket=?',[digest(email)]);
-    await pool.execute('DELETE FROM em_sessions WHERE expires_at<?',[Date.now()]);
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [current] = await conn.execute('SELECT id,password_hash,active FROM em_users WHERE id=? FOR UPDATE',[rows[0].id]);
+      if (!current[0]?.active || current[0].password_hash !== rows[0].password_hash) throw fail(401,'Correo o contraseña incorrectos.');
+      await conn.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at) VALUES (?,?,?,?)',[digest(session),rows[0].id,token(),Date.now()+8*3600000]);
+      await conn.execute('DELETE FROM em_login_limits WHERE bucket=?',[attemptKey]);
+      await conn.commit();
+    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
     res.cookie(cookieName,session,{httpOnly:true,secure:production,sameSite:'strict',path:'/',maxAge:8*3600000});
     res.json({ok:true});
   });
@@ -79,6 +86,9 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     next();
   });
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf}));
+  // Small authenticated requests are parsed only after session and CSRF checks.
+  app.use('/api', (req,res,next) => req.path === '/mutate' && req.method === 'POST' ? next() : smallJson(req,res,next));
+  registerAccountRoutes(app, pool);
   app.post('/api/logout', async (req,res) => { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); res.clearCookie(cookieName,{path:'/',secure:production,httpOnly:true,sameSite:'strict'}); res.json({ok:true}); });
   app.get('/api/database', async (req,res) => {
     const [rows] = await pool.query('SELECT revision FROM em_meta WHERE id=1');
@@ -124,7 +134,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       let result;
       try {
         if (body.action==='importClients') result = source.importClients(req.actor,body.rows,db.revision);
-        else if (body.action==='restore') source.restore(req.actor,body.database,db.revision);
+        else if (body.action==='restore') source.restore(req.actor,body.database,db.revision,body.exportedAt);
         else {
           const repo = source.repository(body.entity,req.actor);
           if (body.action==='create') result = await repo.create(body.fields);

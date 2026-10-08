@@ -4,9 +4,8 @@ import { ArrowUpRight, Building2, CalendarDays, ChartNoAxesColumn, ChevronDown, 
 import { Brand, Modal, Toast } from './ui';
 import { demoUsers } from '../data/seed';
 import { useActor, useSession } from '../app/state';
-import { serverMode, remoteSource } from '../data/source';
-import { api } from '../data/remote';
-import { useAuth } from '../app/auth';
+import { serverMode } from '../data/source';
+import { AccountDialog } from '../features/settings/AccountDialog';
 import { canAccessModule } from '../domain/permissions';
 
 type NavItem = { module: string; title: string; icon: LucideIcon; stage?: number };
@@ -41,7 +40,7 @@ export function Shell() {
       <footer className="app-footer"><span>© {new Date().getFullYear()} Expertos en Montacargas, S.A.</span><span>Hecho para mantener tu operación en movimiento.</span></footer>
     </div>
     {roles && !serverMode && <Modal title="Explorar como…" onClose={() => setRoles(false)}><p className="modal-intro">Cambia de perfil para revisar la navegación. Este selector es una simulación; los accesos reales se conectarán antes de usar información de la empresa.</p><div className="role-options">{demoUsers.map(user => <button key={user.id} className={`role-option ${actor.id === user.id ? 'selected' : ''}`} onClick={() => { setUser(user.id); setRoles(false); navigate(user.rol === 'Cliente' ? '/portal' : '/inicio'); }}><span className="role-avatar">{user.rol === 'Cliente' ? <Building2 size={20} /> : <ShieldCheck size={20} />}</span><span><strong>{user.nombre}</strong><small>{user.rol}</small></span>{user.id === actor.id ? <span className="selected-dot" /> : <ChevronRight size={16} />}</button>)}</div><a className="operator-link" href="/revision/TCL-001" onClick={() => setRoles(false)}>Ver acceso del operador sin cuenta<ArrowUpRight size={16} /></a></Modal>}
-    {roles && serverMode && <Modal title="Mi cuenta" onClose={() => setRoles(false)}><p>{actor.nombre} · {actor.rol}</p><p className="modal-intro">Los permisos se verifican en el servidor. Los datos se sincronizan entre dispositivos cada 15 segundos.</p><button className="button button-dark" onClick={async () => { try { await api('logout', {}); remoteSource.clear(); useAuth.getState().setActor(undefined); } catch { setRoles(false); } }}>Cerrar sesión</button></Modal>}
+    {roles && serverMode && <AccountDialog onClose={() => setRoles(false)} />}
     <Toast />
   </div>;
 }

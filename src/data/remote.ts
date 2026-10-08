@@ -78,5 +78,5 @@ export class RemoteDataSource {
     return planClientImport({ Cliente: entities.Cliente, Contacto: entities.Contacto, Sede: entities.Sede }, rows).rows;
   }
   importClients(actor: Actor, rows: ClientImportRow[], revision: number) { assertAdmin(actor); return this.mutate<string | undefined>({ action: 'importClients', rows, revision }); }
-  async restore(actor: Actor, database: unknown, revision: number) { assertAdmin(actor); await this.mutate({ action: 'restore', database, revision }); }
+  async restore(actor: Actor, database: unknown, revision: number, exportedAt?: string) { assertAdmin(actor); await this.mutate({ action: 'restore', database, revision, exportedAt }); }
 }

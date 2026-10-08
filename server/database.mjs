@@ -13,6 +13,13 @@ export async function migrate(pool) {
     `CREATE TABLE IF NOT EXISTS em_login_limits (bucket CHAR(64) PRIMARY KEY, attempts INT NOT NULL, expires_at BIGINT NOT NULL) ENGINE=InnoDB`,
   ];
   for (const statement of sql) await pool.query(statement);
+  for (const table of ['em_sessions', 'em_login_limits']) {
+    const [indexes] = await pool.query(`SHOW INDEX FROM ${table} WHERE Column_name='expires_at' AND Seq_in_index=1`);
+    if (!indexes.length) {
+      try { await pool.query(`ALTER TABLE ${table} ADD INDEX idx_expires_at (expires_at)`); }
+      catch (error) { if (error.code !== 'ER_DUP_KEYNAME') throw error; }
+    }
+  }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -45,14 +52,29 @@ export async function readDatabase(conn, lock = false) {
 }
 export async function saveDatabase(conn, db, previous) {
   validateDatabase(db);
+  let batch = []; let bytes = 0;
+  const flush = async () => {
+    if (!batch.length) return;
+    await conn.execute(`INSERT INTO em_records (entity,id,payload) VALUES ${batch.map(() => '(?,?,?)').join(',')} ON DUPLICATE KEY UPDATE payload=VALUES(payload)`, batch.flat());
+    batch = []; bytes = 0;
+  };
   for (const entity of entityNames) {
     const old = new Map((previous?.entities[entity] || []).map(row => [row.id, JSON.stringify(row)]));
     for (const row of db.entities[entity]) {
       const payload = JSON.stringify(row);
-      if (old.get(row.id) !== payload) await conn.execute('INSERT INTO em_records (entity,id,payload) VALUES (?,?,?) ON DUPLICATE KEY UPDATE payload=VALUES(payload)', [entity,row.id,payload]);
+      if (old.get(row.id) !== payload) {
+        const size = Buffer.byteLength(payload) + Buffer.byteLength(row.id) + 80;
+        if (batch.length && (batch.length >= 200 || bytes + size > 512 * 1024)) await flush();
+        batch.push([entity, row.id, payload]); bytes += size;
+      }
       old.delete(row.id);
     }
-    for (const id of old.keys()) await conn.execute('DELETE FROM em_records WHERE entity=? AND id=?', [entity,id]);
+    await flush();
+    const removed = [...old.keys()];
+    for (let i = 0; i < removed.length; i += 200) {
+      const ids = removed.slice(i, i + 200);
+      await conn.execute(`DELETE FROM em_records WHERE entity=? AND id IN (${ids.map(() => '?').join(',')})`, [entity, ...ids]);
+    }
   }
   await conn.execute('UPDATE em_meta SET revision=? WHERE id=1', [db.revision]);
 }
@@ -65,4 +87,14 @@ export async function consumeLoginAttempt(pool, key, now = Date.now()) {
   await pool.execute('INSERT INTO em_login_limits (bucket,attempts,expires_at) VALUES (?,1,?) ON DUPLICATE KEY UPDATE attempts=IF(expires_at<?,1,attempts+1), expires_at=IF(expires_at<?,VALUES(expires_at),expires_at)', [key,now+900000,now,now]);
   const [rows] = await pool.execute('SELECT attempts FROM em_login_limits WHERE bucket=?', [key]);
   return rows[0].attempts <= 8;
+}
+
+export async function cleanupExpired(pool, now = Date.now()) {
+  // Bounded work per pass; no global application-data lock.
+  const removed = {};
+  for (const table of ['em_sessions', 'em_login_limits']) {
+    const [result] = await pool.execute(`DELETE FROM ${table} WHERE expires_at<=? LIMIT 500`, [now]);
+    removed[table] = result.affectedRows;
+  }
+  return removed;
 }

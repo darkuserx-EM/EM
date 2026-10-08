@@ -180,12 +180,15 @@ export class LocalDataSource {
   }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.database); }
   async backup(actor: Actor) { return this.snapshot(actor); }
-  restore(actor: Actor, candidate: unknown, expectedRevision: number) {
+  restore(actor: Actor, candidate: unknown, expectedRevision: number, exportedAt?: string) {
     assertAdmin(actor); this.validate(candidate);
     if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron. Revisa nuevamente el respaldo antes de restaurarlo.');
+    if (exportedAt !== undefined && (!/^\d{4}-\d{2}-\d{2}T/.test(exportedAt) || !Number.isFinite(Date.parse(exportedAt)))) throw new ValidationError('La fecha de exportación del respaldo no es válida.');
     const next = structuredClone(candidate);
+    // The live audit is authoritative: a backup cannot erase or rewrite it.
+    next.entities.Bitacora = structuredClone(this.database.entities.Bitacora);
     if (this.options.demoHistory) addEquipmentHistoryDemo(next.entities);
-    this.audit(next, actor, 'Sistema', 'Restauración', 'Se restauró un respaldo completo revisado por administración.'); this.commit(next);
+    this.audit(next, actor, 'Sistema', 'Restauración', `Respaldo revisión ${candidate.revision}; exportado: ${exportedAt ? new Date(exportedAt).toISOString() : 'fecha no disponible'}. Reemplaza revisión ${this.database.revision}. Se conservó la bitácora actual.`); this.commit(next);
   }
 }
 let singleton: LocalDataSource | undefined;

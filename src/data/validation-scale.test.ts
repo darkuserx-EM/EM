@@ -19,7 +19,7 @@ it('lee, guarda y restaura más de 20000 movimientos en el servidor, conservando
   await server.repository('Catalogos',demoUsers[0]).create({categoria:'Marcas',nombre:'Marca de escala',activo:true});
   expect(server.snapshot(demoUsers[0]).entities.Bitacora).toHaveLength(25001);
   server.restore(demoUsers[0],db,server.getRevision());
-  expect(server.snapshot(demoUsers[0]).entities.Bitacora).toHaveLength(25001);
+  expect(server.snapshot(demoUsers[0]).entities.Bitacora).toHaveLength(25002);
   expect(() => validateDatabase(db,{maxRows:20000})).toThrow('demasiados registros');
   db.entities.Bitacora[1].codigo = '  log-1  ';
   expect(() => validateDatabase(db)).toThrow('El código ya existe');

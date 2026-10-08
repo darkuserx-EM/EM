@@ -101,3 +101,11 @@ export function makeEquipmentHistoryWorkbook(equipment: EntityRecord, history: E
   ]), 'Información');
   return workbook;
 }
+
+export function backupExportedAt(workbook: XLSX.WorkBook): string | undefined {
+  const sheet = workbook.Sheets._metadata;
+  const value = sheet && XLSX.utils.sheet_to_json<{exportado?: string}>(sheet)[0]?.exportado;
+  if (value === undefined || value === "") return undefined;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(value) || !Number.isFinite(Date.parse(value))) throw new Error("La fecha de exportación del respaldo no es válida.");
+  return new Date(value).toISOString();
+}
