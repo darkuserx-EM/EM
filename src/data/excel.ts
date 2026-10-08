@@ -95,6 +95,8 @@ export function makeEquipmentHistoryWorkbook(equipment: EntityRecord, history: E
     { campo: 'Alcance', valor: 'Historial y adjuntos del equipo seleccionado.' },
     { campo: 'Desde / hasta (Guatemala)', valor: `${from || 'Sin límite'} / ${to || 'Sin límite'}` },
     { campo: 'Uso entre lecturas seleccionadas', valor: history.hoursUsed === null ? 'No calculable: faltan lecturas comparables' : `${history.hoursUsed} h` },
+    { campo: 'Calidad del uso calculado', valor: history.hoursUsed === null ? 'Sin cálculo' : history.hoursUsedEstimated ? 'Estimado: uno de los extremos es una lectura estimada' : 'Diferencia entre lecturas reportadas en los extremos' },
+    { campo: 'Estimaciones', valor: 'Las lecturas estimadas conservan el valor original y la nota del método. Los intervalos que dependen de una estimación no son uso verificado.' },
     { campo: 'Interpretación', valor: 'El horómetro es acumulado. El uso se calcula entre la primera y última lectura seleccionada; no supone horas diarias ni tiempo de mano de obra.' },
   ]), 'Información');
   return workbook;

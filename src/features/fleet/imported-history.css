@@ -1,0 +1,23 @@
+.repair-description p,.repair-source-materials p,.report-safety-notes p{white-space:pre-wrap;overflow-wrap:anywhere}
+.imported-report-details{border-top:1px solid #e5eadf;margin-top:20px;padding-top:18px}
+.imported-report-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px 22px;margin:0 0 20px}
+.imported-report-meta dt{font-size:10px;color:#78896a;margin-bottom:6px}
+.imported-report-meta dd{margin:0;font-size:11px;color:#536648;line-height:1.7;overflow-wrap:anywhere}
+.report-safety-notes{padding:15px;background:#fbf6e9;border:1px solid #eadfbd;border-radius:7px;margin-top:15px}
+.report-safety-notes h3{color:#866b32}.report-safety-notes small{display:block;font-size:9px;color:#8a794f;margin-top:10px;line-height:1.6}
+.repair-body .imported-report-caveat{font-size:10px;line-height:1.75;color:#7c866e;margin:14px 0}
+.reading-estimate{display:block;margin-top:7px;font-size:10px;line-height:1.6;white-space:normal;text-align:left;min-width:115px}
+.estimate-tag{display:inline-flex;border-radius:4px;background:#fff2d8;color:#8b682b;padding:3px 6px;font-size:9px;line-height:1.4;font-weight:600}
+.reading-estimate>small{display:block;font-size:9px;color:#857654;margin-top:5px}
+.reading-estimate details{margin-top:5px}.reading-estimate summary{cursor:pointer;color:#887143;font-size:9px;padding:0;display:list-item}
+.reading-estimate details p{font-size:10px;margin-top:8px;max-width:360px;color:#736949;line-height:1.7}
+.report-pending-files{padding-top:12px;border-top:1px solid #e8ecdf;font-size:10px;color:#738565}
+.report-pending-files summary{display:list-item;padding:0;cursor:pointer;font-size:10px;line-height:1.6}
+.report-pending-files p{margin-top:8px}.report-pending-files ul{padding-left:17px;margin-top:8px;line-height:1.8;overflow-wrap:anywhere}
+.repair-body .report-source{font-size:9px;color:#849376;margin-top:14px}
+.repair-source-materials p+p{margin-top:8px}.repair-subtitle .estimate-tag{font-size:8px}
+.history-import-note{background:#f4f7ee;border:1px solid #e0e7d5;border-radius:7px;padding:13px 15px;margin:0 0 20px;font-size:11px;line-height:1.75;color:#667751}
+.reading-table.with-odometer{min-width:850px}
+.meter-chart .estimated-point{stroke:#b0822f;fill:#fff0cf}
+.equipment-cost-card>strong.cost-pending{font-size:18px;letter-spacing:0}
+@media(max-width:600px){.imported-report-meta{gap:15px}.history-import-note{font-size:10px}.report-safety-notes{padding:12px}}

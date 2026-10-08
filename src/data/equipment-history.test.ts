@@ -84,6 +84,23 @@ describe('historial y cálculo de uso', () => {
     const result = history(data);
     expect(result.usage[8].delta).toBeNull(); expect(result.hoursUsed).toBeNull();
   });
+  it('identifica intervalos estimados sin convertir en estimación la diferencia entre extremos reportados', () => {
+    const data = legacySeed();
+    data.entities.LecturaHorometro = [
+      seedRecord('r1','HOR-001',{equipo_id:'equipment-1',fecha:'2026-01-01T16:00:00Z',valor:100}),
+      seedRecord('r2','HOR-002',{equipo_id:'equipment-1',fecha:'2026-01-10T16:00:00Z',valor:150,es_estimado:true,valor_original:5,nota_estimacion:'Interpolación; pendiente de confirmar.'}),
+      seedRecord('r3','HOR-003',{equipo_id:'equipment-1',fecha:'2026-01-20T16:00:00Z',valor:200}),
+    ];
+    const all=history(data);
+    expect(all.usage.map(item=>item.estimated)).toEqual([false,true,true]);
+    expect(all.hoursUsed).toBe(100); expect(all.hoursUsedEstimated).toBe(false);
+    const partial=history(data,'equipment-1','2026-01-10','2026-01-20');
+    expect(partial.hoursUsed).toBe(50); expect(partial.hoursUsedEstimated).toBe(true);
+    const workbook=makeEquipmentHistoryWorkbook(data.entities.Equipo[0],partial,'2026-01-10','2026-01-20');
+    const exported=XLSX.utils.sheet_to_json<EntityRecord>(workbook.Sheets.Horometros);
+    expect(exported[0]).toMatchObject({valor:150,valor_original:5,es_estimado:true});
+    expect(XLSX.utils.sheet_to_json(workbook.Sheets.Información)).toContainEqual({campo:'Calidad del uso calculado',valor:'Estimado: uno de los extremos es una lectura estimada'});
+  });
   it('rechaza órdenes cruzadas entre equipos y lecturas no numéricas en respaldos', () => {
     const data = createSeed(); data.entities.OTRepuesto[0].orden_id = 'service-2-0';
     expect(() => validateDatabase(data)).toThrow('no corresponde');
