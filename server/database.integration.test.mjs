@@ -18,6 +18,7 @@ test('MySQL real: persistencia, transacciones, acceso y mantenimiento', {skip:pr
   const control = await mysql.createConnection(config);
   await control.query(`CREATE DATABASE ${name} CHARACTER SET utf8mb4`);
   const pool = mysql.createPool({...config,database:name,connectionLimit:8});
+  const canonical = db => ({...db,entities:Object.fromEntries(Object.entries(db.entities).map(([entity,rows])=>[entity,[...rows].sort((a,b)=>a.id.localeCompare(b.id))]))});
   let server;
   t.after(async () => {
     if(server) {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
@@ -51,12 +52,12 @@ test('MySQL real: persistencia, transacciones, acceso y mantenimiento', {skip:pr
       await conn.beginTransaction();await readDatabase(conn,true);let batches=0;
       const wrapped={execute:async(sql,args)=>{if(sql.startsWith('INSERT INTO em_records')) batches++;return conn.execute(sql,args);}};
       const batchStart=performance.now();await saveDatabase(wrapped,next,before);await conn.commit();const batchMs=performance.now()-batchStart;
-      assert.ok(batches<=12);assert.deepEqual(await readSnapshot(pool),next);
+      assert.ok(batches<=12);assert.deepEqual(canonical(await readSnapshot(pool)),canonical(next));
       t.diagnostic(JSON.stringify({benchmark:'synthetic 2000 rows; CI MySQL, not Hostinger',individualQueries:2000,batchQueries:batches,individualMs:Math.round(individualMs),batchMs:Math.round(batchMs)}));
       const invalid=structuredClone(next);invalid.revision++;invalid.entities.Catalogos.forEach(row=>{row.nombre+=' cambiado';});
       await conn.beginTransaction();await readDatabase(conn,true);let writes=0;
       await assert.rejects(saveDatabase({execute:async(sql,args)=>{if(sql.startsWith('INSERT INTO em_records') && ++writes===2) throw new Error('simulated failure after first batch');return conn.execute(sql,args);}},invalid,next));
-      await conn.rollback(); assert.deepEqual(await readSnapshot(pool),next);
+      await conn.rollback(); assert.deepEqual(canonical(await readSnapshot(pool)),canonical(next));
       const trimmed=structuredClone(before);trimmed.revision=next.revision+1;
       await conn.beginTransaction();await readDatabase(conn,true);await saveDatabase(conn,trimmed,next);await conn.commit();
       assert.deepEqual(await readSnapshot(pool),trimmed);
@@ -98,7 +99,9 @@ test('MySQL real: persistencia, transacciones, acceso y mantenimiento', {skip:pr
     assert.equal(invalid.status,400);assert.deepEqual((await call('backup',undefined,current)).data,before);
     const editedBackup=structuredClone(initial);editedBackup.entities.Bitacora=[];
     const restored=await call('mutate',{action:'restore',database:editedBackup,revision:before.revision,exportedAt:'2026-10-08T12:00:00.000Z'},current);assert.equal(restored.status,200);
-    const after=(await call('backup',undefined,current)).data;assert.deepEqual(after.entities.Bitacora.slice(0,-1),before.entities.Bitacora);assert.match(after.entities.Bitacora.at(-1).detalle,/2026-10-08T12:00/);
+    const after=(await call('backup',undefined,current)).data;assert.equal(after.entities.Bitacora.length,before.entities.Bitacora.length+1);
+    for(const row of before.entities.Bitacora) assert.deepEqual(after.entities.Bitacora.find(saved=>saved.id===row.id),row);
+    const restoredLog=after.entities.Bitacora.find(row=>!before.entities.Bitacora.some(old=>old.id===row.id));assert.match(restoredLog.detalle,/2026-10-08T12:00/);
   });
   await t.test('contraseña exige la actual, invalida otras sesiones y rechaza la antigua',async()=>{
     const other=await login();
