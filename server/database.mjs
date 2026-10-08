@@ -1,7 +1,7 @@
 import mysql from 'mysql2/promise';
 import { createSeed, entityNames, validateDatabase, addClientSectors } from './generated/domain.mjs';
 export function connectDatabase(env) {
-  for (const key of ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']) if (!env[key]) throw new Error(`Falta ${key}.`);
+  for (const key of ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']) if (!env[key]) throw Object.assign(new Error(`Falta ${key}.`), {code:`CONFIG_${key}`});
   return mysql.createPool({ host: env.DB_HOST, port: Number(env.DB_PORT || 3306), database: env.DB_NAME, user: env.DB_USER, password: env.DB_PASSWORD, connectionLimit: 5, charset: 'utf8mb4', timezone: 'Z', multipleStatements: false });
 }
 export async function migrate(pool) {

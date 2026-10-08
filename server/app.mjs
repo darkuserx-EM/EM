@@ -3,23 +3,30 @@ import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames } from './generated/domain.mjs';
+import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames, ValidationError } from './generated/domain.mjs';
 import { readSnapshot, readDatabase, saveDatabase, consumeLoginAttempt } from './database.mjs';
 import { hashPassword, verifyPassword, digest, equal, token, cookieToken } from './security.mjs';
 import { presentDatabase, presentEquipment, resolveEquipmentImages, readEquipmentImage } from './equipment-images.mjs';
+import { logFailure, parseTrustProxy } from './diagnostics.mjs';
+import { createSnapshotCache } from './snapshot-cache.mjs';
 
-const fail = (status, message) => Object.assign(new Error(message), { status });
-const visible = (db, actor) => presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, filterVisible(actor, name, db.entities[name])])) });
+const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
+const syncToken = (revision, actor) => digest(JSON.stringify(['portal-sync-v1', revision, actor]));
+const visible = (db, actor) => ({ ...presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, filterVisible(actor, name, db.entities[name])])) }), syncToken: syncToken(db.revision, actor), access: actor });
 const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, cliente_id: user.client_id || undefined, tecnico_id: user.technician_id || undefined });
 const cookieName = 'em_session';
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
-export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist') }) {
+export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error }) {
   const app = express();
-  app.disable('x-powered-by'); app.set('trust proxy', 1);
+  app.disable('x-powered-by'); app.set('trust proxy', parseTrustProxy(String(trustProxy)));
+  const snapshots = createSnapshotCache(pool);
   app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null } } }));
   app.use((_req, res, next) => { res.set('X-Robots-Tag', 'noindex, nofollow'); next(); });
   app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
-  app.get('/api/health', async (_req,res) => { try { await pool.query('SELECT 1'); res.json({ status:'ok', database:'connected' }); } catch { res.status(503).json({ status:'unavailable' }); } });
+  app.get('/api/health', async (_req,res) => { try { await pool.query('SELECT 1'); res.json({ status:'ok', database:'connected' }); } catch (error) {
+    const reference = logFailure(error, { event:'health', status:503 }, logger);
+    res.status(503).json({ status:'unavailable', reference });
+  } });
   app.use('/api', rateLimit({ windowMs:60000, limit:240, standardHeaders:'draft-8', legacyHeaders:false, message:{error:'Demasiadas solicitudes. Intenta de nuevo en un minuto.'} }));
   app.use('/api', (req,_res,next) => {
     if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || !req.is('application/json'))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
@@ -35,8 +42,8 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     const email = emailOf(req.body.email);
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254 || !name || name.length>160) throw fail(400,'Indica nombre y correo válidos.');
-    let passwordHash;
-    try { passwordHash = await hashPassword(req.body.password); } catch (error) { throw fail(400,error.message); }
+    if (typeof req.body.password !== 'string' || req.body.password.length < 14 || req.body.password.length > 128) throw fail(400,'Usa una contraseña de entre 14 y 128 caracteres.');
+    const passwordHash = await hashPassword(req.body.password);
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -73,7 +80,16 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   });
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf}));
   app.post('/api/logout', async (req,res) => { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); res.clearCookie(cookieName,{path:'/',secure:production,httpOnly:true,sameSite:'strict'}); res.json({ok:true}); });
-  app.get('/api/database', async (req,res) => res.json(visible(await readSnapshot(pool),req.actor)));
+  app.get('/api/database', async (req,res) => {
+    const [rows] = await pool.query('SELECT revision FROM em_meta WHERE id=1');
+    const revision = Number(rows[0].revision);
+    if (req.query.since === syncToken(revision, req.actor)) return res.status(204).end();
+    res.json(visible(await snapshots.read(revision),req.actor));
+  });
+  if (networkDiagnostics) app.get('/api/diagnostico/red', (req,res) => {
+    if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
+    res.json({ ip:req.ip, ips:req.ips, socket:req.socket.remoteAddress, xForwardedFor:req.get('x-forwarded-for')?.slice(0,512) ?? null, trustProxy:req.app.get('trust proxy') });
+  });
   app.get('/api/backup', async (req,res) => {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
     res.json(await readSnapshot(pool));
@@ -104,7 +120,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       await conn.beginTransaction(); const db = await readDatabase(conn,true);
       if (body.revision !== db.revision) throw fail(409,'Los datos cambiaron en otro dispositivo. Recarga y revisa antes de guardar.');
       let saved = JSON.stringify(db);
-      const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false});
+      const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false,maxRows:Infinity});
       let result;
       try {
         if (body.action==='importClients') result = source.importClients(req.actor,body.rows,db.revision);
@@ -116,16 +132,22 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
           if (body.action==='remove') await repo.remove(body.id);
           if (body.action==='import') await repo.import(body.rows,db.revision);
         }
-      } catch (error) { throw fail(400,error.message); }
+      } catch (error) { if (error instanceof ValidationError) throw fail(400,error.message); throw error; }
       const next = JSON.parse(saved);
-      try { resolveEquipmentImages(next,db); } catch (error) { throw fail(400,error.message); }
-      await saveDatabase(conn,next,db); await conn.commit();
+      try { resolveEquipmentImages(next,db); } catch (error) { if (error instanceof ValidationError) throw fail(400,error.message); throw error; }
+      await saveDatabase(conn,next,db); await conn.commit(); snapshots.publish(next);
       res.json({result:body.entity === 'Equipo' && result ? presentEquipment(next.entities.Equipo.find(row => row.id === result.id)) : result,database:visible(next,req.actor)});
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   });
   app.use('/api', (_req,_res,next)=>next(fail(404,'Ruta no encontrada.')));
   app.use(express.static(dist,{index:false,dotfiles:'deny',setHeaders:(res,path)=>res.set('Cache-Control',path.includes('/assets/')?'public,max-age=31536000,immutable':'no-cache')}));
   app.get('/{*path}', (_req,res)=>{res.set('Cache-Control','no-cache');res.sendFile(resolve(dist,'index.html'));});
-  app.use((error,_req,res,_next)=>{ const status = error.status || 503; res.status(status).json({error:status<500?error.message:'El servicio no está disponible. Intenta nuevamente en unos minutos.'}); });
+  app.use((error,req,res,_next)=>{
+    if (error.type === 'entity.too.large') return res.status(413).json({error:'El envío supera el tamaño permitido. Reduce los adjuntos o el archivo.'});
+    if (error.type === 'entity.parse.failed') return res.status(400).json({error:'La solicitud no contiene un JSON válido.'});
+    if (error.expose === true && Number.isInteger(error.status) && error.status >= 400 && error.status < 500) return res.status(error.status).json({error:error.message});
+    const reference = logFailure(error, { event:'request', method:req.method, route:req.route?.path || '(middleware)', status:500 }, logger);
+    res.status(500).json({error:`El servicio no está disponible. Intenta nuevamente en unos minutos. Referencia: ${reference}`,reference});
+  });
   return app;
 }

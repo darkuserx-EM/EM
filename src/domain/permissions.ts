@@ -1,5 +1,6 @@
 import { operationalState, maintenanceState } from './equipment-status';
 import type { Actor, EntityName, EntityRecord } from './model';
+import { ValidationError } from './errors';
 
 export function canAccessModule(actor: Actor, module: string): boolean {
   if (actor.rol === 'Administrador') return module !== 'portal';
@@ -31,5 +32,5 @@ export function filterVisible(actor: Actor, entity: EntityName, rows: EntityReco
   return rows;
 }
 export function assertAdmin(actor: Actor) {
-  if (actor.rol !== 'Administrador') throw new Error('Esta acción está disponible solo para administración.');
+  if (actor.rol !== 'Administrador') throw new ValidationError('Esta acción está disponible solo para administración.');
 }

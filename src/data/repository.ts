@@ -5,8 +5,10 @@ import { addEquipmentHistoryDemo, createSeed } from './seed';
 import { clientImportEntities, planClientImport, type ClientImportRow } from '../domain/client-import';
 import { administrativeState, equipmentStatusChanges, equipmentStatusValues } from '../domain/equipment-status';
 import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-images';
+import { ValidationError } from '../domain/errors';
 
 export const STORAGE_KEY = 'portal-em.database.v1';
+export const LOCAL_MAX_ROWS = 20000;
 export interface StorageAdapter { getItem(key: string): string | null; setItem(key: string, value: string): void }
 export interface Repository {
   getAll(): Promise<EntityRecord[]>;
@@ -21,36 +23,43 @@ export interface ImportRow { id?: string; fields: Record<string, Scalar> }
 export class LocalDataSource {
   private database: Database;
   private listeners = new Set<() => void>();
-  constructor(private storage: StorageAdapter, private options = { demoHistory: true }) {
+  constructor(private storage: StorageAdapter, private options: { demoHistory: boolean; maxRows?: number } = { demoHistory: true }) {
     const saved = storage.getItem(STORAGE_KEY);
     try {
       const data: unknown = saved ? JSON.parse(saved) : createSeed();
-      validateDatabase(data);
+      this.validate(data);
       const expanded = this.options.demoHistory && addEquipmentHistoryDemo(data.entities);
       if (saved && expanded) data.revision++;
-      validateDatabase(data);
-      if (!saved || expanded) storage.setItem(STORAGE_KEY, JSON.stringify(data));
+      this.validate(data);
+      if (!saved || expanded) {
+        try { storage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+        catch { throw new ValidationError('No se pudo guardar la ampliación del espacio local.'); }
+      }
       this.database = data;
     } catch (error) {
-      throw new Error(`No se pudo abrir el espacio local. Los datos existentes se conservaron. ${error instanceof Error ? error.message : ''}`);
+      if (!(error instanceof ValidationError) && !(error instanceof SyntaxError)) throw error;
+      throw new ValidationError(`No se pudo abrir el espacio local. Los datos existentes se conservaron. ${error instanceof Error ? error.message : ''}`);
     }
+  }
+  private validate(value: unknown): asserts value is Database {
+    validateDatabase(value, { maxRows: this.options.maxRows ?? LOCAL_MAX_ROWS });
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getRevision = () => this.database.revision;
   refresh() {
     const saved = this.storage.getItem(STORAGE_KEY);
-    if (saved) { const current: unknown = JSON.parse(saved); validateDatabase(current); this.database = current; this.listeners.forEach(listener => listener()); }
+    if (saved) { const current: unknown = JSON.parse(saved); this.validate(current); this.database = current; this.listeners.forEach(listener => listener()); }
   }
   private commit(next: Database) {
     const saved = this.storage.getItem(STORAGE_KEY);
     if (saved) {
-      const latest: unknown = JSON.parse(saved); validateDatabase(latest);
-      if (latest.revision !== this.database.revision) { this.database = latest; this.listeners.forEach(listener => listener()); throw new Error('Los datos cambiaron en otra pestaña. Revisa los valores e intenta de nuevo.'); }
+      const latest: unknown = JSON.parse(saved); this.validate(latest);
+      if (latest.revision !== this.database.revision) { this.database = latest; this.listeners.forEach(listener => listener()); throw new ValidationError('Los datos cambiaron en otra pestaña. Revisa los valores e intenta de nuevo.'); }
     }
     next.revision = this.database.revision + 1;
-    validateDatabase(next);
+    this.validate(next);
     try { this.storage.setItem(STORAGE_KEY, JSON.stringify(next)); }
-    catch { throw new Error('No se pudo guardar. El navegador puede estar sin espacio o bloquear el almacenamiento. Descarga un respaldo antes de continuar.'); }
+    catch { throw new ValidationError('No se pudo guardar. El navegador puede estar sin espacio o bloquear el almacenamiento. Descarga un respaldo antes de continuar.'); }
     this.database = next;
     this.listeners.forEach(listener => listener());
   }
@@ -76,14 +85,14 @@ export class LocalDataSource {
   }
   private initialEquipmentReading(db: Database, actor: Actor, row: EntityRecord) {
     if (typeof row.horometro !== 'number') return;
-    if (db.entities.LecturaHorometro.some(reading => reading.equipo_id === row.id)) throw new Error('El equipo ya tiene lecturas. Revisa su historial antes de registrar el horómetro.');
+    if (db.entities.LecturaHorometro.some(reading => reading.equipo_id === row.id)) throw new ValidationError('El equipo ya tiene lecturas. Revisa su historial antes de registrar el horómetro.');
     const reading = this.record('LecturaHorometro', actor, {}, db.entities.LecturaHorometro);
     Object.assign(reading, { equipo_id: row.id, cliente_id: row.cliente_id || '', fecha: row.fecha_actualizacion, valor: row.horometro, origen: 'Ingreso de equipo', orden_id: '', registrado_por: actor.nombre, ubicacion: db.entities.Sede.find(site => site.id === row.sede_id)?.nombre ?? db.entities.Cliente.find(client => client.id === row.cliente_id)?.nombre ?? 'Patio EMSA' });
     db.entities.LecturaHorometro.push(reading);
   }
   private assertEditable(entity: EntityName, actor: Actor) {
     assertAdmin(actor);
-    if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo'].includes(entity)) throw new Error('La edición de este módulo se habilitará en su etapa de desarrollo.');
+    if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo'].includes(entity)) throw new ValidationError('La edición de este módulo se habilitará en su etapa de desarrollo.');
   }
   repository(entity: EntityName, actor: Actor): Repository {
     const getAll = async () => structuredClone(filterVisible(actor, entity, this.database.entities[entity]));
@@ -95,11 +104,11 @@ export class LocalDataSource {
         this.assertEditable(entity, actor);
         const fields = cleanFields(entity, input); const errors = validateRecord(entity, fields);
         const duplicate = uniqueError(entity, fields, this.database.entities[entity]);
-        if (errors.length || duplicate) throw new Error(errors.join('; ') || duplicate!);
+        if (errors.length || duplicate) throw new ValidationError(errors.join('; ') || duplicate!);
         const next = structuredClone(this.database); const row = this.record(entity, actor, fields, next.entities[entity]);
         next.entities[entity].push(row);
         if (entity === 'Equipo') {
-          if ((row.propiedad === 'De cliente' || administrativeState(row) === 'En renta') && !row.cliente_id) throw new Error('Selecciona el cliente propietario o el cliente de la renta.');
+          if ((row.propiedad === 'De cliente' || administrativeState(row) === 'En renta') && !row.cliente_id) throw new ValidationError('Selecciona el cliente propietario o el cliente de la renta.');
           this.initialEquipmentReading(next, actor, row);
           this.recordEquipmentStatus(next, actor, row);
         }
@@ -109,38 +118,38 @@ export class LocalDataSource {
       update: async (id, input) => {
         this.assertEditable(entity, actor);
         const next = structuredClone(this.database); const index = next.entities[entity].findIndex(row => row.id === id);
-        if (index < 0) throw new Error('No se encontró el registro.');
+        if (index < 0) throw new ValidationError('No se encontró el registro.');
         const original = next.entities[entity][index]; const fields = cleanFields(entity, input);
         if (entity === 'Equipo') {
-          if (typeof original.horometro === 'number' && fields.horometro !== undefined && fields.horometro !== original.horometro) throw new Error('El horómetro se actualiza desde las lecturas. La ficha conserva el valor registrado.');
-          if (fields.propiedad !== undefined && fields.propiedad !== original.propiedad) throw new Error('La corrección de propiedad aún no está habilitada; el código original se conserva.');
+          if (typeof original.horometro === 'number' && fields.horometro !== undefined && fields.horometro !== original.horometro) throw new ValidationError('El horómetro se actualiza desde las lecturas. La ficha conserva el valor registrado.');
+          if (fields.propiedad !== undefined && fields.propiedad !== original.propiedad) throw new ValidationError('La corrección de propiedad aún no está habilitada; el código original se conserva.');
         }
         const row: EntityRecord = { ...original, ...fields, actualizado_por: actor.id, fecha_actualizacion: new Date().toISOString() };
-        if (entity === 'Equipo' && (row.propiedad === 'De cliente' || administrativeState(row) === 'En renta') && !row.cliente_id) throw new Error('Selecciona el cliente propietario o el cliente de la renta.');
+        if (entity === 'Equipo' && (row.propiedad === 'De cliente' || administrativeState(row) === 'En renta') && !row.cliente_id) throw new ValidationError('Selecciona el cliente propietario o el cliente de la renta.');
         const errors = validateRecord(entity, row); const duplicate = uniqueError(entity, row, next.entities[entity], id);
-        if (errors.length || duplicate) throw new Error(errors.join('; ') || duplicate!);
+        if (errors.length || duplicate) throw new ValidationError(errors.join('; ') || duplicate!);
         if (entity === 'Equipo') this.recordEquipmentStatus(next, actor, row, original);
         next.entities[entity][index] = row;
         if (entity === 'Equipo' && typeof original.horometro !== 'number') this.initialEquipmentReading(next, actor, row);
         const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : equipmentImageFields.some(field => field === key) ? `${equipmentImageLabels[key as keyof typeof equipmentImageLabels]}: ${value ? 'actualizada' : 'retirada'}` : `${key}: ${original[key]} → ${value}`).join('; ');
         this.audit(next, actor, entity, 'Actualización', `${row.codigo} · ${changed || 'Sin cambios'}`); this.commit(next); return structuredClone(row);
       },
-      remove: async id => { this.assertEditable(entity, actor); if (entity !== 'Catalogos') throw new Error('Conserva el registro y cambia su estado desde la ficha.'); await this.repository(entity, actor).update(id, { activo: false }); },
+      remove: async id => { this.assertEditable(entity, actor); if (entity !== 'Catalogos') throw new ValidationError('Conserva el registro y cambia su estado desde la ficha.'); await this.repository(entity, actor).update(id, { activo: false }); },
       import: async (rows, expectedRevision) => {
         this.assertEditable(entity, actor);
         if (entity === 'Cliente') { this.importClients(actor, rows.map((item, index) => ({ ...item, entity: 'Cliente', line: index + 2 })), expectedRevision); return; }
-        if (entity !== 'Catalogos') throw new Error('La importación de este módulo aún no está habilitada. Usa el formulario web.');
-        if (expectedRevision !== this.database.revision) throw new Error('Los datos cambiaron desde la vista previa. Vuelve a seleccionar el archivo.');
+        if (entity !== 'Catalogos') throw new ValidationError('La importación de este módulo aún no está habilitada. Usa el formulario web.');
+        if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron desde la vista previa. Vuelve a seleccionar el archivo.');
         const next = structuredClone(this.database); const incomingIds = new Set<string>();
         for (const item of rows) {
-          if (item.id && incomingIds.has(item.id)) throw new Error('Hay identificadores duplicados en el archivo.');
+          if (item.id && incomingIds.has(item.id)) throw new ValidationError('Hay identificadores duplicados en el archivo.');
           if (item.id) incomingIds.add(item.id);
           const index = item.id ? next.entities[entity].findIndex(row => row.id === item.id) : -1;
-          if (item.id && index < 0) throw new Error(`No existe el ID ${item.id}. Para agregar un registro nuevo, deja id vacío.`);
+          if (item.id && index < 0) throw new ValidationError(`No existe el ID ${item.id}. Para agregar un registro nuevo, deja id vacío.`);
           const fields = cleanFields(entity, item.fields);
           const row = index >= 0 ? { ...next.entities[entity][index], ...fields, actualizado_por: actor.id, fecha_actualizacion: new Date().toISOString() } : this.record(entity, actor, fields, next.entities[entity]);
           const errors = validateRecord(entity, row); const duplicate = uniqueError(entity, row, next.entities[entity], index >= 0 ? row.id : undefined);
-          if (errors.length || duplicate) throw new Error(errors.join('; ') || duplicate!);
+          if (errors.length || duplicate) throw new ValidationError(errors.join('; ') || duplicate!);
           if (index >= 0) next.entities[entity][index] = row; else next.entities[entity].push(row);
         }
         this.audit(next, actor, entity, 'Importación', `${rows.length} registros procesados desde Excel.`); this.commit(next);
@@ -153,11 +162,11 @@ export class LocalDataSource {
   }
   importClients(actor: Actor, rows: ClientImportRow[], expectedRevision: number) {
     assertAdmin(actor);
-    if (expectedRevision !== this.database.revision) throw new Error('Los datos cambiaron desde la vista previa. Vuelve a seleccionar el archivo.');
+    if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron desde la vista previa. Vuelve a seleccionar el archivo.');
     const next = structuredClone(this.database);
     const plan = planClientImport({ Cliente: next.entities.Cliente, Contacto: next.entities.Contacto, Sede: next.entities.Sede }, rows, (entity, fields, records) => this.record(entity, actor, fields, records));
     const invalid = plan.rows.find(row => row.errors.length);
-    if (invalid) throw new Error(`${invalid.input.entity}, fila ${invalid.input.line}: ${invalid.errors.join(' · ')}`);
+    if (invalid) throw new ValidationError(`${invalid.input.entity}, fila ${invalid.input.line}: ${invalid.errors.join(' · ')}`);
     const now = new Date().toISOString();
     for (const item of plan.rows.filter(row => row.action === 'Actualizar')) {
       const record = plan.entities[item.input.entity].find(row => row.id === item.input.id?.trim())!;
@@ -172,8 +181,8 @@ export class LocalDataSource {
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.database); }
   async backup(actor: Actor) { return this.snapshot(actor); }
   restore(actor: Actor, candidate: unknown, expectedRevision: number) {
-    assertAdmin(actor); validateDatabase(candidate);
-    if (expectedRevision !== this.database.revision) throw new Error('Los datos cambiaron. Revisa nuevamente el respaldo antes de restaurarlo.');
+    assertAdmin(actor); this.validate(candidate);
+    if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron. Revisa nuevamente el respaldo antes de restaurarlo.');
     const next = structuredClone(candidate);
     if (this.options.demoHistory) addEquipmentHistoryDemo(next.entities);
     this.audit(next, actor, 'Sistema', 'Restauración', 'Se restauró un respaldo completo revisado por administración.'); this.commit(next);

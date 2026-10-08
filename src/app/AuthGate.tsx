@@ -10,15 +10,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(serverMode); const [setup, setSetup] = useState(false); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState('');
   async function session() {
     const value = await api<{ actor: Actor; csrf: string }>('session');
-    setCsrf(value.csrf); await remoteSource.refresh(); setActor(value.actor);
+    setCsrf(value.csrf); await remoteSource.refresh();
+    if (!useAuth.getState().actor) setActor(value.actor);
   }
   useEffect(() => {
     if (!serverMode) return;
     let active = true;
     (async () => { try { const status = await api<{ needsSetup: boolean }>('setup-status'); if (active) setSetup(status.needsSetup); if (!status.needsSetup) await session(); } catch (cause) { if (active && (cause as { status?: number }).status !== 401) setError((cause as Error).message); } finally { if (active) setLoading(false); } })();
     const expire = () => { remoteSource.clear(); setActor(undefined); setNotice('Tu sesión terminó. Vuelve a ingresar.'); };
+    const accessChanged = (event: Event) => { setActor((event as CustomEvent<Actor>).detail); };
     window.addEventListener('portal-session-expired', expire);
-    return () => { active = false; window.removeEventListener('portal-session-expired', expire); };
+    window.addEventListener('portal-access-changed', accessChanged);
+    return () => { active = false; window.removeEventListener('portal-session-expired', expire); window.removeEventListener('portal-access-changed', accessChanged); };
   }, []);
   useEffect(() => {
     if (!serverMode || !actor) return;

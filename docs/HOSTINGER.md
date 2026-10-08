@@ -1,5 +1,7 @@
 # Publicación de pruebas en Hostinger
 
+Configuración de sincronización, registro de errores y comprobación pendiente del proxy: [ESTABILIZACION.md](ESTABILIZACION.md). Las nuevas variables son `TRUST_PROXY` (valor conservado: `1`) y `ENABLE_NETWORK_DIAGNOSTICS` (deshabilitada por defecto).
+
 Destino autorizado: portal.expertosenmontacargas.com, como aplicación independiente del WordPress comercial. El 04/10/2026 se verificó Business Web Hosting, Node.js 24, pnpm y MySQL. El asistente se preparó con el subdominio y el repositorio público https://github.com/darkuserx-EM/EM, rama main. La aplicación quedó publicada para pruebas el 04/10/2026. Se verificaron HTTPS, conexión con una base MySQL dedicada, acceso administrativo, escritura/importación y persistencia después del reinicio.
 
 ## Aplicación con MySQL

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { equipmentImageFields, isEquipmentImageReference, validEquipmentImage } from './generated/domain.mjs';
+import { equipmentImageFields, isEquipmentImageReference, validEquipmentImage, ValidationError } from './generated/domain.mjs';
 
 export const imageReference = value => `media:${createHash('sha256').update(value).digest('hex')}`;
 export function presentEquipment(row) {
@@ -18,10 +18,10 @@ export function resolveEquipmentImages(next, previous) {
     const value = row[field];
     if (isEquipmentImageReference(value)) {
       const original = old.get(row.id)?.[field];
-      if (!original || imageReference(original) !== value) throw new Error('La imagen del equipo cambió o no está disponible. Recarga antes de guardar.');
+      if (!original || imageReference(original) !== value) throw new ValidationError('La imagen del equipo cambió o no está disponible. Recarga antes de guardar.');
       row[field] = original;
     }
-    if (!validEquipmentImage(row[field])) throw new Error('La fotografía del equipo no es válida.');
+    if (!validEquipmentImage(row[field])) throw new ValidationError('La fotografía del equipo no es válida.');
   }
 }
 export function readEquipmentImage(row, field, hash) {

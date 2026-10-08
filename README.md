@@ -6,6 +6,8 @@ Base navegable para Expertos en Montacargas, S.A. (EMSA). Versión 0.2: prototip
 
 Repositorio: https://github.com/darkuserx-EM/EM
 
+El primer bloque de estabilización, sus comprobaciones y límites pendientes están en [docs/ESTABILIZACION.md](docs/ESTABILIZACION.md). GitHub Actions ejecuta pruebas y compilación con Node 24 en cada solicitud de cambios y actualización de `main`.
+
 ```sh
 git clone https://github.com/darkuserx-EM/EM.git
 cd EM
