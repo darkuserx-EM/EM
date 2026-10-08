@@ -4,13 +4,20 @@ import { planClientImport, type ClientImportRow } from '../domain/client-import'
 import type { Repository } from './repository';
 
 let csrf = '';
-export function setCsrf(value: string) { csrf = value; }
+let authEpoch = 0;
+type SyncedDatabase = Database & { syncToken?: string; access?: Actor };
+export function setCsrf(value: string) { csrf = value; authEpoch++; }
 export async function api<T>(path: string, body?: unknown): Promise<T> {
+  const epoch = authEpoch;
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(),30000);
   let response: Response; let data: unknown;
   try {
     response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: body === undefined ? undefined : JSON.stringify(body),signal:controller.signal });
-    if (response.status === 401 && !['login','session'].includes(path)) window.dispatchEvent(new Event('portal-session-expired'));
+    if (response.status === 401 && epoch === authEpoch && !['login','session'].includes(path)) window.dispatchEvent(new Event('portal-session-expired'));
+    if (response.status === 204) {
+      if (body === undefined && path.startsWith('database?since=')) return undefined as T;
+      throw new Error('El servidor no confirmó el resultado de la operación. Revisa la información antes de repetirla.');
+    }
     try { data = await response.json(); }
     catch {
       throw new Error(response.status === 401 ? 'Tu sesión terminó. Vuelve a ingresar.' : `No recibimos una respuesta válida del servidor (HTTP ${response.status}). ${body === undefined ? 'Intenta actualizar la página.' : 'Tus campos siguen en el formulario. Comprueba la lista antes de volver a guardar para evitar duplicados.'}`);
@@ -26,17 +33,32 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   return data as T;
 }
 export class RemoteDataSource {
-  private database?: Database;
+  private database?: SyncedDatabase;
+  private sequence = 0;
+  private lastAccepted = 0;
+  private generation = 0;
   private listeners = new Set<() => void>();
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getRevision = () => this.database?.revision ?? -1;
-  private accept(db: Database) { if (!this.database || db.revision >= this.database.revision) { this.database = db; this.listeners.forEach(listener => listener()); } }
-  clear() { this.database = undefined; csrf = ''; }
-  async refresh() { this.accept(await api<Database>('database')); }
+  private accept(db: SyncedDatabase, sequence: number, generation: number) {
+    if (generation !== this.generation || sequence < this.lastAccepted || (this.database && db.revision < this.database.revision)) return;
+    const accessChanged = db.access && JSON.stringify(db.access) !== JSON.stringify(this.database?.access);
+    this.database = db; this.lastAccepted = sequence;
+    if (accessChanged && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('portal-access-changed', {detail:db.access}));
+    this.listeners.forEach(listener => listener());
+  }
+  clear() { this.generation++; this.database = undefined; setCsrf(''); this.listeners.forEach(listener => listener()); }
+  async refresh() {
+    const sequence = ++this.sequence; const generation = this.generation;
+    const since = this.database?.syncToken;
+    const db = await api<SyncedDatabase | undefined>(since ? `database?since=${encodeURIComponent(since)}` : 'database');
+    if (db) this.accept(db, sequence, generation);
+  }
   private current() { if (!this.database) throw new Error('Espera a que termine la conexión al servidor.'); return this.database; }
   private async mutate<T>(body: Record<string, unknown>): Promise<T> {
-    try { const response = await api<{ database: Database; result: T }>('mutate', { revision: this.getRevision(), ...body }); this.accept(response.database); return response.result; }
-    catch (error) { if ((error as { status?: number }).status === 409) await this.refresh(); throw error; }
+    const sequence = ++this.sequence; const generation = this.generation;
+    try { const response = await api<{ database: SyncedDatabase; result: T }>('mutate', { revision: this.getRevision(), ...body }); this.accept(response.database, sequence, generation); return response.result; }
+    catch (error) { if (generation === this.generation && (error as { status?: number }).status === 409) await this.refresh(); throw error; }
   }
   repository(entity: EntityName, actor: Actor): Repository {
     const getAll = async () => structuredClone(this.current().entities[entity]);

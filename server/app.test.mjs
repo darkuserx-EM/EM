@@ -5,6 +5,8 @@ import { createApp } from './app.mjs';
 import { createSeed, LocalDataSource, equipmentImageFields } from './generated/domain.mjs';
 import { token } from './security.mjs';
 import { imageReference, presentDatabase, resolveEquipmentImages } from './equipment-images.mjs';
+import { logFailure, parseTrustProxy } from './diagnostics.mjs';
+import { createSnapshotCache } from './snapshot-cache.mjs';
 const origin = 'http://localhost:3000';
 const csrf = token();
 const coordinator = {id:'test-coord',name:'Prueba',role:'Coordinador',csrf,token_hash:'hash'};
@@ -34,8 +36,8 @@ function poolFor(user, prepare = () => {}) {
   };
   return fake;
 }
-async function fixture(t,user,prepare) {
-  const app=createApp({pool:poolFor(user,prepare),origin,setupToken:token(),production:true});
+async function fixture(t,user,prepare,options={}) {
+  const app=createApp({pool:poolFor(user,prepare),origin,setupToken:token(),production:true,...options});
   const server=app.listen(0,'127.0.0.1'); await once(server,'listening');
   t.after(()=>new Promise(resolve=>server.close(resolve)));
   const url=`http://127.0.0.1:${server.address().port}`;
@@ -154,4 +156,92 @@ test('an administrator saves all six photos together above the former 8 MB limit
   for(const field of equipmentImageFields) assert.equal(row[field],fields[field]);
   assert.equal(row.horometro,db.entities.Equipo[0].horometro);
   assert.equal(JSON.stringify(backup.entities.Bitacora).includes('base64'),false);
+});
+
+test('unchanged polls only read the revision and concurrent clients share a filtered snapshot',async t=>{
+  const user={...coordinator,role:'Administrador'};const pool=poolFor(user);let fullReads=0;
+  const original=pool.getConnection;
+  pool.getConnection=async()=>{const conn=await original();const query=conn.query;conn.query=async sql=>{if(sql.includes('SELECT entity')) fullReads++;return query(sql);};return conn;};
+  const request=await fixture(t,user,undefined,{pool});const headers={Cookie:'em_session=x'};
+  const [a,b]=await Promise.all([request('/api/database',{headers}),request('/api/database',{headers})]);
+  const db=await a.json();assert.equal(b.status,200);assert.equal(fullReads,1);
+  const unchanged=await request(`/api/database?since=${db.syncToken}`,{headers});
+  assert.equal(unchanged.status,204);assert.equal(await unchanged.text(),'');assert.equal(fullReads,1);
+  assert.equal(unchanged.headers.get('cache-control'),'no-store');
+  Object.assign(user,{role:'Cliente',client_id:'client-1'});
+  const changed=await request(`/api/database?since=${db.syncToken}`,{headers});const limited=await changed.json();
+  assert.equal(changed.status,200);assert.notEqual(limited.syncToken,db.syncToken);assert.equal(limited.access.rol,'Cliente');
+  assert.equal(limited.entities.Bitacora.length,0);assert.ok(limited.entities.Equipo.every(row=>row.cliente_id==='client-1'));assert.equal(fullReads,1);
+  user.client_id='client-2';
+  const moved=await (await request(`/api/database?since=${limited.syncToken}`,{headers})).json();
+  assert.deepEqual(moved.entities.Cliente.map(row=>row.id),['client-2']);assert.notEqual(moved.syncToken,limited.syncToken);
+  user.role='Administrador';
+  const again=await (await request('/api/database',{headers})).json();assert.equal(again.entities.Cliente.length,db.entities.Cliente.length);
+});
+test('a committed edit invalidates the previous sync token and stale edits still fail',async t=>{
+  const request=await fixture(t,{...coordinator,role:'Administrador'});const headers={Cookie:'em_session=x'};
+  const db=await (await request('/api/database',{headers})).json();
+  const response=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'create',entity:'Catalogos',fields:{categoria:'Marcas',nombre:'Sincronización',activo:true},revision:db.revision})});
+  assert.equal(response.status,200);const saved=await response.json();
+  const fresh=await (await request(`/api/database?since=${db.syncToken}`,{headers})).json();
+  assert.equal(fresh.revision,db.revision+1);assert.equal(fresh.syncToken,saved.database.syncToken);
+  assert.equal((await request(`/api/database?since=${fresh.syncToken}`,{headers})).status,204);
+  assert.equal((await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'create',entity:'Catalogos',fields:{},revision:db.revision})})).status,409);
+});
+test('a sync token never bypasses authentication',async t=>{
+  const request=await fixture(t,null);assert.equal((await request('/api/database?since=anything')).status,401);
+});
+test('snapshot cache coalesces reads, protects newer commits, retries failures and bounds retained size',async()=>{
+  let finish;let calls=0;const old={revision:1,entities:{}};const newer={revision:2,entities:{}};
+  const cache=createSnapshotCache(null,{load:()=>{calls++;return new Promise(resolve=>{finish=resolve;});}});
+  const a=cache.read(1);const b=cache.read(1);assert.equal(calls,1);cache.publish(newer);finish(old);
+  assert.equal(await a,newer);assert.equal(await b,newer);assert.equal(await cache.read(2),newer);
+  let tries=0;const failed=createSnapshotCache(null,{load:async()=>{if(++tries===1) throw new Error('failure');return old;}});
+  await assert.rejects(failed.read(1));assert.equal(await failed.read(1),old);assert.equal(tries,2);
+  let uncached=0;const bounded=createSnapshotCache(null,{maxBytes:1,load:async()=>{uncached++;return old;}});
+  await bounded.read(1);await bounded.read(1);assert.equal(uncached,2);
+});
+test('a pending snapshot older than an observed external revision is reread',async()=>{
+  let finish;let calls=0;
+  const cache=createSnapshotCache(null,{load:()=>++calls===1?new Promise(resolve=>{finish=resolve;}):Promise.resolve({revision:2})});
+  const a=cache.read(1);const b=cache.read(2);finish({revision:1});await a;
+  assert.equal((await b).revision,2);assert.equal(calls,2);
+});
+test('database errors have a reference and logs omit SQL, messages, credentials and URL values',async t=>{
+  const logs=[];const pool=poolFor(coordinator);const query=pool.query;
+  pool.query=async sql=>{if(sql.includes('SELECT revision')) throw Object.assign(new Error('secret-client@email.test password=secret-value'),{code:'ER_ACCESS_DENIED_ERROR',errno:1045,sql:'SELECT secret-value'});return query(sql);};
+  const request=await fixture(t,coordinator,undefined,{pool,logger:line=>logs.push(line)});
+  const response=await request('/api/database?secret=secret-value',{headers:{Cookie:'em_session=secret-cookie'}});const body=await response.json();
+  assert.equal(response.status,500);assert.ok(body.error.includes(body.reference));assert.equal(logs.length,1);
+  const log=JSON.parse(logs[0]);assert.equal(log.reference,body.reference);assert.equal(log.error.code,'ER_ACCESS_DENIED_ERROR');assert.equal(log.route,'/api/database');
+  assert.equal(JSON.stringify([logs,body]).includes('secret-'),false);assert.equal(JSON.stringify(log).includes('password'),false);
+});
+test('unexpected domain errors produce 500 while expected validation remains 400',async t=>{
+  const logs=[];const request=await fixture(t,{...coordinator,role:'Administrador'},undefined,{logger:line=>logs.push(line)});
+  const db=await (await request('/api/database',{headers:{Cookie:'em_session=x'}})).json();
+  t.mock.method(LocalDataSource.prototype,'importClients',()=>{throw new TypeError('private error details');});
+  const failure=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importClients',rows:[],revision:db.revision})});
+  assert.equal(failure.status,500);assert.equal((await failure.text()).includes('private'),false);assert.equal(logs.length,1);
+  const invalid=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'create',entity:'Catalogos',fields:{},revision:db.revision})});
+  assert.equal(invalid.status,400);assert.equal(logs.length,1);
+});
+test('health failures stay 503 and safe diagnostics also cover startup errors',async t=>{
+  const logs=[];const request=await fixture(t,null,undefined,{pool:{query:async()=>{throw Object.assign(new Error('sensitive connection string'),{code:'ECONNREFUSED'});}},logger:line=>logs.push(line)});
+  const response=await request('/api/health');assert.equal(response.status,503);assert.ok((await response.json()).reference);
+  logFailure(Object.assign(new Error('sensitive startup'),{code:'CONFIG_DB_HOST'}),{event:'startup'},line=>logs.push(line));
+  assert.equal(logs.length,2);assert.equal(logs.join('').includes('sensitive'),false);assert.equal(JSON.parse(logs[1]).error.code,'CONFIG_DB_HOST');
+});
+test('proxy configuration rejects blanket trust and accepts explicit verified ranges',()=>{
+  assert.equal(parseTrustProxy(),1);assert.equal(parseTrustProxy('0'),0);assert.deepEqual(parseTrustProxy('loopback, 10.1.2.0/24'),['loopback','10.1.2.0/24']);
+  for(const value of ['true','false','','6','-1','0.0.0.0/0','::/0','10.0.0.1/33','loopback,','invalid']) assert.throws(()=>parseTrustProxy(value));
+});
+test('network diagnostics are off by default, administrator-only and show the configured trusted hop',async t=>{
+  const admin={...coordinator,role:'Administrador'};
+  const disabled=await fixture(t,admin);assert.equal((await disabled('/api/diagnostico/red',{headers:{Cookie:'em_session=x'}})).status,404);
+  const unauthenticated=await fixture(t,null,undefined,{networkDiagnostics:true});assert.equal((await unauthenticated('/api/diagnostico/red')).status,401);
+  const clientRequest=await fixture(t,client,undefined,{networkDiagnostics:true});assert.equal((await clientRequest('/api/diagnostico/red',{headers:{Cookie:'em_session=x'}})).status,403);
+  const enabled=await fixture(t,admin,undefined,{networkDiagnostics:true,trustProxy:'1'});
+  const response=await enabled('/api/diagnostico/red',{headers:{Cookie:'em_session=x','X-Forwarded-For':'198.51.100.20, 203.0.113.10'}});
+  assert.equal(response.status,200);const body=await response.json();assert.equal(body.ip,'203.0.113.10');assert.equal(body.trustProxy,1);
+  assert.equal(response.headers.get('cache-control'),'no-store');
 });
