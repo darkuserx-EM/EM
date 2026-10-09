@@ -1,3 +1,4 @@
+import { findingClosed, upgradeFindingCollection } from '../domain/equipment-findings';
 import { definitions, type Actor, type Database, type EntityName, type EntityRecord, type Scalar } from '../domain/model';
 import { assertAdmin, filterVisible } from '../domain/permissions';
 import { cleanFields, normalize, uniqueError, validateDatabase, validateRecord } from '../domain/validation';
@@ -26,7 +27,7 @@ export class LocalDataSource {
   constructor(private storage: StorageAdapter, private options: { demoHistory: boolean; maxRows?: number } = { demoHistory: true }) {
     const saved = storage.getItem(STORAGE_KEY);
     try {
-      const data: unknown = saved ? JSON.parse(saved) : createSeed();
+      const data: unknown = upgradeFindingCollection(saved ? JSON.parse(saved) : createSeed());
       this.validate(data);
       const expanded = this.options.demoHistory && addEquipmentHistoryDemo(data.entities);
       if (saved && expanded) data.revision++;
@@ -48,12 +49,12 @@ export class LocalDataSource {
   getRevision = () => this.database.revision;
   refresh() {
     const saved = this.storage.getItem(STORAGE_KEY);
-    if (saved) { const current: unknown = JSON.parse(saved); this.validate(current); this.database = current; this.listeners.forEach(listener => listener()); }
+    if (saved) { const current: unknown = upgradeFindingCollection(JSON.parse(saved)); this.validate(current); this.database = current; this.listeners.forEach(listener => listener()); }
   }
   private commit(next: Database) {
     const saved = this.storage.getItem(STORAGE_KEY);
     if (saved) {
-      const latest: unknown = JSON.parse(saved); this.validate(latest);
+      const latest: unknown = upgradeFindingCollection(JSON.parse(saved)); this.validate(latest);
       if (latest.revision !== this.database.revision) { this.database = latest; this.listeners.forEach(listener => listener()); throw new ValidationError('Los datos cambiaron en otra pestaña. Revisa los valores e intenta de nuevo.'); }
     }
     next.revision = this.database.revision + 1;
@@ -83,6 +84,13 @@ export class LocalDataSource {
     this.audit(db, actor, 'Equipo', 'Cambio de estado', row.codigo + ' · ' + detail);
     Object.assign(db.entities.Bitacora.at(-1)!, { equipo_id: row.id, registrado_por: actor.nombre, motivo: row.motivo_estado || '' });
   }
+  private recordFindingChange(db: Database, actor: Actor, row: EntityRecord, previous?: EntityRecord) {
+    row.actualizado_nombre = actor.nombre;
+    row.cerrado_el = findingClosed(row) ? previous?.estado === row.estado ? previous.cerrado_el || row.fecha_actualizacion : row.fecha_actualizacion : '';
+    const detail = `${row.codigo} · ${previous?.estado || 'Nuevo'} → ${row.estado}; prioridad: ${row.prioridad}; responsable: ${row.responsable || 'Sin asignar'}; ${row.nota_cambio || row.detalle_resolucion || (previous ? 'Ficha actualizada' : 'Seguimiento creado')}`;
+    this.audit(db, actor, 'Hallazgo', previous ? 'Seguimiento actualizado' : 'Seguimiento creado', detail);
+    Object.assign(db.entities.Bitacora.at(-1)!, { hallazgo_id: row.id, equipo_id: row.equipo_id, registrado_por: actor.nombre, estado_anterior: previous?.estado || '', estado_nuevo: row.estado, orden_resolucion_id: row.orden_resolucion_id || '' });
+  }
   private initialEquipmentReading(db: Database, actor: Actor, row: EntityRecord) {
     if (typeof row.horometro !== 'number') return;
     if (db.entities.LecturaHorometro.some(reading => reading.equipo_id === row.id)) throw new ValidationError('El equipo ya tiene lecturas. Revisa su historial antes de registrar el horómetro.');
@@ -92,7 +100,7 @@ export class LocalDataSource {
   }
   private assertEditable(entity: EntityName, actor: Actor) {
     assertAdmin(actor);
-    if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo'].includes(entity)) throw new ValidationError('La edición de este módulo se habilitará en su etapa de desarrollo.');
+    if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo', 'Hallazgo'].includes(entity)) throw new ValidationError('La edición de este módulo se habilitará en su etapa de desarrollo.');
   }
   repository(entity: EntityName, actor: Actor): Repository {
     const getAll = async () => structuredClone(filterVisible(actor, entity, this.database.entities[entity]));
@@ -112,7 +120,8 @@ export class LocalDataSource {
           this.initialEquipmentReading(next, actor, row);
           this.recordEquipmentStatus(next, actor, row);
         }
-        this.audit(next, actor, entity, 'Creación', `${row.codigo} · ${row.nombre || `${row.marca} ${row.modelo}`}`); this.commit(next);
+        if (entity === 'Hallazgo') this.recordFindingChange(next, actor, row);
+        else this.audit(next, actor, entity, 'Creación', `${row.codigo} · ${row.nombre || `${row.marca} ${row.modelo}`}`); this.commit(next);
         return structuredClone(row);
       },
       update: async (id, input) => {
@@ -120,6 +129,10 @@ export class LocalDataSource {
         const next = structuredClone(this.database); const index = next.entities[entity].findIndex(row => row.id === id);
         if (index < 0) throw new ValidationError('No se encontró el registro.');
         const original = next.entities[entity][index]; const fields = cleanFields(entity, input);
+        if (entity === 'Hallazgo') {
+          if ((fields.equipo_id !== undefined && fields.equipo_id !== original.equipo_id) || (fields.orden_origen_id !== undefined && String(fields.orden_origen_id || '') !== String(original.orden_origen_id || ''))) throw new ValidationError('El equipo y el reporte de origen se conservan. Crea otro seguimiento si corresponde.');
+          if (fields.estado !== undefined && fields.estado !== original.estado && !String(fields.nota_cambio || fields.detalle_resolucion || '').trim()) throw new ValidationError('Indica el motivo del cambio de estado.');
+        }
         if (entity === 'Equipo') {
           if (typeof original.horometro === 'number' && fields.horometro !== undefined && fields.horometro !== original.horometro) throw new ValidationError('El horómetro se actualiza desde las lecturas. La ficha conserva el valor registrado.');
           if (fields.propiedad !== undefined && fields.propiedad !== original.propiedad) throw new ValidationError('La corrección de propiedad aún no está habilitada; el código original se conserva.');
@@ -132,7 +145,8 @@ export class LocalDataSource {
         next.entities[entity][index] = row;
         if (entity === 'Equipo' && typeof original.horometro !== 'number') this.initialEquipmentReading(next, actor, row);
         const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : equipmentImageFields.some(field => field === key) ? `${equipmentImageLabels[key as keyof typeof equipmentImageLabels]}: ${value ? 'actualizada' : 'retirada'}` : `${key}: ${original[key]} → ${value}`).join('; ');
-        this.audit(next, actor, entity, 'Actualización', `${row.codigo} · ${changed || 'Sin cambios'}`); this.commit(next); return structuredClone(row);
+        if (entity === 'Hallazgo') this.recordFindingChange(next, actor, row, original);
+        else this.audit(next, actor, entity, 'Actualización', `${row.codigo} · ${changed || 'Sin cambios'}`); this.commit(next); return structuredClone(row);
       },
       remove: async id => { this.assertEditable(entity, actor); if (entity !== 'Catalogos') throw new ValidationError('Conserva el registro y cambia su estado desde la ficha.'); await this.repository(entity, actor).update(id, { activo: false }); },
       import: async (rows, expectedRevision) => {
@@ -181,7 +195,7 @@ export class LocalDataSource {
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.database); }
   async backup(actor: Actor) { return this.snapshot(actor); }
   restore(actor: Actor, candidate: unknown, expectedRevision: number, exportedAt?: string) {
-    assertAdmin(actor); this.validate(candidate);
+    assertAdmin(actor); candidate = upgradeFindingCollection(candidate); this.validate(candidate);
     if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron. Revisa nuevamente el respaldo antes de restaurarlo.');
     if (exportedAt !== undefined && (!/^\d{4}-\d{2}-\d{2}T/.test(exportedAt) || !Number.isFinite(Date.parse(exportedAt)))) throw new ValidationError('La fecha de exportación del respaldo no es válida.');
     const next = structuredClone(candidate);

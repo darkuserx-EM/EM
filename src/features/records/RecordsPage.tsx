@@ -26,7 +26,7 @@ export function RecordsPage({ module }: { module: 'flota' | 'clientes' }) {
   const [clientSection, setClientSection] = useState<ClientSection>('Resumen');
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<{ entity: EditableRecord; row?: EntityRecord; clientId?: string } | null>(null);
-  const equipmentQuery = useRows('Equipo'); const clientQuery = useRows('Cliente');
+  const equipmentQuery = useRows('Equipo', true); const clientQuery = useRows('Cliente', true);
   const equipments = equipmentQuery.rows; const clients = clientQuery.rows;
   const fleetScope = filterEquipmentStatus(equipments.filter(row => normalize(`${row.codigo} ${row.marca} ${row.modelo} ${row.serie} ${row.id_interno_cliente ?? ''}`).includes(normalize(search)) && (fleetClient === 'Todos' || row.cliente_id === fleetClient)), 'Todos', 'Todos', includeRetired);
   const filtered = filterEquipmentStatus(fleetScope, fleetStatus, maintenance, true);

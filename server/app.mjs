@@ -123,7 +123,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   }, express.json({ limit:'32mb' }), async (req,res) => {
     const body = req.body;
     if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
-    if (!['importClients','restore'].includes(body.action) && !['Cliente','Contacto','Sede','Equipo','Catalogos'].includes(body.entity)) throw fail(400,'Entidad no editable.');
+    if (!['importClients','restore'].includes(body.action) && !['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo'].includes(body.entity)) throw fail(400,'Entidad no editable.');
     if (['import','importClients'].includes(body.action) && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
     const conn = await pool.getConnection();
     try {

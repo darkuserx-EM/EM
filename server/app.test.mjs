@@ -87,6 +87,32 @@ const picture='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAw
 const imageHash=imageReference(picture).slice(6);
 const withImages=db=>{for(const field of equipmentImageFields) db.entities.Equipo[0][field]=picture;db.entities.Equipo[0].cliente_id='client-1';};
 
+test('findings persist with trusted audit, reject stale or invalid updates and preserve equipment/history/images',async t=>{
+  const request=await fixture(t,{...coordinator,role:'Administrador'},withImages);
+  const before=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  const fields={equipo_id:'equipment-1',descripcion:'Rueda por revisar',componente:'Llantas y rodos',prioridad:'Por definir',estado:'Por confirmar',actualizado_nombre:'Forged',cerrado_el:'2000-01-01'};
+  const create=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'create',entity:'Hallazgo',revision:before.revision,fields})});
+  assert.equal(create.status,200);const saved=await create.json();
+  assert.equal(saved.result.actualizado_nombre,'Prueba');assert.equal(saved.result.cerrado_el,'');
+  const invalid=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'update',entity:'Hallazgo',id:saved.result.id,revision:saved.database.revision,fields:{estado:'Resuelto',prioridad:'Alta',orden_resolucion_id:'service-2-0',detalle_resolucion:'Reparado',nota_cambio:'Cierre'}})});
+  assert.equal(invalid.status,400);
+  const stale=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'update',entity:'Hallazgo',id:saved.result.id,revision:before.revision,fields:{descripcion:'Cambio atrasado'}})});
+  assert.equal(stale.status,409);
+  const after=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  for(const entity of ['Equipo','LecturaHorometro','OrdenServicio']) assert.deepEqual(after.entities[entity],before.entities[entity]);
+  assert.equal(after.entities.Hallazgo.length,1);assert.equal(after.entities.Bitacora.find(row=>row.hallazgo_id===saved.result.id).registrado_por,'Prueba');
+});
+
+test('findings are absent for non-admin roles and cannot be changed by role forgery',async t=>{
+  for(const user of [coordinator,client,{...coordinator,role:'Técnico'}]){
+    const request=await fixture(t,user,db=>{db.entities.Hallazgo.push({...db.entities.Equipo[0],id:'finding-test',codigo:'HAL-001',equipo_id:'equipment-1',descripcion:'Nota interna',componente:'Otro',prioridad:'Baja',estado:'Abierto'});});
+    const response=await request('/api/database',{headers:{Cookie:'em_session=x'}});
+    assert.equal(response.status,200);assert.deepEqual((await response.json()).entities.Hallazgo,[]);
+    const change=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({actor:{rol:'Administrador'},action:'update',entity:'Hallazgo',revision:0,id:'finding-test',fields:{estado:'Resuelto'}})});
+    assert.equal(change.status,403);
+  }
+});
+
 test('operational status persists independently through the HTTP API with trusted authorship and concurrency checks',async t=>{
   const request=await fixture(t,{...coordinator,role:'Administrador'},withImages);
   const original=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();

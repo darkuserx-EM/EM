@@ -103,6 +103,28 @@ test('MySQL real: persistencia, transacciones, acceso y mantenimiento', {skip:pr
     for(const row of before.entities.Bitacora) assert.deepEqual(after.entities.Bitacora.find(saved=>saved.id===row.id),row);
     const restoredLog=after.entities.Bitacora.find(row=>!before.entities.Bitacora.some(old=>old.id===row.id));assert.match(restoredLog.detalle,/2026-10-08T12:00/);
   });
+  await t.test('hallazgos: persistencia, concurrencia y descarte conservan evidencia',async()=>{
+    const before=(await call('backup',undefined,current)).data;
+    const createdEquipment=await call('mutate',{action:'create',entity:'Equipo',revision:before.revision,fields:{marca:'Prueba',modelo:'HAL-Test',serie:'HAL-SYNTHETIC',tipo:'Prueba',propiedad:'Propio',estado:'Disponible'}},current);
+    assert.equal(createdEquipment.status,200);
+    const created=await call('mutate',{action:'create',entity:'Hallazgo',revision:createdEquipment.data.database.revision,fields:{equipo_id:createdEquipment.data.result.id,descripcion:'Inspección sintética',componente:'Otro',prioridad:'Media',estado:'Abierto'}},current);
+    assert.equal(created.status,200);const id=created.data.result.id;
+    const revision=created.data.database.revision;
+    const edits=await Promise.all([
+      call('mutate',{action:'update',entity:'Hallazgo',id,revision,fields:{estado:'Programado',responsable:'Responsable sintético',fecha_programada:'2026-10-15',nota_cambio:'Visita acordada'}},current),
+      call('mutate',{action:'update',entity:'Hallazgo',id,revision,fields:{estado:'Cotizado',nota_cambio:'Cotización de prueba'}},current),
+    ]);
+    assert.deepEqual(edits.map(r=>r.status).sort(),[200,409]);
+    const snapshot=(await call('backup',undefined,current)).data;
+    const invalid=await call('mutate',{action:'update',entity:'Hallazgo',id,revision:snapshot.revision,fields:{estado:'Resuelto',detalle_resolucion:'Sin evidencia',nota_cambio:'Intento inválido'}},current);
+    assert.equal(invalid.status,400);assert.deepEqual((await call('backup',undefined,current)).data,snapshot);
+    const discarded=await call('mutate',{action:'update',entity:'Hallazgo',id,revision:snapshot.revision,fields:{estado:'Descartado',detalle_resolucion:'Registro sintético revisado',nota_cambio:'Revisión completada'}},current);
+    assert.equal(discarded.status,200);
+    const saved=await readSnapshot(pool);assert.equal(saved.entities.Hallazgo.find(row=>row.id===id).estado,'Descartado');
+    assert.equal(saved.entities.Bitacora.filter(row=>row.hallazgo_id===id).length,3);
+    assert.deepEqual(saved.entities.OrdenServicio,before.entities.OrdenServicio);
+    assert.equal((await call('mutate',{action:'restore',database:before,revision:saved.revision},current)).status,200);
+  });
   await t.test('contraseña exige la actual, invalida otras sesiones y rechaza la antigua',async()=>{
     const other=await login();
     const wrong=await call('password',{currentPassword:'incorrecta',newPassword},current);assert.equal(wrong.status,400);assert.equal((await call('session',undefined,other)).status,200);

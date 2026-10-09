@@ -1,3 +1,4 @@
+import { findingClosed, findingLinkErrors } from './equipment-findings';
 import { catalogGroups, definitions, entityNames, type Database, type EntityName, type EntityRecord, type Scalar } from './model';
 
 import { statusMetadataFields } from './equipment-status';
@@ -18,25 +19,32 @@ export function validateRecord(entity: EntityName, input: Record<string, unknown
     if (column.type === 'boolean' && typeof value !== 'boolean') errors.push(`${column.label}: usa Sí o No`);
     if (column.type === 'text' && typeof value !== 'string') errors.push(`${column.label}: debe ser texto`);
     if (column.options && !column.options.includes(String(value))) errors.push(`${column.label}: valor no permitido`);
-    if (!(entity === 'Cliente' && column.key === 'logo') && !(entity === 'Equipo' && equipmentImageFields.some(field => field === column.key)) && typeof value === 'string' && value.length > 500) errors.push(`${column.label}: máximo 500 caracteres`);
+    if (!(entity === 'Cliente' && column.key === 'logo') && !(entity === 'Equipo' && equipmentImageFields.some(field => field === column.key)) && typeof value === 'string' && value.length > (entity === 'Hallazgo' && column.key === 'descripcion' ? 2000 : 500)) errors.push(`${column.label}: máximo ${entity === 'Hallazgo' && column.key === 'descripcion' ? 2000 : 500} caracteres`);
   }
   if (entity === 'Cliente' && !validClientLogo(input.logo)) errors.push('Logo: usa una imagen PNG, JPG o WebP válida y ajustada desde el formulario.');
   if (entity === 'Equipo') for (const field of equipmentImageFields) if (!validEquipmentImage(input[field])) errors.push(`${equipmentImageLabels[field]}: usa una imagen PNG, JPG o WebP válida y ajustada desde el formulario.`);
   if (entity === 'Cliente' && input.dia_facturacion !== undefined && input.dia_facturacion !== '' && input.dia_facturacion !== null && (!Number.isInteger(input.dia_facturacion) || Number(input.dia_facturacion) < 1 || Number(input.dia_facturacion) > 31)) errors.push('Día de facturación: debe ser un entero entre 1 y 31');
   if (entity === 'Contacto' && input.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(input.correo))) errors.push('Correo: ingresa una dirección válida');
   if (entity === 'Equipo' && typeof input.anio === 'number' && !Number.isInteger(input.anio)) errors.push('Año: debe ser un número entero');
+  if (entity === 'Hallazgo') {
+    if (input.fecha_programada && (typeof input.fecha_programada !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.fecha_programada) || !Number.isFinite(Date.parse(input.fecha_programada)) || new Date(input.fecha_programada).toISOString().slice(0, 10) !== input.fecha_programada)) errors.push('Fecha programada: fecha inválida.');
+    if (!['Por confirmar', 'Descartado'].includes(String(input.estado)) && input.prioridad === 'Por definir') errors.push('Define la prioridad antes de activar el seguimiento.');
+    if (input.estado === 'Programado' && (!String(input.responsable || '').trim() || !input.fecha_programada)) errors.push('Para programar, indica responsable y fecha.');
+    if (findingClosed(input as EntityRecord) && !String(input.detalle_resolucion || '').trim()) errors.push('Explica la resolución o el motivo de descarte.');
+  }
   return errors;
 }
 export function uniqueError(entity: EntityName, input: Record<string, unknown>, rows: EntityRecord[], excludeId?: string): string | null {
   const other = rows.filter(row => row.id !== excludeId);
   if (input.codigo && other.some(row => normalize(row.codigo) === normalize(input.codigo))) return 'El código ya existe.';
+  if (entity === 'Hallazgo' && other.some(row => row.equipo_id === input.equipo_id && String(row.orden_origen_id || '') === String(input.orden_origen_id || '') && normalize(row.descripcion) === normalize(input.descripcion))) return 'Ya existe un seguimiento con la misma descripción y origen. Revisa el existente.';
   if (entity === 'Equipo' && input.serie && other.some(row => normalize(row.serie) === normalize(input.serie))) return 'La serie ya existe.';
   if (entity === 'Cliente' && input.referencia_cliente && other.some(row => normalize(row.referencia_cliente) === normalize(input.referencia_cliente))) return 'La referencia de cliente ya existe.';
   if (entity === 'Catalogos' && other.some(row => normalize(row.categoria) === normalize(input.categoria) && normalize(row.nombre) === normalize(input.nombre))) return 'El nombre ya existe en esta categoría.';
   return null;
 }
 export function cleanFields(entity: EntityName, input: Record<string, unknown>): Record<string, Scalar> {
-  const fields = Object.fromEntries(definitions[entity].columns.filter(column => input[column.key] !== undefined && !(entity === 'Equipo' && statusMetadataFields.some(key => key === column.key))).map(column => [column.key, typeof input[column.key] === 'string' ? String(input[column.key]).trim() : input[column.key] as Scalar]));
+  const fields = Object.fromEntries(definitions[entity].columns.filter(column => input[column.key] !== undefined && !(entity === 'Hallazgo' && ['actualizado_nombre', 'cerrado_el'].includes(column.key)) && !(entity === 'Equipo' && statusMetadataFields.some(key => key === column.key))).map(column => [column.key, typeof input[column.key] === 'string' ? String(input[column.key]).trim() : input[column.key] as Scalar]));
   return entity === 'Equipo' ? synchronizeEquipmentUnits(fields) : fields;
 }
 function uniqueKeys(entity: EntityName, row: Record<string, unknown>): [string, string][] {
@@ -44,6 +52,7 @@ function uniqueKeys(entity: EntityName, row: Record<string, unknown>): [string, 
   if (row.codigo) keys.push([JSON.stringify(['codigo', normalize(row.codigo)]), 'El código ya existe.']);
   if (entity === 'Equipo' && row.serie) keys.push([JSON.stringify(['serie', normalize(row.serie)]), 'La serie ya existe.']);
   if (entity === 'Cliente' && row.referencia_cliente) keys.push([JSON.stringify(['referencia', normalize(row.referencia_cliente)]), 'La referencia de cliente ya existe.']);
+  if (entity === 'Hallazgo') keys.push([JSON.stringify(['hallazgo', row.equipo_id, String(row.orden_origen_id || ''), normalize(row.descripcion)]), 'Seguimiento duplicado para el mismo equipo y origen.']);
   if (entity === 'Catalogos') keys.push([JSON.stringify(['catalogo', normalize(row.categoria), normalize(row.nombre)]), 'El nombre ya existe en esta categoría.']);
   return keys;
 }
@@ -91,6 +100,11 @@ export function validateDatabase(value: unknown, { maxRows = Infinity }: { maxRo
         if (row[key] !== undefined && (typeof row[key] !== 'number' || !Number.isFinite(row[key]) || Number(row[key]) < 0)) throw new ValidationError(`${row.codigo}: ${key} debe ser un número mayor o igual a 0.`);
       }
     }
+  }
+  const equipmentMap = new Map(data.entities.Equipo.map(row => [row.id, row]));
+  for (const row of data.entities.Hallazgo) {
+    const errors = findingLinkErrors(row, equipmentMap, orders);
+    if (errors.length) throw new ValidationError(`${row.codigo}: ${errors.join(' ')}`);
   }
   if (data.entities.Catalogos.some(row => !catalogGroups.includes(row.categoria as typeof catalogGroups[number]))) throw new ValidationError('Categoría de catálogo inválida.');
 }

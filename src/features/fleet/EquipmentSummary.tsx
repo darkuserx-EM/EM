@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { ArrowUpRight, CalendarDays, Gauge, Wrench } from 'lucide-react';
 import type { EquipmentHistory } from '../../domain/equipment-history';
 import type { EntityRecord } from '../../domain/model';
@@ -50,11 +50,12 @@ function ReadingChart({ history, onReport }: { history: EquipmentHistory; onRepo
   </>;
 }
 
-export function EquipmentSummary({ history, onReport, onView }: { history: EquipmentHistory; onReport: (id: string) => void; onView: (view: 'repairs' | 'usage') => void }) {
+export function EquipmentSummary({ history, onReport, onView, followUp }: { history: EquipmentHistory; followUp?: ReactNode; onReport: (id: string) => void; onView: (view: 'repairs' | 'usage') => void }) {
   const summary = summarizeEquipment(history);
   const maxCount = Math.max(1, ...summary.serviceTypes.map(group => group.count));
   return <section className="equipment-summary" aria-label="Resumen del equipo">
     <div className="summary-title"><div><h2>El equipo, de un vistazo</h2><p>Resumen del período seleccionado · vista de administración</p></div></div>
+    {followUp}
     <div className="summary-kpis">
       <button className="summary-kpi" onClick={() => onView('repairs')}><Wrench size={18} /><span>Servicios registrados</span><strong>{history.repairs.length}</strong><small>Ver reparaciones y servicios →</small></button>
       <button className="summary-kpi" onClick={() => onView('usage')}><Gauge size={18} /><span>Uso entre lecturas</span><strong>{history.hoursUsed === null ? '—' : formatNumber(history.hoursUsed)} <em>h</em></strong><small>{history.hoursUsed === null ? 'Faltan lecturas comparables' : `${history.hoursUsedEstimated ? 'Estimado · ' : ''}${formatDate(String(history.usage[0].row.fecha))} → ${formatDate(String(history.usage.at(-1)!.row.fecha))}`}</small></button>
@@ -69,6 +70,6 @@ export function EquipmentSummary({ history, onReport, onView }: { history: Equip
       })}<p className="summary-footnote">La programación se habilitará en la etapa de planificación. Estos registros no confirman por sí solos que el mantenimiento esté al día.</p></section>
     </div>
     <section className="panel summary-panel"><div className="summary-section-title"><h3>Servicios recientes</h3><button className="summary-link" onClick={() => onView('repairs')}>Ver todos<ArrowUpRight size={14} /></button></div>{history.repairs.length ? <ol className="summary-timeline">{history.repairs.slice(0, 5).map(report => <li key={report.id}><button onClick={() => onReport(report.id)}><span>{formatDate(String(report.fecha))} · {reportName(report)} · {report.tipo}</span><strong>{report.motivo || 'Sin descripción registrada'}</strong><small>{report.estado || 'Sin estado registrado'}</small><ArrowUpRight size={16} /></button></li>)}</ol> : <p className="summary-empty">No hay servicios registrados en este período.</p>}</section>
-    <details className="summary-quality"><summary>Sobre la información del historial</summary><p>{summary.pendingReports ? `${summary.pendingReports} reportes importados figuran como pendientes en el origen. Deben revisarse antes de considerarlos trabajos pendientes actuales.` : 'Los estados del historial corresponden a cada visita y no determinan el estado actual del equipo.'}</p><p>Las recomendaciones de los reportes se conservan en cada servicio. El seguimiento de hallazgos y su resolución se incorporará en una etapa posterior.</p></details>
+    <details className="summary-quality"><summary>Sobre la información del historial</summary><p>{summary.pendingReports ? `${summary.pendingReports} reportes importados figuran como pendientes en el origen. Deben revisarse antes de considerarlos trabajos pendientes actuales.` : 'Los estados del historial corresponden a cada visita y no determinan el estado actual del equipo.'}</p><p>Las recomendaciones de los reportes se conservan en cada servicio. Puedes revisar su vigencia y registrar su atención en Hallazgos y notas.</p></details>
   </section>;
 }

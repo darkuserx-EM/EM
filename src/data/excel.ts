@@ -60,16 +60,17 @@ export function parseImport(entity: EntityName, workbook: XLSX.WorkBook, current
 }
 export function makeBackup(database: Database) {
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ schemaVersion: database.schemaVersion, revision: database.revision, exportado: new Date().toISOString(), aplicacion: 'Portal EM' }]), '_metadata');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ schemaVersion: database.schemaVersion, revision: database.revision, exportado: new Date().toISOString(), aplicacion: 'Portal EM', hallazgos: true }]), '_metadata');
   for (const entity of entityNames) XLSX.utils.book_append_sheet(workbook, rowsToSheet(entity, entity === 'Equipo' ? attachEquipmentImages(workbook,database.entities[entity]) : database.entities[entity], false), entity);
   return workbook;
 }
 export function parseBackup(workbook: XLSX.WorkBook): Database {
   if (!workbook.Sheets._metadata) throw new Error('No es un respaldo completo de Portal EM.');
-  const metadata = XLSX.utils.sheet_to_json<{ schemaVersion: number; revision: number; aplicacion: string }>(workbook.Sheets._metadata)[0];
+  const metadata = XLSX.utils.sheet_to_json<{ schemaVersion: number; revision: number; aplicacion: string; hallazgos?: boolean }>(workbook.Sheets._metadata)[0];
   if (!metadata || metadata.aplicacion !== 'Portal EM') throw new Error('El respaldo no pertenece a Portal EM.');
   const database = { schemaVersion: metadata.schemaVersion, revision: metadata.revision, entities: {} } as Database;
   for (const entity of entityNames) {
+    if (entity === 'Hallazgo' && !workbook.Sheets[entity] && !metadata.hallazgos) { database.entities.Hallazgo = []; continue; }
     if (!workbook.Sheets[entity]) throw new Error(`Falta la hoja ${entity}. El respaldo no está completo.`);
     database.entities[entity] = XLSX.utils.sheet_to_json<EntityRecord>(workbook.Sheets[entity], { defval: '', raw: true });
   }
