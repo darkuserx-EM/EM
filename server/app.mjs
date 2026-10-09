@@ -4,7 +4,7 @@ import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames, ValidationError } from './generated/domain.mjs';
-import { readSnapshot, readDatabase, saveDatabase, consumeLoginAttempt } from './database.mjs';
+import { readSnapshot, readDatabase, readEquipmentRecord, saveDatabase, consumeLoginAttempt } from './database.mjs';
 import { hashPassword, verifyPassword, digest, equal, token, cookieToken } from './security.mjs';
 import { presentDatabase, presentEquipment, resolveEquipmentImages, readEquipmentImage } from './equipment-images.mjs';
 import { logFailure, parseTrustProxy } from './diagnostics.mjs';
@@ -111,8 +111,8 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     res.json({ rows: db.entities.Equipo.filter(row => ids.has(row.id)) });
   });
   app.get('/api/equipment-images/:id/:field/:hash', async (req,res) => {
-    const db = await readSnapshot(pool);
-    const row = filterVisible(req.actor,'Equipo',db.entities.Equipo).find(item => item.id === req.params.id);
+    const equipment = await readEquipmentRecord(pool,req.params.id);
+    const row = equipment && filterVisible(req.actor,'Equipo',[equipment])[0];
     const image = readEquipmentImage(row,req.params.field,req.params.hash);
     if (!image) throw fail(404,'Imagen no disponible.');
     res.type(image.type).send(image.bytes);
@@ -129,7 +129,10 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     try {
       await conn.beginTransaction(); const db = await readDatabase(conn,true);
       if (body.revision !== db.revision) throw fail(409,'Los datos cambiaron en otro dispositivo. Recarga y revisa antes de guardar.');
-      let saved = JSON.stringify(db);
+      // Existing images stay in MySQL while the shared domain edits compact references.
+      // Resolve them against this locked snapshot before saving; never concatenate
+      // every existing photo into the domain's intermediate JSON string.
+      let saved = JSON.stringify(presentDatabase(db));
       const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false,maxRows:Infinity});
       let result;
       try {
