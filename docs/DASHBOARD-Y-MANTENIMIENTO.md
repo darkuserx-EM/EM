@@ -68,6 +68,16 @@ Estas opciones deben confirmarse contra el manual y las condiciones de cada equi
 - Los servicios nuevos no avanzan la base automáticamente. Administración revisa el reporte completado y guarda una nueva versión del ciclo correspondiente. Los planes no cambian el estado operativo ni los avisos manuales del equipo.
 - Datos y escritura de PlanPM se restringen a administración en interfaz y servidor. El formulario confirma el descarte de cambios sin guardar y utiliza textos de 14 px, metadatos de 12 px y contraste reforzado.
 
+### Adaptación visual administrativa del 9 de octubre
+
+La ficha administrativa usa la distribución de la propuesta: cabecera en tarjeta, indicadores de próximo preventivo, hallazgos abiertos, último horómetro y servicios; bloque de próximo servicio con preventivo y mayor en paralelo; barras de avance y explicación de base, intervalo y lectura utilizada. El gráfico interactivo, los tipos de servicio, las recomendaciones y el historial quedan en secciones legibles a todo el ancho. Los datos técnicos permanecen debajo; las demás pestañas conservan su navegación.
+
+Los indicadores y planes consultan todo el historial; el filtro de fechas afecta solamente la actividad y los gráficos del período. Se mantienen separados para que un filtro no cambie un vencimiento. Las barras se muestran solamente cuando existe una base válida; las estimaciones conservan su aviso y los valores originales. No se incorporan cifras ilustrativas del HTML ni se interpreta un reporte histórico como hallazgo abierto.
+
+El módulo Mantenimiento muestra tarjetas que filtran objetivos alcanzados, próximos vencimientos, bases/lecturas por revisar y ciclos sin configurar. Incluye búsqueda, filtro por cliente y acceso a los planes del equipo. Los contadores expresan ciclos (dos posibles por equipo), no equipos averiados. La configuración sigue restringida a administración.
+
+No se trasladan del prototipo las visitas no planificadas, diagnósticos de fallas repetidas, interpolaciones mensuales, el modo combinado horas/días ni las fechas de ejemplo: faltan datos estructurados o reglas confirmadas para presentarlos como hechos. La agenda de citas y la nueva vista del cliente siguen en la siguiente etapa; esta entrega termina el dashboard administrativo y su planificación.
+
 ## Etapa 4: agenda y vista del cliente
 
 Reutilizar el mismo cálculo de planificación para agenda, ficha y portal del cliente. Distinguir fecha prevista y cita confirmada. Mostrar pendientes, próximos vencimientos y equipos con información insuficiente. Separar visita programada/no programada del tipo preventivo/correctivo: no inferirlo de la descripción histórica.

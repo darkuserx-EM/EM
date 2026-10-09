@@ -8,8 +8,10 @@ import { currentPlan, planTypes, planService, projectPlan, todayGT } from '../..
 import { localDay } from '../../domain/equipment-history';
 import { formatDate, formatNumber } from '../../domain/format';
 import './equipment-planning.css';
+import { PlanCycle } from './PlanCycle';
+import { planDate } from './PlanCycle';
+export { planDate } from './PlanCycle';
 
-export const planDate = (value: string) => formatDate(`${value}T12:00:00-06:00`);
 const reportName = (row: EntityRecord) => row.orden_origen ? `OS ${row.orden_origen}` : row.codigo;
 
 function PlanForm({ equipment, type, current, services, onClose }: { equipment: EntityRecord; type: string; current?: EntityRecord; services: EntityRecord[]; onClose: () => void }) {
@@ -71,9 +73,7 @@ export function EquipmentPlanning({ equipment, services, readings, onReport }: {
       const plan = currentPlan(plans.rows, equipment.id, type); const projection = projectPlan(plan, readings, services);
       const versions = plans.rows.filter(row => row.schema_plan === 1 && row.equipo_id === equipment.id && row.tipo_plan === type).sort((a,b) => Number(b.version) - Number(a.version));
       return <article className="pm-card" key={type} aria-label={`Plan ${type.toLowerCase()}`}><div className="pm-card-title"><h3>{type}</h3><span className={`pm-status ${projection.tone}`}>{projection.status}</span></div><p className="pm-interval">{plan ? `Cada ${formatNumber(Number(plan.intervalo))} ${plan.criterio === 'Horas' ? 'horas' : 'días'}` : type === 'Mayor' ? 'Ciclo recomendado de 2,000 horas' : '250 horas o 30 / 60 / 90 días'}</p>
-        {projection.target !== undefined && <div className="pm-target"><span>{projection.estimated ? 'Objetivo orientativo' : 'Próximo objetivo'}</span><strong>{typeof projection.target === 'number' ? `${formatNumber(projection.target)} h` : planDate(projection.target)}</strong>{projection.remaining !== undefined && <p>{projection.remaining < 0 ? `${formatNumber(Math.abs(projection.remaining))} ${plan?.criterio === 'Horas' ? 'h por encima, según la última lectura' : 'días de atraso'}` : projection.remaining === 0 ? 'Objetivo alcanzado' : `${formatNumber(projection.remaining)} ${plan?.criterio === 'Horas' ? 'h restantes según la última lectura' : 'días restantes'}`}</p>}</div>}
-        <p className="pm-explanation">{projection.detail}</p>
-        {projection.forecast && <div className="pm-forecast"><strong>Proyección orientativa: {planDate(projection.forecast)}</strong><p>Ritmo reciente: {formatNumber(Math.round(projection.rate! * 10) / 10)} h/día. Es una estimación de uso; no es una cita confirmada.{projection.forecast < todayGT() && ' La fecha proyectada ya pasó: registra una lectura para comprobar el avance real.'}</p></div>}
+        <PlanCycle plan={plan} projection={projection} />
         {plan && <dl className="pm-base"><div><dt>Base del ciclo</dt><dd>{plan.base_origen === 'Pendiente' ? 'Pendiente de confirmar' : `${planDate(String(plan.base_fecha))}${typeof plan.base_horas === 'number' ? ` · ${formatNumber(plan.base_horas)} h` : ''} · ${plan.base_calidad}`}</dd></div><div><dt>Responsable</dt><dd>{plan.responsable || 'Sin asignar'}</dd></div></dl>}
         <div className="pm-actions"><button className="button button-dark" onClick={() => setEditing(type)}><Settings2 size={15} />{plan ? 'Actualizar plan o base' : `Configurar ${type.toLowerCase()}`}</button>{plan?.base_orden_id && <button className="summary-link" onClick={() => onReport(String(plan.base_orden_id))}>Ver reporte base<ArrowUpRight size={14} /></button>}</div>
         {versions.length > 0 && <details className="pm-history"><summary><History size={14} />Versiones y confirmaciones ({versions.length})</summary><ol>{versions.map(row => <li key={row.id}><strong>Versión {row.version} · {row.vigente ? 'Vigente' : 'Anterior'} · {row.estado_plan}</strong><p>{row.intervalo} {row.criterio} · Base: {row.base_origen}{row.base_fecha && ` · ${planDate(String(row.base_fecha))}`}{typeof row.base_horas === 'number' && ` · ${formatNumber(row.base_horas)} h`}{row.base_calidad && ` · ${row.base_calidad}`}</p><p>{row.motivo}</p><small>{row.confirmado_por} · {formatDate(String(row.confirmado_el))}</small></li>)}</ol></details>}
