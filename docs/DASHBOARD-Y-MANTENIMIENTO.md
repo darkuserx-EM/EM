@@ -33,11 +33,11 @@ No volver a una versión anterior para operar nuevos seguimientos sin conservar 
 
 Pruebas de dominio: estados, fechas, relaciones entre equipo y orden, prioridad, responsable, duplicados, autoría, conservación de datos, permisos y respaldos anteriores/nuevos. Pruebas HTTP: persistencia, conflictos 409, rechazo de datos cruzados y ocultación ante roles no administrativos. Integración MySQL: altas, dos cambios simultáneos, rollback ante cierre inválido, evidencia de descarte y restauración.
 
-## Etapa 3: planificación solicitada (aún no activa)
+## Etapa 3: planificación administrativa implementada
 
-El usuario solicitó dejar este planteamiento anotado para revisarlo después de actualizar la información de los equipos.
+Administración puede configurar el preventivo y el mayor desde la pestaña Mantenimiento del equipo o desde el módulo Mantenimiento. No se generan planes ni bases para los equipos existentes al publicar. Cada plan empieza pendiente hasta que administración revisa su base.
 
-| Configuración | Opciones previstas |
+| Configuración | Opciones disponibles |
 | --- | --- |
 | Criterio del mantenimiento periódico | Selector **Por horas** / **Por días** |
 | Plan por horas | **250 h** |
@@ -46,28 +46,42 @@ El usuario solicitó dejar este planteamiento anotado para revisarlo después de
 
 Estas opciones deben confirmarse contra el manual y las condiciones de cada equipo al configurar su plan. La recomendación de 2,000 h no se aplica retroactivamente a servicios antiguos ni se presenta como exigencia universal del fabricante.
 
-### Datos necesarios antes de calcular vencimientos
+### Base y versiones
 
 - Equipo, tipo de mantenimiento (periódico/mayor), criterio, intervalo y fecha de vigencia del plan. Guardar versiones para conservar las reglas anteriores.
 - Fecha y horómetro del último mantenimiento correspondiente, ligados a una orden completada y revisada. Separar lectura registrada, estimada y validada; conservar evidencia de la corrección.
 - Si no existe ese historial, una base inicial expresamente confirmada, con fecha, lectura, responsable y motivo. No usar silenciosamente cero ni un múltiplo del horómetro total.
 - Historial de cambios o reinicios del contador. Las lecturas deben ser comparables antes de calcular horas restantes.
-- Anticipación de avisos, responsable y siguiente visita acordada, como datos distintos de una fecha calculada.
+- Cada modificación crea una versión; la anterior queda conservada. El servidor asigna autoría, fecha y correlativo. La importación y la edición directa de versiones no están habilitadas. El respaldo conserva todas las versiones.
+- Responsable opcional y motivo obligatorio. Las citas y tolerancias por equipo quedan pendientes de la etapa de agenda.
 
-### Cálculo propuesto, pendiente de implementación y validación
+### Cálculo y límites
 
 - Por horas: lectura base del último periódico confirmado + 250 h. Restar la última lectura comparable para expresar horas restantes o exceso desde esa lectura.
 - Por días: fecha del último periódico confirmado + 30/60/90 días calendario, según el plan y la fecha local de Guatemala.
 - Mayor: lectura base del último **mayor** confirmado + 2,000 h. Un preventivo de 250 h no reinicia automáticamente este ciclo. Si falta la base, mostrar **Pendiente de confirmar**, sin inventar vencimiento.
-- Proyección en fecha para planes por horas: estimar el ritmo reciente con lecturas comparables y mostrar cobertura, fecha de la última lectura y supuestos. La proyección es orientativa; no modifica el horómetro. Sin datos suficientes, con lecturas antiguas, ritmo nulo o reinicio, no proyectar una fecha confiable.
+- Proyección orientativa por horas: mínimo tres lecturas de instantes distintos posteriores a la base, dentro de los últimos 90 días respecto de la lectura más reciente y abarcando al menos 14 días. El ritmo es el incremento dividido entre días transcurridos. No se proyecta si hay estimaciones, disminución del contador, lecturas futuras o simultáneas distintas, lectura de más de 30 días, ritmo nulo o proyección superior a 365 días. La fecha resultante no es una cita y no modifica lecturas.
+- Los avisos próximos usan 25 h o 7 días de anticipación; son umbrales de esta primera versión, pendientes de configuración por equipo. Una lectura antigua exige actualización; si ya superaba el objetivo se conserva ese atraso conocido, mostrando la fecha de lectura.
 - Si una base es estimada, cualquier cálculo derivado debe seguir marcado como estimación y quedar pendiente de confirmar antes de programar como definitivo.
 - Confirmar después si un mayor sustituye el preventivo de esa visita y reinicia también su ciclo, y qué tolerancias/anticipación corresponden. No asumir esta política.
 - No se incorpora todavía el modo combinado «horas o días, lo que ocurra primero»; requeriría acordar esa regla además del selector solicitado.
+- Los servicios nuevos no avanzan la base automáticamente. Administración revisa el reporte completado y guarda una nueva versión del ciclo correspondiente. Los planes no cambian el estado operativo ni los avisos manuales del equipo.
+- Datos y escritura de PlanPM se restringen a administración en interfaz y servidor. El formulario confirma el descarte de cambios sin guardar y utiliza textos de 14 px, metadatos de 12 px y contraste reforzado.
+
+### Adaptación visual administrativa del 9 de octubre
+
+La ficha administrativa usa la distribución de la propuesta: cabecera en tarjeta, indicadores de próximo preventivo, hallazgos abiertos, último horómetro y servicios; bloque de próximo servicio con preventivo y mayor en paralelo; barras de avance y explicación de base, intervalo y lectura utilizada. El gráfico interactivo, los tipos de servicio, las recomendaciones y el historial quedan en secciones legibles a todo el ancho. Los datos técnicos permanecen debajo; las demás pestañas conservan su navegación.
+
+Los indicadores y planes consultan todo el historial; el filtro de fechas afecta solamente la actividad y los gráficos del período. Se mantienen separados para que un filtro no cambie un vencimiento. Las barras se muestran solamente cuando existe una base válida; las estimaciones conservan su aviso y los valores originales. No se incorporan cifras ilustrativas del HTML ni se interpreta un reporte histórico como hallazgo abierto.
+
+El módulo Mantenimiento muestra tarjetas que filtran objetivos alcanzados, próximos vencimientos, bases/lecturas por revisar y ciclos sin configurar. Incluye búsqueda, filtro por cliente y acceso a los planes del equipo. Los contadores expresan ciclos (dos posibles por equipo), no equipos averiados. La configuración sigue restringida a administración.
+
+No se trasladan del prototipo las visitas no planificadas, diagnósticos de fallas repetidas, interpolaciones mensuales, el modo combinado horas/días ni las fechas de ejemplo: faltan datos estructurados o reglas confirmadas para presentarlos como hechos. La agenda de citas y la nueva vista del cliente siguen en la siguiente etapa; esta entrega termina el dashboard administrativo y su planificación.
 
 ## Etapa 4: agenda y vista del cliente
 
 Reutilizar el mismo cálculo de planificación para agenda, ficha y portal del cliente. Distinguir fecha prevista y cita confirmada. Mostrar pendientes, próximos vencimientos y equipos con información insuficiente. Separar visita programada/no programada del tipo preventivo/correctivo: no inferirlo de la descripción histórica.
 
-## Criterios de aceptación posteriores
+## Validación de la planificación
 
-Antes de activar la planificación: probar los límites de 250 y 2,000 h; fechas de 30/60/90 días; cambios de plan; bases desconocidas o estimadas; lecturas antiguas, simultáneas o decrecientes; equipo sin uso y sin lecturas; permisos por cliente; y conservación del historial. Evitar fechas fijas, valores de ejemplo o contadores de hallazgos simulados del prototipo.
+Pruebas de dominio y HTTP: límites de 250 y 2,000 h, fechas 30/60/90 días, cambios de plan, bases desconocidas o estimadas, lecturas antiguas/simultáneas/decrecientes, equipo sin uso, versiones, autoría, respaldo y permisos. La prueba MySQL comprueba dos cambios simultáneos (uno se confirma y el otro recibe conflicto), conservación del historial y rollback. La revisión visual usa una copia privada en memoria; no crea planes de prueba en producción.

@@ -1,3 +1,4 @@
+import { preparePlan, todayGT } from '../domain/maintenance-plan';
 import { findingClosed, upgradeFindingCollection } from '../domain/equipment-findings';
 import { definitions, type Actor, type Database, type EntityName, type EntityRecord, type Scalar } from '../domain/model';
 import { assertAdmin, filterVisible } from '../domain/permissions';
@@ -100,7 +101,7 @@ export class LocalDataSource {
   }
   private assertEditable(entity: EntityName, actor: Actor) {
     assertAdmin(actor);
-    if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo', 'Hallazgo'].includes(entity)) throw new ValidationError('La edición de este módulo se habilitará en su etapa de desarrollo.');
+    if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo', 'Hallazgo', 'PlanPM'].includes(entity)) throw new ValidationError('La edición de este módulo se habilitará en su etapa de desarrollo.');
   }
   repository(entity: EntityName, actor: Actor): Repository {
     const getAll = async () => structuredClone(filterVisible(actor, entity, this.database.entities[entity]));
@@ -110,22 +111,33 @@ export class LocalDataSource {
       export: async predicate => { assertAdmin(actor); return (await getAll()).filter(predicate ?? (() => true)); },
       create: async input => {
         this.assertEditable(entity, actor);
-        const fields = cleanFields(entity, input); const errors = validateRecord(entity, fields);
+        let fields = cleanFields(entity, input);
+        if (entity === 'PlanPM') { try { fields = preparePlan(fields, this.database.entities.OrdenServicio); } catch (error) { throw new ValidationError(error instanceof Error ? error.message : 'Plan inválido.'); } }
+        const errors = validateRecord(entity, fields);
         const duplicate = uniqueError(entity, fields, this.database.entities[entity]);
         if (errors.length || duplicate) throw new ValidationError(errors.join('; ') || duplicate!);
         const next = structuredClone(this.database); const row = this.record(entity, actor, fields, next.entities[entity]);
+        if (entity === 'PlanPM') {
+          const previous = next.entities.PlanPM.filter(plan => plan.schema_plan === 1 && plan.equipo_id === row.equipo_id && plan.tipo_plan === row.tipo_plan).sort((a,b) => Number(b.version) - Number(a.version))[0];
+          if (previous) previous.vigente = false;
+          Object.assign(row, { version: Number(previous?.version || 0) + 1, vigente: true, anterior_id: previous?.id || '', confirmado_por: actor.nombre, confirmado_el: row.fecha_creacion, vigente_desde: todayGT() });
+        }
         next.entities[entity].push(row);
         if (entity === 'Equipo') {
           if ((row.propiedad === 'De cliente' || administrativeState(row) === 'En renta') && !row.cliente_id) throw new ValidationError('Selecciona el cliente propietario o el cliente de la renta.');
           this.initialEquipmentReading(next, actor, row);
           this.recordEquipmentStatus(next, actor, row);
         }
-        if (entity === 'Hallazgo') this.recordFindingChange(next, actor, row);
+        if (entity === 'PlanPM') {
+          this.audit(next, actor, 'PlanPM', 'Nueva versión de plan', `${row.codigo} · ${row.tipo_plan} · versión ${row.version} · ${row.intervalo} ${row.criterio} · ${row.estado_plan} · ${row.motivo}`);
+          Object.assign(next.entities.Bitacora.at(-1)!, { equipo_id: row.equipo_id, plan_id: row.id, registrado_por: actor.nombre });
+        } else if (entity === 'Hallazgo') this.recordFindingChange(next, actor, row);
         else this.audit(next, actor, entity, 'Creación', `${row.codigo} · ${row.nombre || `${row.marca} ${row.modelo}`}`); this.commit(next);
         return structuredClone(row);
       },
       update: async (id, input) => {
         this.assertEditable(entity, actor);
+        if (entity === 'PlanPM') throw new ValidationError('Guarda una nueva versión del plan para conservar el historial.');
         const next = structuredClone(this.database); const index = next.entities[entity].findIndex(row => row.id === id);
         if (index < 0) throw new ValidationError('No se encontró el registro.');
         const original = next.entities[entity][index]; const fields = cleanFields(entity, input);

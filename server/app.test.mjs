@@ -355,3 +355,28 @@ test('account operations require CSRF even for a valid session',async t=>{
     assert.equal((await request(path,{method:'POST',headers:{...jsonHeaders,'X-CSRF-Token':'invalid'},body:'{}'})).status,403);
   }
 });
+
+
+test('maintenance plans keep immutable versions, reject stale changes and preserve operational data', async t => {
+  const request=await fixture(t,{id:'test-admin',name:'Admin',role:'Administrador',csrf,token_hash:'hash'});
+  const snapshot=async()=>await (await request('/api/backup',{headers:jsonHeaders})).json();
+  const before=await snapshot();
+  const fields={schema_plan:1,equipo_id:'equipment-1',tipo_plan:'Preventivo',criterio:'Días',intervalo:30,estado_plan:'Activo',base_origen:'Pendiente',base_fecha:'',base_horas:null,base_confirmada:false,motivo:'Configuración sintética',confirmado_por:'Falso',version:50};
+  const mutate=body=>request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify(body)});
+  const first=await mutate({action:'create',entity:'PlanPM',revision:before.revision,fields});assert.equal(first.status,200);const saved=await first.json();
+  assert.equal(saved.result.version,1);assert.equal(saved.result.confirmado_por,'Admin');
+  assert.equal((await mutate({action:'create',entity:'PlanPM',revision:before.revision,fields})).status,409);
+  assert.equal((await mutate({action:'update',entity:'PlanPM',id:saved.result.id,revision:saved.database.revision,fields:{intervalo:60}})).status,400);
+  assert.equal((await mutate({action:'create',entity:'PlanPM',revision:saved.database.revision,fields:{...fields,intervalo:60}})).status,200);
+  const after=await snapshot();assert.equal(after.entities.PlanPM.length,2);assert.equal(after.entities.PlanPM.filter(row=>row.vigente).length,1);
+  assert.deepEqual(after.entities.Equipo,before.entities.Equipo);assert.deepEqual(after.entities.LecturaHorometro,before.entities.LecturaHorometro);assert.deepEqual(after.entities.OrdenServicio,before.entities.OrdenServicio);
+  assert.equal(after.entities.Bitacora.filter(row=>row.plan_id).length,2);
+});
+test('maintenance plan data and writes are restricted to administration',async t=>{
+  for(const user of [coordinator,client,{...coordinator,role:'Técnico'}]) {
+    const request=await fixture(t,user,db=>{db.entities.PlanPM.push({id:'internal-plan',codigo:'PM-TEST',equipo_id:'equipment-1',creado_por:'test-admin',actualizado_por:'test-admin',fecha_creacion:'2026-01-01T12:00:00Z',fecha_actualizacion:'2026-01-01T12:00:00Z',schema_plan:1,tipo_plan:'Preventivo',criterio:'Horas',intervalo:250,estado_plan:'Activo',base_origen:'Pendiente',base_confirmada:false,motivo:'Solo administración',version:1,vigente:true,confirmado_por:'Admin',confirmado_el:'2026-01-01T12:00:00Z',vigente_desde:'2026-01-01'});});
+    const response=await request('/api/database',{headers:jsonHeaders});assert.equal(response.status,200);
+    const db=await response.json();assert.deepEqual(db.entities.PlanPM,[]);
+    assert.equal((await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'create',entity:'PlanPM',revision:0,fields:{},actor:{rol:'Administrador'}})})).status,403);
+  }
+});
