@@ -11,6 +11,8 @@ export function canAccessModule(actor: Actor, module: string): boolean {
 export function canWriteCatalogs(actor: Actor) { return actor.rol === 'Administrador'; }
 export function filterVisible(actor: Actor, entity: EntityName, rows: EntityRecord[]) {
   if (actor.rol === 'Administrador') return rows;
+  // Findings remain internal to administration until client visibility is designed.
+  if (entity === 'Hallazgo') return [];
   // Internal cost fields must also be absent from repository exports.
   rows = rows.map(row => Object.fromEntries(Object.entries(row).filter(([key]) => !key.startsWith('costo_'))) as EntityRecord);
   if (entity === 'Usuario') return rows.filter(row => row.id === actor.id);

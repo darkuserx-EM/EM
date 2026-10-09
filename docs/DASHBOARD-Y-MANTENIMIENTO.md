@@ -12,9 +12,26 @@ La ficha abre en **Resumen** para administración. Las pestañas Reparaciones y 
 - Los estados históricos pendientes se describen como reportes por revisar; no se convierten en averías abiertas ni cambian el estado operativo actual.
 - Sin predicciones, alertas automáticas de vencimiento ni escrituras de datos. Se reutilizan los datos ya disponibles en la ficha, sin agregar consultas o intervalos de sincronización.
 
-## Etapa 2: seguimiento de hallazgos
+## Etapa 2: seguimiento de hallazgos implementado
 
-Propuesta pendiente de implementación: registrar componente, descripción, prioridad confirmada, estado, responsable, reporte de origen, reporte de resolución y visibilidad para el cliente. Revisar las recomendaciones importadas antes de convertirlas en hallazgos abiertos. Una visita puede tener varias recomendaciones o repetir una anterior: contar reportes no equivale a contar fallas.
+Administración cuenta con la pestaña **Hallazgos y notas**, y un acceso destacado desde Resumen. Incluye todos los reportes con recomendaciones del equipo, sin depender del filtro de fechas del historial.
+
+- Las recomendaciones se leen del reporte original; no se crean hallazgos automáticamente ni se decide que siguen abiertos. Se puede revisar el reporte y crear uno o varios seguimientos, cada uno con descripción propia.
+- Cada seguimiento guarda componente, prioridad, responsable, estado, fecha programada y reporte de origen. Estados: Por confirmar, Abierto, Cotizado, Aprobado, Programado, Resuelto y Descartado.
+- Activar un seguimiento exige prioridad definida. Programado exige responsable y fecha. Resuelto exige explicación y una orden del mismo equipo reportada como completada, de fecha no anterior al origen. Descartado exige motivo. Las transiciones se registran con nota del cambio; se permite corregir/reabrir con trazabilidad.
+- El equipo y el reporte de origen quedan fijos después de crear el seguimiento. Se bloquean duplicados con el mismo equipo, origen y descripción. Los cambios de autoría y cierre los genera el servidor.
+- La bitácora permite consultar quién cambió el seguimiento y cuándo. No se elimina el hallazgo: se resuelve o descarta. Esto no modifica automáticamente el estado operativo, el aviso de mantenimiento, los servicios ni los horómetros.
+- La interfaz y los datos de esta etapa son exclusivos de administración. La selección y publicación de hallazgos para el cliente se diseñará junto con su vista en la etapa 4.
+
+### Persistencia y respaldos
+
+La colección Hallazgo usa el almacenamiento existente de registros MySQL, sin tablas nuevas ni reclasificación de datos antiguos. Los JSON locales anteriores se abren con la colección vacía. Los respaldos nuevos incluyen la hoja Hallazgo y una marca en metadatos para detectar si falta. Los respaldos antiguos, previos a esta colección, se leen con Hallazgo vacío; restaurarlos reemplaza los datos operativos como cualquier restauración y conserva la bitácora. Se descarga primero una copia completa del estado actual.
+
+No volver a una versión anterior para operar nuevos seguimientos sin conservar un respaldo actualizado: el código antiguo no conoce esta colección.
+
+### Validación
+
+Pruebas de dominio: estados, fechas, relaciones entre equipo y orden, prioridad, responsable, duplicados, autoría, conservación de datos, permisos y respaldos anteriores/nuevos. Pruebas HTTP: persistencia, conflictos 409, rechazo de datos cruzados y ocultación ante roles no administrativos. Integración MySQL: altas, dos cambios simultáneos, rollback ante cierre inválido, evidencia de descarte y restauración.
 
 ## Etapa 3: planificación solicitada (aún no activa)
 

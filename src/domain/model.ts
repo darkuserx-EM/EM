@@ -1,6 +1,7 @@
+import { findingComponents, findingPriorities, findingStates } from './equipment-findings';
 import { administrativeStates, maintenanceStates, operationalStates } from './equipment-status';
 
-export const entityNames = ['Cliente', 'Contacto', 'Sede', 'Contrato', 'ContratoEquipo', 'Equipo', 'LecturaHorometro', 'PlanPM', 'Ticket', 'OrdenServicio', 'OTRepuesto', 'OTHoras', 'CheckList', 'CheckListItem', 'Tecnico', 'Gasto', 'Liquidacion', 'Usuario', 'Catalogos', 'Bitacora'] as const;
+export const entityNames = ['Cliente', 'Contacto', 'Sede', 'Contrato', 'ContratoEquipo', 'Equipo', 'LecturaHorometro', 'PlanPM', 'Hallazgo', 'Ticket', 'OrdenServicio', 'OTRepuesto', 'OTHoras', 'CheckList', 'CheckListItem', 'Tecnico', 'Gasto', 'Liquidacion', 'Usuario', 'Catalogos', 'Bitacora'] as const;
 export type EntityName = typeof entityNames[number];
 export type Role = 'Administrador' | 'Coordinador' | 'Técnico' | 'Cliente';
 export type Scalar = string | number | boolean | null;
@@ -28,6 +29,7 @@ const textColumn = (key: string, required = false, options?: readonly string[]):
 const numberColumn = (key: string): Column => ({ key, label: key, type: 'number' });
 export const definitions: Record<EntityName, EntityDefinition> = Object.fromEntries(entityNames.map(name => [name, { label: name, prefix: name.toUpperCase().slice(0, 3), columns: [] }])) as unknown as Record<EntityName, EntityDefinition>;
 Object.assign(definitions, {
+  Hallazgo: { label: 'Hallazgos del equipo', prefix: 'HAL', columns: [textColumn('equipo_id', true), textColumn('descripcion', true), textColumn('componente', true, findingComponents), textColumn('prioridad', true, findingPriorities), textColumn('estado', true, findingStates), textColumn('responsable'), textColumn('fecha_programada'), textColumn('orden_origen_id'), textColumn('orden_resolucion_id'), textColumn('detalle_resolucion'), textColumn('nota_cambio'), textColumn('actualizado_nombre'), textColumn('cerrado_el')] },
   LecturaHorometro: { label: 'Lecturas de horómetro', prefix: 'HOR', columns: [] },
   Cliente: { label: 'Clientes', prefix: 'CLI', columns: [textColumn('nombre', true), textColumn('nombre_comercial'), textColumn('logo'), textColumn('plus_code'), textColumn('sector'), textColumn('estado', true, ['Activo', 'Prospecto', 'Inactivo']), textColumn('ubicacion'), textColumn('referencia_cliente'), textColumn('nit'), textColumn('direccion_fiscal'), numberColumn('dia_facturacion'), textColumn('reporte_mensual_horas', false, ['Sí', 'No']), textColumn('notas_operativas')] },
   Contacto: { label: 'Contactos', prefix: 'CON', columns: [textColumn('cliente_id', true), textColumn('nombre', true), textColumn('cargo'), textColumn('telefono'), textColumn('correo'), textColumn('principal', false, ['Sí', 'No'])] },
