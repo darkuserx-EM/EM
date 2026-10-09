@@ -1,35 +1,10 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import { Camera, Forklift, Maximize2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { EntityRecord } from '../../domain/model';
-import { equipmentViewFields, equipmentReferenceFields, equipmentImageLabels, equipmentImageSource, MAX_EQUIPMENT_IMAGE_LENGTH, validEquipmentImage, type EquipmentImageField } from '../../domain/equipment-images';
+import { equipmentViewFields, equipmentReferenceFields, equipmentImageLabels, equipmentImageSource, type EquipmentImageField } from '../../domain/equipment-images';
+import { prepareEquipmentImage } from './equipment-image-upload';
 import { Modal } from '../../components/ui';
 import './equipment-images.css';
-
-const readDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => {
-  const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('No se pudo leer la imagen.')); reader.readAsDataURL(file);
-});
-async function prepareImage(file: File) {
-  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('Selecciona una imagen PNG, JPG o WebP.');
-  if (file.size > 10 * 1024 * 1024) throw new Error('La imagen debe pesar como máximo 10 MB.');
-  const bitmap = await createImageBitmap(file).catch(() => { throw new Error('No se pudo abrir la imagen. Prueba con otro archivo.'); });
-  try {
-    if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > 40000000) throw new Error('La resolución es demasiado grande. Usa una imagen de hasta 40 megapíxeles.');
-    const original = await readDataUrl(file);
-    if (validEquipmentImage(original)) return original;
-    const canvas = document.createElement('canvas'); const context = canvas.getContext('2d');
-    if (!context) throw new Error('No se pudo preparar la imagen en este navegador.');
-    for (const limit of [2800, 2200, 1800]) {
-      const scale = Math.min(1, limit / Math.max(bitmap.width, bitmap.height));
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      for (const quality of [0.94, 0.86]) {
-        const result = canvas.toDataURL('image/webp', quality);
-        if (result.length <= MAX_EQUIPMENT_IMAGE_LENGTH && validEquipmentImage(result)) return result;
-      }
-    }
-    throw new Error('No se pudo ajustar esta imagen. Prueba con una fotografía más ligera.');
-  } finally { bitmap.close(); }
-}
 
 export function EquipmentPhoto({ equipment, large = false }: { equipment: Partial<EntityRecord>; large?: boolean }) {
   const src = equipmentImageSource(equipment, 'foto_equipo');
@@ -53,7 +28,7 @@ function ImageField({ field, equipment, disabled, onChange, onBusy }: { field: E
   async function select(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; if (!file) return;
     setError(''); setProcessing(true); onBusy(true);
-    try { onChange(await prepareImage(file)); }
+    try { onChange(await prepareEquipmentImage(file, field)); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'No se pudo cargar la imagen.'); }
     finally { setProcessing(false); onBusy(false); event.target.value = ''; }
   }

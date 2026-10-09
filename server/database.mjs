@@ -83,18 +83,29 @@ export async function readSnapshot(pool) {
   try { await conn.beginTransaction(); const db = await readDatabase(conn); await conn.commit(); return db; }
   catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }
+export async function readEquipmentRecord(pool, id) {
+  const [rows] = await pool.execute("SELECT payload FROM em_records WHERE entity='Equipo' AND id=?", [id]);
+  if (!rows.length) return undefined;
+  const row = JSON.parse(rows[0].payload);
+  return row.id === id ? row : undefined;
+}
 export async function consumeLoginAttempt(pool, key, now = Date.now()) {
   await pool.execute('INSERT INTO em_login_limits (bucket,attempts,expires_at) VALUES (?,1,?) ON DUPLICATE KEY UPDATE attempts=IF(expires_at<?,1,attempts+1), expires_at=IF(expires_at<?,VALUES(expires_at),expires_at)', [key,now+900000,now,now]);
   const [rows] = await pool.execute('SELECT attempts FROM em_login_limits WHERE bucket=?', [key]);
   return rows[0].attempts <= 8;
 }
 
-export async function cleanupExpired(pool, now = Date.now()) {
-  // Bounded work per pass; no global application-data lock.
+export async function cleanupExpired(pool, now = Date.now(), { maxPasses = 20 } = {}) {
+  if (!Number.isInteger(maxPasses) || maxPasses < 1 || maxPasses > 20) throw new RangeError('Invalid cleanup pass limit');
+  // At most 10,000 expired rows per table per run; every batch releases its lock.
   const removed = {};
   for (const table of ['em_sessions', 'em_login_limits']) {
-    const [result] = await pool.execute(`DELETE FROM ${table} WHERE expires_at<=? LIMIT 500`, [now]);
-    removed[table] = result.affectedRows;
+    removed[table] = 0;
+    for (let pass = 0; pass < maxPasses; pass++) {
+      const [result] = await pool.execute(`DELETE FROM ${table} WHERE expires_at<=? LIMIT 500`, [now]);
+      removed[table] += result.affectedRows;
+      if (result.affectedRows < 500) break;
+    }
   }
   return removed;
 }

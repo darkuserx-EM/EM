@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import mysql from 'mysql2/promise';
-import { migrate, readSnapshot, readDatabase, saveDatabase, cleanupExpired, consumeLoginAttempt } from './database.mjs';
+import { migrate, readSnapshot, readDatabase, readEquipmentRecord, saveDatabase, cleanupExpired, consumeLoginAttempt } from './database.mjs';
 import { createApp } from './app.mjs';
 import { token, digest, hashPassword } from './security.mjs';
 import { validateDatabase } from './generated/domain.mjs';
@@ -143,11 +143,28 @@ test('MySQL real: persistencia, transacciones, acceso y mantenimiento', {skip:pr
     for(const [key,expires] of [[expired,now-1],[active,now+60000]]) await pool.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at) VALUES (?,?,?,?)',[key,id,token(),expires]);
     const deadBucket=digest('dead-bucket');const liveBucket=digest('live-bucket');
     for(const [key,expires] of [[deadBucket,now-1],[liveBucket,now+60000]]) await pool.execute('INSERT INTO em_login_limits (bucket,attempts,expires_at) VALUES (?,?,?)',[key,1,expires]);
-    await cleanupExpired(pool,now);
+    const backlog=Array.from({length:1200},(_,i)=>[digest(`expired-bucket-${i}`),1,now-1]);
+    await pool.query('INSERT INTO em_login_limits (bucket,attempts,expires_at) VALUES ?', [backlog]);
+    const removed=await cleanupExpired(pool,now);
+    assert.ok(removed.em_login_limits>=1201);
+    assert.equal((await pool.execute('SELECT COUNT(*) AS n FROM em_login_limits WHERE expires_at<=?',[now]))[0][0].n,0);
     assert.equal((await pool.execute('SELECT token_hash FROM em_sessions WHERE token_hash=?',[expired]))[0].length,0);
     assert.equal((await pool.execute('SELECT token_hash FROM em_sessions WHERE token_hash=?',[active]))[0].length,1);
     assert.equal((await pool.execute('SELECT bucket FROM em_login_limits WHERE bucket=?',[deadBucket]))[0].length,0);
     assert.equal((await pool.execute('SELECT bucket FROM em_login_limits WHERE bucket=?',[liveBucket]))[0].length,1);
     assert.equal((await call('session',undefined,current)).status,200);
+  });
+  await t.test('lectura puntual de un equipo no depende de filas ajenas ni altera sus fotos',async()=>{
+    const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jp9sAAAAASUVORK5CYII=';
+    const row={id:'synthetic-photo-equipment',cliente_id:'synthetic-client',placa_datos:image};
+    const conn=await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.execute('INSERT INTO em_records (entity,id,payload) VALUES (?,?,?),(?,?,?)',['Equipo',row.id,JSON.stringify(row),'Equipo','unrelated-corrupt-row','not JSON']);
+      assert.deepEqual(await readEquipmentRecord(conn,row.id),row);
+      assert.equal(await readEquipmentRecord(conn,'unknown-equipment'),undefined);
+      assert.equal(await readEquipmentRecord(conn,"' OR 1=1 --"),undefined);
+      // Synthetic incomplete records never leave this transaction.
+    } finally {await conn.rollback();conn.release();}
   });
 });

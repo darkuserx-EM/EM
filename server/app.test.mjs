@@ -6,7 +6,8 @@ import { createSeed, LocalDataSource, equipmentImageFields } from './generated/d
 import { token } from './security.mjs';
 import { imageReference, presentDatabase, resolveEquipmentImages } from './equipment-images.mjs';
 import { logFailure, parseTrustProxy } from './diagnostics.mjs';
-import { createSnapshotCache } from './snapshot-cache.mjs';
+import { createSnapshotCache, snapshotByteSize } from './snapshot-cache.mjs';
+import { cleanupExpired } from './database.mjs';
 const origin = 'http://localhost:3000';
 const csrf = token();
 const coordinator = {id:'test-coord',name:'Prueba',role:'Coordinador',csrf,token_hash:'hash'};
@@ -24,6 +25,10 @@ function poolFor(user, prepare = () => {}) {
     },
     async execute(sql, args) {
       if(sql.includes('em_sessions s')) return [user?[user]:[]];
+      if(sql.startsWith("SELECT payload FROM em_records WHERE entity='Equipo'")) {
+        const row=db.entities.Equipo.find(item=>item.id===args[0]);
+        return [row?[{payload:JSON.stringify(row)}]:[]];
+      }
       if(sql.startsWith('INSERT INTO em_records')) {
         for(let i=0;i<args.length;i+=3) {
           const [entity,id,payload]=args.slice(i,i+3); const row=JSON.parse(payload); const index=db.entities[entity].findIndex(item=>item.id===id);
@@ -137,6 +142,41 @@ test('normal responses exclude image bytes and only administration exports compl
   assert.equal(exported.rows.length,1);assert.equal(exported.rows[0].foto_equipo,picture);
   for(const field of equipmentImageFields) {assert.equal(db.entities.Equipo[0][field],imageReference(picture));assert.equal(backup.entities.Equipo[0][field],picture);assert.equal(exported.rows[0][field],picture);}
 });
+
+test('image reads touch only the requested equipment and honor reassignment without a snapshot',async t=>{
+  let equipment;let selected=0;
+  const pool=poolFor(client,db=>{withImages(db);equipment=db.entities.Equipo[0];});
+  pool.query=async()=>{throw new Error('Images must not read the entire database');};
+  pool.getConnection=async()=>{throw new Error('Images must not open a snapshot');};
+  const execute=pool.execute;
+  pool.execute=async(sql,args)=>{if(sql.startsWith('SELECT payload')) {selected++;assert.deepEqual(args,['equipment-1']);}return execute(sql,args);};
+  const request=await fixture(t,client,undefined,{pool});const headers={Cookie:'em_session=x'};
+  const path=`/api/equipment-images/equipment-1/placa_datos/${imageHash}`;
+  assert.equal((await request(path,{headers})).status,200);
+  equipment.cliente_id='client-2';
+  assert.equal((await request(path,{headers})).status,404);
+  equipment.cliente_id='client-1';equipment.placa_datos='';
+  assert.equal((await request(path,{headers})).status,404);
+  assert.equal(selected,3);
+});
+
+test('editing works without serializing the complete image-bearing database and preserves originals',async t=>{
+  const request=await fixture(t,{...coordinator,role:'Administrador'},withImages);
+  const stringify=JSON.stringify;
+  const mock=t.mock.method(JSON,'stringify',function(value,...args) {
+    if(value?.entities?.Equipo?.some(row=>equipmentImageFields.some(field=>String(row[field]).startsWith('data:')))) throw new RangeError('Full photo snapshot cannot be serialized');
+    return stringify(value,...args);
+  });
+  const before=await (await request('/api/database',{headers:{Cookie:'em_session=x'}})).json();
+  const saved=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:stringify({action:'update',entity:'Equipo',id:'equipment-1',revision:before.revision,fields:{notas:'Revisión sintética',foto_equipo:before.entities.Equipo[0].foto_equipo}})});
+  assert.equal(saved.status,200);const after=await saved.json();
+  mock.mock.restore();
+  assert.equal(after.database.revision,before.revision+1);
+  const backup=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  for(const field of equipmentImageFields) assert.equal(backup.entities.Equipo[0][field],picture);
+  assert.equal(backup.entities.Equipo[0].notas,'Revisión sintética');
+  assert.equal(JSON.stringify(backup.entities.Bitacora).includes('base64'),false);
+});
 test('image references resolve only to the same original equipment and field',()=>{
   const previous=createSeed();withImages(previous);
   const next=presentDatabase(previous);resolveEquipmentImages(next,previous);assert.equal(next.entities.Equipo[0].foto_equipo,picture);
@@ -208,6 +248,29 @@ test('a pending snapshot older than an observed external revision is reread',asy
   const cache=createSnapshotCache(null,{load:()=>++calls===1?new Promise(resolve=>{finish=resolve;}):Promise.resolve({revision:2})});
   const a=cache.read(1);const b=cache.read(2);finish({revision:1});await a;
   assert.equal((await b).revision,2);assert.equal(calls,2);
+});
+
+test('cache sizing includes Unicode and JSON framing, stops early and never propagates a cache failure',async()=>{
+  const db={schemaVersion:1,revision:2,entities:{Equipo:[{id:'equipo',nombre:'Grúa 🏗️',notas:'"\\\n'}],Bitacora:[]}};
+  const size=Buffer.byteLength(JSON.stringify(db));
+  assert.equal(snapshotByteSize(db),size);
+  const large={revision:3,entities:{Equipo:[{foto:'x'.repeat(1000)},{get unexpected(){throw new Error('Do not measure rows after exceeding the cap');}}]}};
+  assert.ok(snapshotByteSize(large,100)>100);
+  let calls=0;let fail=false;
+  const cache=createSnapshotCache(null,{maxBytes:size,load:async()=>{calls++;return db;},sizeOf:(value,limit)=>{if(fail) throw new RangeError('Cannot measure');return snapshotByteSize(value,limit);}});
+  cache.publish(db);assert.equal(await cache.read(2),db);assert.equal(calls,0);
+  fail=true;assert.doesNotThrow(()=>cache.publish(db));
+  assert.equal(await cache.read(2),db);assert.equal(await cache.read(2),db);assert.equal(calls,2);
+});
+
+test('cleanup drains expired backlogs in bounded batches and stops at the configured cap',async()=>{
+  const left={em_sessions:1205,em_login_limits:10500};const calls=[];
+  const pool={execute:async(sql,args)=>{const table=sql.match(/DELETE FROM (\w+)/)[1];assert.match(sql,/expires_at<=\? LIMIT 500$/);assert.deepEqual(args,[1234]);calls.push(table);const affectedRows=Math.min(500,left[table]);left[table]-=affectedRows;return [{affectedRows}];}};
+  assert.deepEqual(await cleanupExpired(pool,1234),{em_sessions:1205,em_login_limits:10000});
+  assert.equal(calls.filter(name=>name==='em_sessions').length,3);
+  assert.equal(calls.filter(name=>name==='em_login_limits').length,20);
+  assert.deepEqual(await cleanupExpired(pool,1234,{maxPasses:1}),{em_sessions:0,em_login_limits:500});
+  await assert.rejects(cleanupExpired(pool,1234,{maxPasses:Infinity}),RangeError);
 });
 test('database errors have a reference and logs omit SQL, messages, credentials and URL values',async t=>{
   const logs=[];const pool=poolFor(coordinator);const query=pool.query;
