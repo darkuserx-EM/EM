@@ -43,6 +43,50 @@ SHOW VARIABLES LIKE 'max_allowed_packet';
 
 No copiar credenciales, registros ni respaldos a issues, acciones de GitHub o archivos públicos. Confirmar también cuota, retención y recuperación de copias del plan. Estos cambios no requieren contratar otro proveedor.
 
+## Revisión de auditoría v0.2 y almacenamiento externo
+
+La auditoría adicional revisó el commit `345d5fd`; el contraste se realizó sobre `a17a429` y el trabajo local posterior de planificación. Sus pruebas usaron una sustitución temporal de SheetJS y no ejecutaron MySQL. No reproducir esa sustitución ni atribuir sus alertas a la dependencia real. Los porcentajes de contraste del informe son mediciones de su demo; esta revisión no los reproduce como resultados propios.
+
+### Decisiones de arquitectura
+
+| Hallazgos | Decisión |
+| --- | --- |
+| A1–A3, B5, B9: almacenamiento y coste de escritura | Prioridad alta antes de incorporar fotografías en volumen. `em_records` ya contiene una fila por entidad/id, no un documento SQL único. `saveDatabase` escribe solo filas modificadas, pero la lectura, validación y comparación siguen procesando el conjunto. Separar medios primero y medir tiempo/memoria; después migrar entidades e índices de forma gradual. No aumentar el pool o los límites sin medir. |
+| A4–A5: instantáneas y conflictos | Paginar bitácora, introducir consultas por recurso y versiones por registro. La consulta periódica sin cambios ya devuelve 204; no equivale a descargar todo cada 15 segundos. Tras una modificación sí se vuelve a recibir la vista filtrada completa. |
+| A6–A9: dominio, identidades y migraciones | Añadir migraciones numeradas antes de transformar tablas. Unificar identidad y autoría de bitácora con cuentas reales. Desacoplar reglas de negocio del almacenamiento local al introducir repositorios SQL. Cambiar todo el servidor a TypeScript no es urgente. |
+| B1–B3: proxy, usuarios y datos visibles | Verificar proxy antes de ampliar usuarios. Implementar administración de cuentas y lista explícita de campos visibles por rol. El ID interno del cliente y el motivo operativo fueron solicitados como información visible: no retirarlos indiscriminadamente. Separar notas internas de observaciones para el cliente. |
+| B4, B6–B8: sesiones y operación | Añadir inactividad con aviso para no perder formularios; el sondeo automático no debe renovar actividad humana. Medir latencia/errores sin registrar cuerpos, credenciales o imágenes. Revisar retiro del token de instalación. Mantener dependencia SheetJS e integridad; preparar distribución alternativa si se repite el problema de disponibilidad del CDN. |
+| F1–F3: legibilidad y datos del navegador | Formato y análisis estático en un PR mecánico independiente. Tokens visuales graduales. Evaluar caché por recurso después de separar endpoints; incorporar otra librería no corrige por sí sola el coste de las instantáneas. |
+| F4–F6: pruebas y carga inicial | Añadir pruebas de navegador de flujos críticos y medición de carga; mantener las pruebas del dominio y MySQL. Dividir páginas pesadas cuando los tiempos lo justifiquen. No hay urgencia en retirar la clave de montaje por actor. |
+| U1–U6: navegación e información operativa | Reducir módulos sin funcionalidad, avisos de cero y banners repetidos. Priorizar pendientes reales, búsqueda y equipos en móvil. Reubicar estados junto al equipo. Integrar por pantalla con comparación visual, sin reemplazar toda la interfaz en un cambio. |
+| U7–U9 y UI1–UI6 | Proteger formularios con cambios, mejorar tamaños y contraste, objetivos táctiles y foco. El nuevo formulario de planificación incorpora estas medidas; el resto requiere un bloque propio. Los estados ya tienen texto, aunque pequeño: no dependen exclusivamente del color. Un cambio global de tipografía necesita pruebas visuales. Modo oscuro no es prioritario. |
+
+### Decisión tras revisar AppSheet con Google Drive
+
+La aplicación existente usa Google Sheets y referencias de archivo en las columnas `Foto Antes` y `Foto Despues`. Se comprobó una correspondencia entre un ID de reporte, su ruta relativa y un archivo de Drive. Los ejemplos, identificadores de cuenta y capturas se mantienen fuera del repositorio público. AppSheet conserva activada la firma de URL; no desactivarla para integrar el portal.
+
+**Primera opción a ensayar: Drive como origen privado de fotografías y Hostinger para la aplicación.** Aprovecha el almacenamiento existente y permite consultar las fotos históricas sin moverlas ni duplicarlas. Es una decisión de diseño; el portal todavía no tiene conexión permanente con Drive y no se han migrado medios.
+
+- Registrar en una tabla de medios: ID estable del archivo de Drive, tipo, tamaño, huella calculada una vez, dimensiones, equipo/reporte, categoría (antes/después, placa o vista), orden, autor y fecha. Conservar ID y ruta de origen de AppSheet para importaciones repetibles. El nombre de archivo no es una clave única de Drive.
+- Autorizar cada consulta según sesión y cliente en el servidor. Credenciales de Google solo en servidor. No convertir carpetas en públicas ni utilizar enlaces de la vista previa de AppSheet como enlaces permanentes.
+- Servir miniaturas y versiones de consulta al abrir el expediente; original disponible bajo demanda. Mantener controles de acceso al usar caché y al reasignar equipos. Acotar memoria, concurrencia y tamaño por archivo, y manejar cuotas/errores de Drive sin bloquear el guardado de otros datos.
+- Para nuevas fotos, carga separada del formulario (por archivo, con reintentos e identificador de operación). El equipo/reporte almacena referencias, no base64. Usar una colección de evidencias por reporte para permitir varias fotos antes y después, sin multiplicar columnas fijas.
+- Durante la convivencia, AppSheet es el origen de sus reportes históricos. Empezar con lectura/importación unidireccional e idempotente; no activar escritura bidireccional ni sobrescribir correcciones del portal sin definir quién es dueño de cada campo. No usar el número de fila de Sheets como identidad del reporte.
+- La autorización de este chat a Drive no autoriza automáticamente al servidor del portal. Configurar una conexión permanente con acceso mínimo a los archivos necesarios. Si las nuevas cargas usan una cuenta de servicio, verificar propiedad y cuota: no suponer que hereda el espacio personal del usuario. Para My Drive, evaluar OAuth de la cuenta propietaria y su revocación/renovación.
+- Mantener respaldo independiente que incluya archivos y metadatos, política de retención y recuperación ensayada. Drive como almacenamiento principal no sustituye un respaldo. Nunca borrar originales al migrar sin copia y verificación.
+
+Hostinger puede ser otro proveedor de archivos, pero antes hay que demostrar que el directorio privado persiste tras reinicio y despliegue, que tiene permisos apropiados y que entra en respaldos recuperables. El espacio libre del plan no prueba esa persistencia. Google Cloud Storage es una alternativa futura con facturación separada; no usa automáticamente la cuota de Google One/Drive.
+
+### Prueba de aceptación del siguiente bloque de medios
+
+1. Vincular un reporte de muestra a sus imágenes antes/después mediante ID de Drive, sin mover originales ni alterar AppSheet.
+2. Comprobar acceso autorizado y rechazo entre clientes, usuario sin sesión, archivo retirado y equipo reasignado.
+3. Medir carga inicial y apertura de imágenes con miniaturas, concurrencia, errores y cuota. Sin cargar todos los originales en una instantánea.
+4. Guardar y consultar medios tras reinicio/despliegue; probar duplicados, cargas interrumpidas y revocación de autorización de Google.
+5. Restaurar un respaldo en un entorno aislado y comparar referencias y huellas. Migrar gradualmente las imágenes actuales solo después de estas pruebas.
+
+Fuentes oficiales consultadas: [referencias de archivo y firma de URL en AppSheet](https://support.google.com/appsheet/answer/10107317?hl=en), [descarga autorizada mediante Drive API](https://developers.google.com/workspace/drive/api/guides/manage-downloads), [límites de Drive API](https://developers.google.com/workspace/drive/api/guides/limits), [almacenamiento de Google One](https://support.google.com/googleone/answer/6374270?hl=en) y [facturación de Cloud Storage](https://cloud.google.com/storage/pricing).
+
 ## Publicación y reversión
 
 Conservar un respaldo privado antes de publicar, exigir las comprobaciones de la rama protegida y comparar todos los registros después. No se transforma ninguna fotografía existente ni se modifica el esquema. Ante una regresión, revertir el código mediante PR y publicar la revisión anterior; no restaurar datos antiguos para revertir este cambio.

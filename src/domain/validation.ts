@@ -1,3 +1,4 @@
+import { planFieldErrors, planLinkErrors, planMetadata } from './maintenance-plan';
 import { findingClosed, findingLinkErrors } from './equipment-findings';
 import { catalogGroups, definitions, entityNames, type Database, type EntityName, type EntityRecord, type Scalar } from './model';
 
@@ -32,6 +33,7 @@ export function validateRecord(entity: EntityName, input: Record<string, unknown
     if (input.estado === 'Programado' && (!String(input.responsable || '').trim() || !input.fecha_programada)) errors.push('Para programar, indica responsable y fecha.');
     if (findingClosed(input as EntityRecord) && !String(input.detalle_resolucion || '').trim()) errors.push('Explica la resolución o el motivo de descarte.');
   }
+  if (entity === 'PlanPM') errors.push(...planFieldErrors(input));
   return errors;
 }
 export function uniqueError(entity: EntityName, input: Record<string, unknown>, rows: EntityRecord[], excludeId?: string): string | null {
@@ -44,7 +46,7 @@ export function uniqueError(entity: EntityName, input: Record<string, unknown>, 
   return null;
 }
 export function cleanFields(entity: EntityName, input: Record<string, unknown>): Record<string, Scalar> {
-  const fields = Object.fromEntries(definitions[entity].columns.filter(column => input[column.key] !== undefined && !(entity === 'Hallazgo' && ['actualizado_nombre', 'cerrado_el'].includes(column.key)) && !(entity === 'Equipo' && statusMetadataFields.some(key => key === column.key))).map(column => [column.key, typeof input[column.key] === 'string' ? String(input[column.key]).trim() : input[column.key] as Scalar]));
+  const fields = Object.fromEntries(definitions[entity].columns.filter(column => input[column.key] !== undefined && !(entity === 'PlanPM' && planMetadata.some(key => key === column.key)) && !(entity === 'Hallazgo' && ['actualizado_nombre', 'cerrado_el'].includes(column.key)) && !(entity === 'Equipo' && statusMetadataFields.some(key => key === column.key))).map(column => [column.key, typeof input[column.key] === 'string' ? String(input[column.key]).trim() : input[column.key] as Scalar]));
   return entity === 'Equipo' ? synchronizeEquipmentUnits(fields) : fields;
 }
 function uniqueKeys(entity: EntityName, row: Record<string, unknown>): [string, string][] {
@@ -52,6 +54,8 @@ function uniqueKeys(entity: EntityName, row: Record<string, unknown>): [string, 
   if (row.codigo) keys.push([JSON.stringify(['codigo', normalize(row.codigo)]), 'El código ya existe.']);
   if (entity === 'Equipo' && row.serie) keys.push([JSON.stringify(['serie', normalize(row.serie)]), 'La serie ya existe.']);
   if (entity === 'Cliente' && row.referencia_cliente) keys.push([JSON.stringify(['referencia', normalize(row.referencia_cliente)]), 'La referencia de cliente ya existe.']);
+  if (entity === 'PlanPM' && row.schema_plan === 1 && row.vigente === true) keys.push([JSON.stringify(['plan', row.equipo_id, row.tipo_plan]), 'Solo puede haber una versión vigente por equipo y tipo.']);
+  if (entity === 'PlanPM' && row.schema_plan === 1) keys.push([JSON.stringify(['plan-version', row.equipo_id, row.tipo_plan, row.version]), 'La versión del plan ya existe.']);
   if (entity === 'Hallazgo') keys.push([JSON.stringify(['hallazgo', row.equipo_id, String(row.orden_origen_id || ''), normalize(row.descripcion)]), 'Seguimiento duplicado para el mismo equipo y origen.']);
   if (entity === 'Catalogos') keys.push([JSON.stringify(['catalogo', normalize(row.categoria), normalize(row.nombre)]), 'El nombre ya existe en esta categoría.']);
   return keys;
@@ -104,6 +108,15 @@ export function validateDatabase(value: unknown, { maxRows = Infinity }: { maxRo
   const equipmentMap = new Map(data.entities.Equipo.map(row => [row.id, row]));
   for (const row of data.entities.Hallazgo) {
     const errors = findingLinkErrors(row, equipmentMap, orders);
+    if (errors.length) throw new ValidationError(`${row.codigo}: ${errors.join(' ')}`);
+  }
+  const plans = new Map(data.entities.PlanPM.map(row => [row.id, row]));
+  for (const row of data.entities.PlanPM) {
+    const errors = planLinkErrors(row, equipmentMap, orders);
+    if (row.schema_plan === 1 && row.anterior_id) {
+      const previous = plans.get(String(row.anterior_id));
+      if (!previous || previous.equipo_id !== row.equipo_id || previous.tipo_plan !== row.tipo_plan || Number(previous.version) + 1 !== row.version || previous.vigente !== false) errors.push('La versión anterior del plan no corresponde.');
+    }
     if (errors.length) throw new ValidationError(`${row.codigo}: ${errors.join(' ')}`);
   }
   if (data.entities.Catalogos.some(row => !catalogGroups.includes(row.categoria as typeof catalogGroups[number]))) throw new ValidationError('Categoría de catálogo inválida.');

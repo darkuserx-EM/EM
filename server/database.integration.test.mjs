@@ -125,6 +125,18 @@ test('MySQL real: persistencia, transacciones, acceso y mantenimiento', {skip:pr
     assert.deepEqual(saved.entities.OrdenServicio,before.entities.OrdenServicio);
     assert.equal((await call('mutate',{action:'restore',database:before,revision:saved.revision},current)).status,200);
   });
+  await t.test('planes: versiones atómicas y conflicto de cambios simultáneos',async()=>{
+    const before=(await call('backup',undefined,current)).data;
+    const equipment=await call('mutate',{action:'create',entity:'Equipo',revision:before.revision,fields:{marca:'Prueba',modelo:'PM-Test',serie:'PM-SYNTHETIC',tipo:'Prueba',propiedad:'Propio',estado:'Disponible'}},current);assert.equal(equipment.status,200);
+    const fields={schema_plan:1,equipo_id:equipment.data.result.id,tipo_plan:'Preventivo',criterio:'Días',intervalo:30,estado_plan:'Activo',base_origen:'Pendiente',base_fecha:'',base_horas:null,base_confirmada:false,motivo:'Base sintética pendiente'};
+    const first=await call('mutate',{action:'create',entity:'PlanPM',revision:equipment.data.database.revision,fields},current);assert.equal(first.status,200);
+    const revision=first.data.database.revision;
+    const results=await Promise.all([60,90].map(intervalo=>call('mutate',{action:'create',entity:'PlanPM',revision,fields:{...fields,intervalo}},current)));
+    assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+    const saved=await readSnapshot(pool);const plans=saved.entities.PlanPM.filter(row=>row.equipo_id===equipment.data.result.id);assert.equal(plans.length,2);assert.equal(plans.filter(row=>row.vigente).length,1);assert.equal(plans.find(row=>row.vigente).version,2);
+    const invalid=await call('mutate',{action:'create',entity:'PlanPM',revision:saved.revision,fields:{...fields,base_origen:'Base inicial',base_fecha:'2099-01-01',base_confirmada:true,base_calidad:'Registrada'}},current);assert.equal(invalid.status,400);assert.deepEqual(await readSnapshot(pool),saved);
+    assert.equal((await call('mutate',{action:'restore',database:before,revision:saved.revision},current)).status,200);
+  });
   await t.test('contraseña exige la actual, invalida otras sesiones y rechaza la antigua',async()=>{
     const other=await login();
     const wrong=await call('password',{currentPassword:'incorrecta',newPassword},current);assert.equal(wrong.status,400);assert.equal((await call('session',undefined,other)).status,200);
