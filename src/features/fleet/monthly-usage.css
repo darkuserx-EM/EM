@@ -1,9 +1,9 @@
 .monthly-usage { min-width:0; }
 .monthly-mobile-hint { display:none; }
-.monthly-comparison { font-size:14px; line-height:1.8; margin:12px 0 16px; color:#334831; }
+.monthly-comparison { font-size:13px; line-height:1.8; margin:8px 0 5px; color:#334831; }
 .monthly-comparison strong { color:#253c24; }
-.monthly-chart-scroll { max-width:100%; overflow-x:auto; padding:6px 0 8px; }
-.monthly-chart { width:100%; display:block; overflow:visible; }
+.monthly-chart-scroll { width:100%; min-width:0; max-width:100%; overflow-x:auto; padding:0; }
+.monthly-chart { width:100%; height:212px; display:block; overflow:hidden; }
 .monthly-chart text { font-family:inherit; font-size:11px; fill:#41513e; }
 .monthly-chart .monthly-value { fill:#243b24; font-size:11px; }
 .monthly-axis { stroke:#d6ddcf; stroke-width:1; }
@@ -16,10 +16,11 @@
 .monthly-bar:focus-visible .monthly-selection { stroke:#99531a; stroke-width:4; }
 .monthly-average { pointer-events:none; }
 .monthly-average line { stroke:#8b947f; stroke-dasharray:4 3; }
-.monthly-legend { display:flex; flex-wrap:wrap; gap:10px 20px; margin:12px 0 18px; color:#5c6856; font-size:11px; }
+.monthly-legend { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin:10px 0 4px; color:#5c6856; font-size:11px; }
 .monthly-legend span { display:flex; align-items:center; gap:7px; }
 .monthly-legend i { width:12px; height:12px; background:#355f2d; border-radius:2px; }
 .monthly-legend i.projected { background:#e2edda; border:1px dashed #527843; }
+.monthly-legend .monthly-toggle { display:flex; align-items:center; gap:7px; margin-left:auto; cursor:pointer; min-height:28px; }
 .monthly-controls { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin:16px 0; }
 .monthly-controls label { font-size:12px; color:#52634b; }
 .monthly-controls select { display:block; margin-top:6px; min-width:220px; }
