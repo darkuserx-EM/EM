@@ -50,7 +50,7 @@ function ReadingChart({ history, onReport }: { history: EquipmentHistory; onRepo
   </>;
 }
 
-export function EquipmentSummary({ history, onReport, onView, followUp, onPlan, overview, periodFilters }: { history: EquipmentHistory; overview?: ReactNode; periodFilters?: ReactNode; followUp?: ReactNode; onPlan?: () => void; onReport: (id: string) => void; onView: (view: 'repairs' | 'usage') => void }) {
+export function EquipmentSummary({ history, onReport, onView, followUp, onPlan, overview, periodFilters, monthlyUsage }: { history: EquipmentHistory; overview?: ReactNode; periodFilters?: ReactNode; monthlyUsage?: ReactNode; followUp?: ReactNode; onPlan?: () => void; onReport: (id: string) => void; onView: (view: 'repairs' | 'usage') => void }) {
   const summary = summarizeEquipment(history);
   const maxCount = Math.max(1, ...summary.serviceTypes.map(group => group.count));
   return <section className="equipment-summary" aria-label="Resumen del equipo">
@@ -64,6 +64,7 @@ export function EquipmentSummary({ history, onReport, onView, followUp, onPlan, 
       <div className="summary-kpi"><CalendarDays size={18} /><span>Lecturas disponibles</span><strong>{history.usage.length}</strong><small>{!history.usage.length ? 'Sin lecturas en este período' : summary.estimatedReadings ? `${summary.estimatedReadings} estimada${summary.estimatedReadings === 1 ? '' : 's'} · originales conservados` : 'Sin lecturas marcadas como estimadas'}</small></div>
     </div>
     <section className="panel summary-panel"><div className="summary-section-title"><h3>Evolución del horómetro</h3><span>H1 · horas</span></div><ReadingChart history={history} onReport={onReport} /></section>
+    {monthlyUsage}
     <div className="summary-columns">
       <section className="panel summary-panel"><h3>Servicios por tipo</h3><p className="summary-caption">Clasificación de los reportes registrados.</p><div className="summary-bars">{summary.serviceTypes.map(group => <div key={group.label}><span>{group.label}</span><strong>{group.count}</strong><div className="summary-bar-track" aria-hidden="true"><i style={{ width: `${group.count / maxCount * 100}%` }} /></div></div>)}</div></section>
       <section className="panel summary-panel"><h3>Mantenimientos registrados</h3><p className="summary-caption">Últimos reportados como completados dentro del período.</p>{[['Preventivo', summary.lastPreventive], ['Mayor', summary.lastMajor]].map(([label, value]) => {

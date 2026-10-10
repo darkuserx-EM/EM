@@ -1,0 +1,33 @@
+.monthly-usage { min-width:0; }
+.monthly-mobile-hint { display:none; }
+.monthly-comparison { font-size:14px; line-height:1.8; margin:12px 0 16px; color:#334831; }
+.monthly-comparison strong { color:#253c24; }
+.monthly-chart-scroll { max-width:100%; overflow-x:auto; padding:6px 0 8px; }
+.monthly-chart { width:100%; display:block; overflow:visible; }
+.monthly-chart text { font-family:inherit; font-size:11px; fill:#41513e; }
+.monthly-chart .monthly-value { fill:#243b24; font-size:11px; }
+.monthly-axis { stroke:#d6ddcf; stroke-width:1; }
+.monthly-observed { fill:#355f2d; }
+.monthly-projected { fill:#e2edda; stroke:#527843; stroke-width:1; stroke-dasharray:3 2; }
+.monthly-bar { cursor:pointer; outline:none; }
+.monthly-bar:hover .monthly-observed,.monthly-bar:focus-visible .monthly-observed { fill:#547e44; }
+.monthly-selection { stroke:transparent; stroke-width:3; }
+.monthly-bar[aria-pressed=true] .monthly-selection { stroke:#355f2d; }
+.monthly-bar:focus-visible .monthly-selection { stroke:#99531a; stroke-width:4; }
+.monthly-average { pointer-events:none; }
+.monthly-average line { stroke:#8b947f; stroke-dasharray:4 3; }
+.monthly-legend { display:flex; flex-wrap:wrap; gap:10px 20px; margin:12px 0 18px; color:#5c6856; font-size:11px; }
+.monthly-legend span { display:flex; align-items:center; gap:7px; }
+.monthly-legend i { width:12px; height:12px; background:#355f2d; border-radius:2px; }
+.monthly-legend i.projected { background:#e2edda; border:1px dashed #527843; }
+.monthly-controls { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin:16px 0; }
+.monthly-controls label { font-size:12px; color:#52634b; }
+.monthly-controls select { display:block; margin-top:6px; min-width:220px; }
+.monthly-controls .monthly-toggle { display:flex; align-items:center; gap:9px; cursor:pointer; }
+.monthly-toggle input { width:17px; height:17px; accent-color:#355f2d; }
+.monthly-detail { padding:16px 18px; background:#f5f7f0; border-radius:8px; border:1px solid #e3e8dc; font-size:12px; line-height:1.8; color:#53604e; }
+.monthly-detail > div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px 16px; color:#2f472b; }
+.monthly-detail strong { font-size:13px; }
+.monthly-detail p { margin-top:8px; }
+.monthly-warning { font-size:12px; color:#795323; line-height:1.7; margin-top:12px; }
+@media(max-width:700px) { .monthly-mobile-hint { display:block; font-size:11px; color:#626b60; line-height:1.7; }.monthly-comparison { font-size:13px; }.monthly-controls,.monthly-controls > label { width:100%; }.monthly-controls select { min-width:0; width:100%; }.monthly-detail { padding:14px; } }
