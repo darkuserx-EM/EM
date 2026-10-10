@@ -69,3 +69,77 @@
 .dashboard-state-disclosure > summary { padding:13px 18px; cursor:pointer; color:#52634b; font-size:12px; line-height:1.8; }
 .equipment-dashboard .dashboard-state-disclosure .equipment-state-panel { border:0; border-top:1px solid #dee4d6; border-radius:0; margin:0; background:transparent; }
 .equipment-dashboard .equipment-summary .history-filters { margin:0; }
+
+/* Compact equipment file: stable chart dimensions and details on demand. */
+.equipment-dashboard .equipment-heading { padding:18px 22px; border-radius:12px; }
+.equipment-dashboard .equipment-title h1 { font-size:25px; }
+.equipment-dashboard .equipment-summary,.equipment-dashboard-overview { gap:16px; }
+.equipment-dashboard .summary-title h2 { font-size:21px; }
+.equipment-dashboard .summary-title p { margin-top:4px; font-size:12px; }
+.equipment-dashboard .dashboard-indicator { padding:15px 18px; gap:8px; border-radius:10px; }
+.equipment-dashboard .dashboard-indicator strong { font-size:24px; letter-spacing:-.5px; }
+.equipment-dashboard .dashboard-indicator small { font-size:11px; }
+.equipment-dashboard .dashboard-next { padding:18px 20px; border-radius:12px; }
+.equipment-dashboard .dashboard-next > header { margin-bottom:14px; gap:12px; }
+.equipment-dashboard .dashboard-next h2 { font-size:18px; margin-top:3px; }
+.equipment-dashboard .dashboard-cycle-grid { gap:14px; align-items:start; }
+.equipment-dashboard .dashboard-cycle { padding:15px 16px; border-radius:9px; }
+.equipment-dashboard .dashboard-cycle .pm-card-title h3 { font-size:15px; }
+.equipment-dashboard .dashboard-cycle .pm-interval { font-size:12px; margin:8px 0; }
+.equipment-dashboard .dashboard-cycle .pm-target { margin:12px 0; padding:13px 15px; }
+.equipment-dashboard .dashboard-cycle .pm-target strong { font-size:24px; margin:4px 0; }
+.equipment-dashboard .dashboard-cycle .pm-cycle-progress { margin-top:12px; }
+.equipment-dashboard .dashboard-cycle .pm-cycle-track { height:6px; }
+.equipment-dashboard .dashboard-cycle .pm-cycle-progress small { margin-top:5px; font-size:11px; }
+.equipment-dashboard .dashboard-cycle .summary-link { margin-top:10px; font-size:12px; }
+.equipment-dashboard .dashboard-caption { margin-top:14px; padding-top:10px; font-size:11px; }
+.summary-period-heading { display:flex; align-items:center; justify-content:space-between; gap:12px 20px; flex-wrap:wrap; margin-top:4px; }
+.summary-period-heading h3 { font-size:15px; color:#30442c; }
+.equipment-dashboard .summary-period-heading .history-filters { padding:0; border:0; background:transparent; gap:10px; }
+.equipment-dashboard .summary-period-heading input { min-height:36px; }
+.equipment-dashboard .summary-kpis { gap:10px; }
+.equipment-dashboard .summary-kpi { display:grid; grid-template-columns:18px minmax(0,1fr) auto; align-items:center; padding:13px 16px; gap:4px 10px; border-radius:10px; }
+.equipment-dashboard .summary-kpi > svg { grid-column:1; grid-row:1; }
+.equipment-dashboard .summary-kpi > span { grid-column:2; grid-row:1; }
+.equipment-dashboard .summary-kpi > strong { grid-column:3; grid-row:1/3; font-size:24px; white-space:nowrap; }
+.equipment-dashboard .summary-kpi > small { grid-column:2; grid-row:2; font-size:11px; }
+.equipment-dashboard .summary-panel { padding:18px 22px; border-radius:12px; }
+.equipment-dashboard .summary-panel h3 { font-size:17px; }
+.equipment-dashboard .summary-section-title { gap:8px 16px; flex-wrap:wrap; }
+.reading-chart-scroll { width:100%; min-width:0; overflow-x:auto; }
+.equipment-dashboard .summary-meter { height:212px; margin-top:4px; overflow:hidden; }
+.equipment-dashboard .summary-meter text { font-size:11px; }
+.equipment-dashboard .summary-grid-line { stroke:#e1e6db; stroke-dasharray:none; }
+.equipment-dashboard .summary-line { stroke:#355f2d; stroke-width:1.8; }
+.equipment-dashboard .summary-line.estimated { stroke:#ad782c; stroke-dasharray:4 4; }
+.equipment-dashboard .summary-meter-area { fill:#355f2d; fill-opacity:.045; }
+.equipment-dashboard .summary-point .point-mark { stroke:#fff; stroke-width:1.5; fill:#355f2d; }
+.equipment-dashboard .summary-point.estimated .point-mark { fill:white; stroke:#a8762b; }
+.equipment-dashboard .summary-point[aria-pressed=true] .point-mark { stroke:#355f2d; stroke-width:2; fill:white; }
+.equipment-dashboard .summary-point.estimated[aria-pressed=true] .point-mark { stroke:#a8762b; }
+.equipment-dashboard .summary-chart-legend { margin:10px 0 0; gap:8px 18px; font-size:11px; }
+.chart-instruction { margin-left:auto; color:#6d7567; }
+.chart-selection-row { display:flex; align-items:center; justify-content:space-between; gap:6px 18px; flex-wrap:wrap; padding:9px 0; min-height:38px; font-size:12px; color:#52634b; }
+.chart-selection-row strong { font-size:13px; font-weight:600; color:#30442c; }
+.chart-selection-row em { display:inline-block; font-style:normal; font-size:10px; line-height:1.7; padding:1px 6px; margin-left:8px; border-radius:4px; background:#f7efde; color:#875918; }
+.chart-disclosure { border-top:1px solid #e4e8de; font-size:12px; color:#5b6b52; }
+.chart-disclosure > summary { padding:10px 0 0; min-height:32px; cursor:pointer; font-weight:500; }
+.chart-disclosure-body { padding:12px 0 2px; }
+.chart-disclosure-body .summary-footnote { margin-top:10px; }
+.equipment-dashboard .summary-reading-detail { padding:12px 15px; margin-top:10px; }
+.equipment-dashboard .summary-reading-detail p:first-child { margin-top:0; }
+.equipment-dashboard .summary-bars { gap:12px; margin-top:16px; }
+.equipment-dashboard .summary-maintenance { margin-top:12px; gap:4px; }
+.equipment-dashboard .summary-timeline button { padding:13px 26px 13px 12px; gap:3px; }
+.equipment-dashboard .summary-timeline { margin-top:10px; }
+@media(max-width:700px) {
+  .equipment-dashboard .equipment-heading { padding:16px; }
+  .equipment-dashboard .equipment-title h1 { font-size:22px; }
+  .equipment-dashboard .summary-panel,.equipment-dashboard .dashboard-next { padding:16px; }
+  .equipment-dashboard .summary-kpis { grid-template-columns:1fr; gap:8px; }
+  .equipment-dashboard .summary-kpi { padding:11px 13px; }
+  .equipment-dashboard .summary-period-heading .history-filters { width:100%; flex-wrap:wrap; }
+  .equipment-dashboard .summary-section-title > span { font-size:11px; }
+  .chart-instruction { margin-left:0; width:100%; }
+  .equipment-dashboard .dashboard-next > header .button { width:auto; }
+}

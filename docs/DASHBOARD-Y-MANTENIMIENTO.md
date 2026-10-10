@@ -98,3 +98,16 @@ A solicitud del usuario se incorpora **Uso por mes** debajo de la evolución del
 - Proyección opcional desde la última lectura **hasta hoy**, nunca hasta un cierre futuro: mínimo tres instantes comparables en los últimos 90 días de la lectura más reciente, que abarquen 14 días, incremento positivo y última lectura de hasta 30 días. Se usa únicamente el tramo continuo posterior a cualquier anomalía o estimación, sin lecturas estimadas. Fechas futuras o inválidas impiden proyectar. Se explica la tasa diaria, fechas y cantidad de lecturas. Se puede ocultar sin alterar el historial.
 - La línea de promedio del primer año visible exige tres meses completos. La comparación reciente usa los últimos tres meses completos consecutivos. Los promedios son orientativos y no incluyen meses parciales ni proyección; pueden incluir distribuciones derivadas de una lectura corregida, identificada en el detalle del mes.
 - Verificación con casos sintéticos: límites de mes/año, febrero bisiesto, zona horaria, conservación de horas, filtros sin lecturas interiores, duplicados, reinicios, valores inválidos, estimaciones, proyección reciente/antigua/insuficiente, promedios y ausencia de modificaciones al origen. Revisión visual en escritorio y móvil sobre copia privada de los datos.
+
+
+## Ficha compacta y revisión visual (9 de octubre de 2026)
+
+La autoevaluación detectó gráficos SVG cuya altura y rotulación crecían con el ancho, tarjetas de indicadores demasiado altas y explicaciones siempre abiertas que repetían información. Se ajusta únicamente la presentación administrativa:
+
+- Gráficos de 212 px de alto, con ancho adaptativo medido en su contenedor. Los puntos y textos conservan su tamaño en pantallas amplias. El horómetro reduce sus marcas de fecha en móvil; el gráfico mensual conserva desplazamiento horizontal y un selector alternativo.
+- Lectura/mes seleccionado y condición estimada o proyectada siempre visibles. El listado y la explicación completa se despliegan con **Ver detalle de lecturas** y **Ver detalle y cálculo mensual**. Se mantienen los valores originales de las lecturas estimadas y el enlace al reporte.
+- Indicadores del período en una fila compacta, filtros junto al título y menor separación entre secciones. Se compactan cabecera, servicios recientes y resumen de los planes.
+- El resumen de cada ciclo conserva objetivo, estado, horas/días restantes y avance. La base y su fórmula se despliegan con **Ver base y cálculo**. La vista de configuración mantiene su presentación completa.
+- Las advertencias de lecturas antiguas o no comparables siguen visibles. No se cambian cálculos, datos, permisos ni solicitudes al servidor. Los colores del horómetro mantienen la distinción entre lecturas registradas y estimadas; no se añaden nuevas clasificaciones de visitas en esta revisión visual.
+
+Validación visual en escritorio, pantalla amplia y móvil, más comprobación de selección por teclado, acceso a reportes, filtros, detalles y ausencia de desbordamientos. Capturas y datos de prueba se conservan fuera del repositorio público.
