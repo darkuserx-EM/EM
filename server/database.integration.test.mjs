@@ -137,6 +137,31 @@ test('MySQL real: persistencia, transacciones, acceso y mantenimiento', {skip:pr
     const invalid=await call('mutate',{action:'create',entity:'PlanPM',revision:saved.revision,fields:{...fields,base_origen:'Base inicial',base_fecha:'2099-01-01',base_confirmada:true,base_calidad:'Registrada'}},current);assert.equal(invalid.status,400);assert.deepEqual(await readSnapshot(pool),saved);
     assert.equal((await call('mutate',{action:'restore',database:before,revision:saved.revision},current)).status,200);
   });
+  await t.test('operaciones: reintento idempotente, concurrencia y cierre con lectura atómica',async()=>{
+    const before=(await call('backup',undefined,current)).data;
+    const conn=await pool.getConnection();
+    try {
+      await conn.beginTransaction();const previous=await readDatabase(conn,true);const next=structuredClone(previous);const now=new Date().toISOString();
+      next.entities.Tecnico.push({id:'ops-tech-synthetic',codigo:'TEC-SYNTHETIC',nombre:'Técnico de integración',creado_por:'fixture',actualizado_por:'fixture',fecha_creacion:now,fecha_actualizacion:now});
+      next.revision++;await saveDatabase(conn,next,previous);await conn.commit();
+    } finally {await conn.rollback();conn.release();}
+    const ready=(await call('backup',undefined,current)).data;
+    const equipment=await call('mutate',{action:'create',entity:'Equipo',revision:ready.revision,fields:{marca:'Prueba',modelo:'OPS-Test',serie:'OPS-SYNTHETIC',tipo:'Prueba',propiedad:'Propio',estado:'Disponible',horometro:100}},current);assert.equal(equipment.status,200);
+    const body={action:'create',entity:'Ticket',revision:equipment.data.database.revision,fields:{equipo_id:equipment.data.result.id,cliente_id:'',titulo:'Prueba integrada',descripcion:'Revisión sintética de frenos',prioridad:'Alta',solicitud_id:'integration-ticket-001'}};
+    const ticket=await call('mutate',body,current);assert.equal(ticket.status,200);
+    const replay=await call('mutate',body,current);assert.equal(replay.status,200);assert.equal(replay.data.result.id,ticket.data.result.id);assert.equal(replay.data.database.revision,ticket.data.database.revision);
+    const create=await call('mutate',{action:'create',entity:'OrdenServicio',revision:ticket.data.database.revision,fields:{equipo_id:equipment.data.result.id,cliente_id:'',ticket_id:ticket.data.result.id,tecnico_id:'ops-tech-synthetic',tipo:'Correctivo',prioridad:'Alta',estado:'Programada',fecha_programada:'2026-10-10',sintoma:'Revisar frenos',visible_cliente:false}},current);assert.equal(create.status,200);
+    const id=create.data.result.id;const revision=create.data.database.revision;
+    const updates=await Promise.all(['En proceso','En espera'].map(estado=>call('mutate',{action:'update',entity:'OrdenServicio',id,revision,fields:{estado,expected_updated_at:create.data.result.fecha_actualizacion}},current)));
+    assert.deepEqual(updates.map(row=>row.status).sort(),[200,409]);const changed=updates.find(row=>row.status===200);
+    const snapshot=(await call('backup',undefined,current)).data;
+    const closeFields={estado:'Completada',diagnostico:'Freno desajustado',trabajo_realizado:'Ajustar frenos',pruebas_realizadas:'Retención',resultado_pruebas:'Satisfactorio',horometro:90,expected_updated_at:changed.data.result.fecha_actualizacion};
+    const invalid=await call('mutate',{action:'update',entity:'OrdenServicio',id,revision:snapshot.revision,fields:closeFields},current);assert.equal(invalid.status,400);assert.deepEqual(canonical(await readSnapshot(pool)),canonical(snapshot));
+    const closed=await call('mutate',{action:'update',entity:'OrdenServicio',id,revision:snapshot.revision,fields:{...closeFields,horometro:105}},current);assert.equal(closed.status,200);
+    const after=await readSnapshot(pool);assert.equal(after.entities.OrdenServicio.find(row=>row.id===id).estado,'Completada');assert.equal(after.entities.LecturaHorometro.filter(row=>row.orden_id===id).length,1);assert.equal(after.entities.LecturaHorometro.find(row=>row.orden_id===id).valor,105);
+    assert.deepEqual(canonical(after).entities.Equipo,canonical(snapshot).entities.Equipo);assert.deepEqual(after.entities.Hallazgo,snapshot.entities.Hallazgo);
+    assert.equal((await call('mutate',{action:'restore',database:before,revision:after.revision},current)).status,200);
+  });
   await t.test('contraseña exige la actual, invalida otras sesiones y rechaza la antigua',async()=>{
     const other=await login();
     const wrong=await call('password',{currentPassword:'incorrecta',newPassword},current);assert.equal(wrong.status,400);assert.equal((await call('session',undefined,other)).status,200);

@@ -8,9 +8,11 @@ import { siteContactError } from './site-profile';
 import { synchronizeEquipmentUnits } from './equipment-specifications';
 import { equipmentImageFields, equipmentImageLabels, validEquipmentImage } from './equipment-images';
 import { ValidationError } from './errors';
+import { isOperationalEntity, operationFieldErrors, operationLinkErrors } from './operations';
 
 export function normalize(value: unknown) { return String(value ?? '').trim().normalize('NFKC').toLocaleLowerCase('es'); }
 export function validateRecord(entity: EntityName, input: Record<string, unknown>): string[] {
+  if (isOperationalEntity(entity) && input.schema_operacion !== 1) return [];
   const errors: string[] = [];
   for (const column of definitions[entity].columns) {
     const value = input[column.key];
@@ -20,7 +22,8 @@ export function validateRecord(entity: EntityName, input: Record<string, unknown
     if (column.type === 'boolean' && typeof value !== 'boolean') errors.push(`${column.label}: usa Sí o No`);
     if (column.type === 'text' && typeof value !== 'string') errors.push(`${column.label}: debe ser texto`);
     if (column.options && !column.options.includes(String(value))) errors.push(`${column.label}: valor no permitido`);
-    if (!(entity === 'Cliente' && column.key === 'logo') && !(entity === 'Equipo' && equipmentImageFields.some(field => field === column.key)) && typeof value === 'string' && value.length > (entity === 'Hallazgo' && column.key === 'descripcion' ? 2000 : 500)) errors.push(`${column.label}: máximo ${entity === 'Hallazgo' && column.key === 'descripcion' ? 2000 : 500} caracteres`);
+    const maxLength = isOperationalEntity(entity) ? 4000 : entity === 'Hallazgo' && column.key === 'descripcion' ? 2000 : 500;
+    if (!(entity === 'Cliente' && column.key === 'logo') && !(entity === 'Equipo' && equipmentImageFields.some(field => field === column.key)) && typeof value === 'string' && value.length > maxLength) errors.push(`${column.label}: máximo ${maxLength} caracteres`);
   }
   if (entity === 'Cliente' && !validClientLogo(input.logo)) errors.push('Logo: usa una imagen PNG, JPG o WebP válida y ajustada desde el formulario.');
   if (entity === 'Equipo') for (const field of equipmentImageFields) if (!validEquipmentImage(input[field])) errors.push(`${equipmentImageLabels[field]}: usa una imagen PNG, JPG o WebP válida y ajustada desde el formulario.`);
@@ -34,6 +37,7 @@ export function validateRecord(entity: EntityName, input: Record<string, unknown
     if (findingClosed(input as EntityRecord) && !String(input.detalle_resolucion || '').trim()) errors.push('Explica la resolución o el motivo de descarte.');
   }
   if (entity === 'PlanPM') errors.push(...planFieldErrors(input));
+  errors.push(...operationFieldErrors(entity, input));
   return errors;
 }
 export function uniqueError(entity: EntityName, input: Record<string, unknown>, rows: EntityRecord[], excludeId?: string): string | null {
@@ -52,6 +56,7 @@ export function cleanFields(entity: EntityName, input: Record<string, unknown>):
 function uniqueKeys(entity: EntityName, row: Record<string, unknown>): [string, string][] {
   const keys: [string, string][] = [];
   if (row.codigo) keys.push([JSON.stringify(['codigo', normalize(row.codigo)]), 'El código ya existe.']);
+  if (isOperationalEntity(entity) && row.schema_operacion === 1 && row.solicitud_id) keys.push([JSON.stringify(['solicitud', row.creado_por, row.solicitud_id]), 'La solicitud de alta ya existe.']);
   if (entity === 'Equipo' && row.serie) keys.push([JSON.stringify(['serie', normalize(row.serie)]), 'La serie ya existe.']);
   if (entity === 'Cliente' && row.referencia_cliente) keys.push([JSON.stringify(['referencia', normalize(row.referencia_cliente)]), 'La referencia de cliente ya existe.']);
   if (entity === 'PlanPM' && row.schema_plan === 1 && row.vigente === true) keys.push([JSON.stringify(['plan', row.equipo_id, row.tipo_plan]), 'Solo puede haber una versión vigente por equipo y tipo.']);
@@ -101,11 +106,16 @@ export function validateDatabase(value: unknown, { maxRows = Infinity }: { maxRo
       if (row.orden_id && (!orders.has(String(row.orden_id)) || orders.get(String(row.orden_id))?.equipo_id !== row.equipo_id)) throw new ValidationError(`${row.codigo}: la orden no corresponde al equipo.`);
       if (row.fecha && (typeof row.fecha !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(row.fecha) || !Number.isFinite(Date.parse(row.fecha)))) throw new ValidationError(`${row.codigo}: fecha de historial inválida.`);
       for (const key of ['valor', 'horas', 'horometro', 'cantidad', 'costo_repuestos', 'costo_mano_obra', 'costo_unitario']) {
-        if (row[key] !== undefined && (typeof row[key] !== 'number' || !Number.isFinite(row[key]) || Number(row[key]) < 0)) throw new ValidationError(`${row.codigo}: ${key} debe ser un número mayor o igual a 0.`);
+        const missingOptionalMeter = name === 'OrdenServicio' && key === 'horometro' && row[key] === null;
+        if (row[key] !== undefined && !missingOptionalMeter && (typeof row[key] !== 'number' || !Number.isFinite(row[key]) || Number(row[key]) < 0)) throw new ValidationError(`${row.codigo}: ${key} debe ser un número mayor o igual a 0.`);
       }
     }
   }
   const equipmentMap = new Map(data.entities.Equipo.map(row => [row.id, row]));
+  for (const name of ['Ticket', 'OrdenServicio', 'LecturaHorometro'] as const) for (const row of data.entities[name]) {
+    const errors = operationLinkErrors(name, row, data.entities);
+    if (errors.length) throw new ValidationError(`${row.codigo}: ${errors.join(' ')}`);
+  }
   for (const row of data.entities.Hallazgo) {
     const errors = findingLinkErrors(row, equipmentMap, orders);
     if (errors.length) throw new ValidationError(`${row.codigo}: ${errors.join(' ')}`);

@@ -9,6 +9,7 @@ import { administrativeState, equipmentStatusChanges, equipmentStatusValues } fr
 import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-images';
 import { ValidationError } from '../domain/errors';
 import type { HistoricalReportsImport } from './historical-reports';
+import { isOperationalEntity, prepareOperation } from '../domain/operations';
 
 export const STORAGE_KEY = 'portal-em.database.v1';
 export const LOCAL_MAX_ROWS = 20000;
@@ -101,11 +102,12 @@ export class LocalDataSource {
     db.entities.LecturaHorometro.push(reading);
   }
   private assertEditable(entity: EntityName, actor: Actor) {
+    if (isOperationalEntity(entity)) return;
     assertAdmin(actor);
     if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo', 'Hallazgo', 'PlanPM'].includes(entity)) throw new ValidationError('La edición de este módulo se habilitará en su etapa de desarrollo.');
   }
   repository(entity: EntityName, actor: Actor): Repository {
-    const getAll = async () => structuredClone(filterVisible(actor, entity, this.database.entities[entity]));
+    const getAll = async () => structuredClone(filterVisible(actor, entity, this.database.entities[entity], this.database.entities));
     return {
       getAll,
       getById: async id => (await getAll()).find(row => row.id === id),
@@ -113,11 +115,21 @@ export class LocalDataSource {
       create: async input => {
         this.assertEditable(entity, actor);
         let fields = cleanFields(entity, input);
+        const requestContent = JSON.stringify(Object.entries(fields).filter(([key]) => !['solicitud_id', 'schema_operacion'].includes(key)).sort(([a], [b]) => a.localeCompare(b)));
+        if (isOperationalEntity(entity)) {
+          const previousRequest = fields.solicitud_id && this.database.entities[entity].find(row => row.solicitud_id === fields.solicitud_id && row.creado_por === actor.id);
+          if (previousRequest) {
+            if (previousRequest.solicitud_datos !== requestContent) throw new ValidationError('La solicitud ya se guardó con otra información. Revisa el registro antes de crear otro.');
+            return structuredClone(previousRequest);
+          }
+          fields = prepareOperation(entity, fields, actor, this.database.entities);
+        }
         if (entity === 'PlanPM') { try { fields = preparePlan(fields, this.database.entities.OrdenServicio); } catch (error) { throw new ValidationError(error instanceof Error ? error.message : 'Plan inválido.'); } }
         const errors = validateRecord(entity, fields);
         const duplicate = uniqueError(entity, fields, this.database.entities[entity]);
         if (errors.length || duplicate) throw new ValidationError(errors.join('; ') || duplicate!);
         const next = structuredClone(this.database); const row = this.record(entity, actor, fields, next.entities[entity]);
+        if (isOperationalEntity(entity) && fields.solicitud_id) row.solicitud_datos = requestContent;
         if (entity === 'PlanPM') {
           const previous = next.entities.PlanPM.filter(plan => plan.schema_plan === 1 && plan.equipo_id === row.equipo_id && plan.tipo_plan === row.tipo_plan).sort((a,b) => Number(b.version) - Number(a.version))[0];
           if (previous) previous.vigente = false;
@@ -133,7 +145,7 @@ export class LocalDataSource {
           this.audit(next, actor, 'PlanPM', 'Nueva versión de plan', `${row.codigo} · ${row.tipo_plan} · versión ${row.version} · ${row.intervalo} ${row.criterio} · ${row.estado_plan} · ${row.motivo}`);
           Object.assign(next.entities.Bitacora.at(-1)!, { equipo_id: row.equipo_id, plan_id: row.id, registrado_por: actor.nombre });
         } else if (entity === 'Hallazgo') this.recordFindingChange(next, actor, row);
-        else this.audit(next, actor, entity, 'Creación', `${row.codigo} · ${row.nombre || `${row.marca} ${row.modelo}`}`); this.commit(next);
+        else this.audit(next, actor, entity, 'Creación', `${row.codigo} · ${row.titulo || row.sintoma || row.nombre || row.origen || `${row.marca} ${row.modelo}`}`); this.commit(next);
         return structuredClone(row);
       },
       update: async (id, input) => {
@@ -141,7 +153,9 @@ export class LocalDataSource {
         if (entity === 'PlanPM') throw new ValidationError('Guarda una nueva versión del plan para conservar el historial.');
         const next = structuredClone(this.database); const index = next.entities[entity].findIndex(row => row.id === id);
         if (index < 0) throw new ValidationError('No se encontró el registro.');
-        const original = next.entities[entity][index]; const fields = cleanFields(entity, input);
+        const original = next.entities[entity][index]; let fields = cleanFields(entity, input);
+        if (isOperationalEntity(entity)) fields = prepareOperation(entity, fields, actor, next.entities, original);
+        if (isOperationalEntity(entity) && input.expected_updated_at !== undefined && input.expected_updated_at !== original.fecha_actualizacion) throw Object.assign(new ValidationError('Este registro cambió mientras lo editabas. Cierra el formulario, revisa la versión actual y vuelve a intentarlo.'), { status: 409 });
         if (entity === 'Hallazgo') {
           if ((fields.equipo_id !== undefined && fields.equipo_id !== original.equipo_id) || (fields.orden_origen_id !== undefined && String(fields.orden_origen_id || '') !== String(original.orden_origen_id || ''))) throw new ValidationError('El equipo y el reporte de origen se conservan. Crea otro seguimiento si corresponde.');
           if (fields.estado !== undefined && fields.estado !== original.estado && !String(fields.nota_cambio || fields.detalle_resolucion || '').trim()) throw new ValidationError('Indica el motivo del cambio de estado.');
@@ -150,12 +164,18 @@ export class LocalDataSource {
           if (typeof original.horometro === 'number' && fields.horometro !== undefined && fields.horometro !== original.horometro) throw new ValidationError('El horómetro se actualiza desde las lecturas. La ficha conserva el valor registrado.');
           if (fields.propiedad !== undefined && fields.propiedad !== original.propiedad) throw new ValidationError('La corrección de propiedad aún no está habilitada; el código original se conserva.');
         }
-        const row: EntityRecord = { ...original, ...fields, actualizado_por: actor.id, fecha_actualizacion: new Date().toISOString() };
+        const row: EntityRecord = { ...original, ...fields, actualizado_por: actor.id, fecha_actualizacion: new Date(Math.max(Date.now(), Date.parse(original.fecha_actualizacion) + 1)).toISOString() };
         if (entity === 'Equipo' && (row.propiedad === 'De cliente' || administrativeState(row) === 'En renta') && !row.cliente_id) throw new ValidationError('Selecciona el cliente propietario o el cliente de la renta.');
         const errors = validateRecord(entity, row); const duplicate = uniqueError(entity, row, next.entities[entity], id);
         if (errors.length || duplicate) throw new ValidationError(errors.join('; ') || duplicate!);
         if (entity === 'Equipo') this.recordEquipmentStatus(next, actor, row, original);
         next.entities[entity][index] = row;
+        if (entity === 'OrdenServicio' && row.estado === 'Completada' && original.estado !== 'Completada' && typeof row.horometro === 'number') {
+          const readingFields = prepareOperation('LecturaHorometro', { equipo_id: row.equipo_id, cliente_id: row.cliente_id, orden_id: row.id, fecha: row.fecha_fin || new Date().toISOString(), valor: row.horometro, ...(typeof row.odometro_millas === 'number' ? { odometro_millas: row.odometro_millas } : {}) }, { ...actor, rol: 'Administrador' }, next.entities);
+          const reading = this.record('LecturaHorometro', actor, readingFields, next.entities.LecturaHorometro);
+          next.entities.LecturaHorometro.push(reading);
+          this.audit(next, actor, 'LecturaHorometro', 'Lectura de cierre', `${row.codigo} · ${row.horometro} h; lectura original conservada.`);
+        }
         if (entity === 'Equipo' && typeof original.horometro !== 'number') this.initialEquipmentReading(next, actor, row);
         const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : equipmentImageFields.some(field => field === key) ? `${equipmentImageLabels[key as keyof typeof equipmentImageLabels]}: ${value ? 'actualizada' : 'retirada'}` : `${key}: ${original[key]} → ${value}`).join('; ');
         if (entity === 'Hallazgo') this.recordFindingChange(next, actor, row, original);
