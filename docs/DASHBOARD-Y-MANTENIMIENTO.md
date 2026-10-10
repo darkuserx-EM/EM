@@ -122,3 +122,16 @@ El resumen administrativo utiliza ahora el ancho disponible junto al menú, con 
 - Los hallazgos conservan el alcance de todo el equipo y están antes del filtro de actividad. La planificación sigue siendo independiente del período. No se modifican registros, cálculos, permisos ni solicitudes al servidor.
 
 Verificación con una copia privada: anchos de escritorio y móvil, gráficas lado a lado, ausencia de desplazamiento horizontal de la página, detalles del plan, filtros y selección mensual. Las pruebas existentes de dominio y servidor siguen siendo aplicables.
+
+## Diseñador opcional y ancho común de la ficha
+
+El ancho disponible, cabecera, estado desplegable, pestañas y disposición de datos complementarios se mantienen estables en las seis vistas administrativas: Resumen, Mantenimiento, Hallazgos, Reparaciones, Uso y Fotografías. El ancho externo común también se aplica a las vistas permitidas de otros roles. Uso y horómetro reutiliza el gráfico de tamaño estable y detalle accesible del resumen.
+
+Administración dispone de **Diseñar ficha**, una vista opcional para proponer la distribución del Resumen con nueve bloques de contenido real. No altera la ficha original ni guarda cambios en el servidor:
+
+- Mover desde el título y redimensionar desde la esquina inferior derecha, mediante puntero o flechas del teclado. Controles alternativos de ancho, alto, columna y fila. La cuadrícula impide superposiciones desplazando los bloques afectados; Escape cancela el gesto y Deshacer recupera hasta 20 cambios.
+- Guardado local por usuario y navegador, con aviso si el almacenamiento no está disponible. Restablecer es reversible con Deshacer. Vista previa permite consultar los bloques sin asas de edición; durante la edición, su contenido es inerte para evitar activar otra acción al moverlos.
+- Descargar/Cargar diseño intercambia un archivo JSON versionado de geometría: identificadores de bloques, columnas, filas, ancho y alto. No incluye registros, fotografías, credenciales ni HTML. El importador valida formato, versión, tamaño, identidad, límites y ausencia de superposiciones. Trasladar la distribución al original requiere una integración posterior; el botón no publica diseños automáticamente.
+- El lienzo usa 12 columnas y un ancho mínimo de escritorio. En móvil se recorre horizontalmente dentro de su contenedor; el resto de la página no se desborda. La ficha original conserva su adaptación móvil.
+
+Validación: pruebas de colisiones, límites, importación y exportación; arrastre y redimensionado reales, teclado, deshacer, recarga y archivo descargado/cargado; medición del mismo ancho en las seis pestañas a 375, 1,280 y 2,400 px sobre copia privada. No se crean registros operativos de prueba en producción.
