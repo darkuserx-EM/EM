@@ -9,7 +9,9 @@ import {operationalState,retiredEquipment} from '../../domain/equipment-status';
 import {todayGT,currentPlan,projectPlan,planTypes} from '../../domain/maintenance-plan';
 import {EquipmentStatus,FleetSummary} from '../fleet/EquipmentStatus';
 import './operational.css';
-export function Home({reports=false}:{reports?:boolean}){
+import OperationsHome from './OperationsHome';
+export function Home({reports=false}:{reports?:boolean}) { return reports ? <ReportsDashboard reports/> : <OperationsHome/>; }
+function ReportsDashboard({reports=false}:{reports?:boolean}){
  const actor=useActor(),machines=useRows('Equipo'),orders=useRows('OrdenServicio'),clients=useRows('Cliente'),plans=useRows('PlanPM'),readings=useRows('LecturaHorometro');
  const [client,setClient]=useState(''),[equipment,setEquipment]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[origin,setOrigin]=useState(''),[status,setStatus]=useState('Todos');
  const tech=actor.rol==='Técnico',customer=actor.rol==='Cliente',today=todayGT();
