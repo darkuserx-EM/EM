@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, ArrowUpRight, ClipboardList, Plus, CheckCircle2, Pencil } from 'lucide-react';
 import { useActor, useToast } from '../../app/state';
-import { ErrorNotice, Modal } from '../../components/ui';
+import { ErrorNotice, Modal, useUnsavedChanges } from '../../components/ui';
 import { getDataSource } from '../../data/source';
 import type { EntityRecord } from '../../domain/model';
 import { completedService, findingClosed, findingComponents, findingPriorities, findingStates, findingSummary, recommendationReports } from '../../domain/equipment-findings';
@@ -27,6 +27,7 @@ function FindingForm({ equipment, services, row, origin, onClose, onSaved }: { e
     fecha_programada: String(row?.fecha_programada || ''), orden_origen_id: String(row?.orden_origen_id || origin?.id || ''),
     orden_resolucion_id: String(row?.orden_resolucion_id || ''), detalle_resolucion: String(row?.detalle_resolucion || ''), nota_cambio: '',
   }));
+  const [initialValues] = useState(values); const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues), onClose);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const set = (key: string, value: string) => setValues(previous => ({ ...previous, [key]: value }));
   const ownServices = services.filter(service => service.equipo_id === equipment.id).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
@@ -45,7 +46,7 @@ function FindingForm({ equipment, services, row, origin, onClose, onSaved }: { e
     finally { setBusy(false); }
   }
   const choose = (key: string, label: string, options: readonly string[]) => <label>{label}<select value={values[key]} onChange={event => set(key, event.target.value)} disabled={busy}>{options.map(value => <option key={value}>{value}</option>)}</select></label>;
-  return <Modal title={row ? `Editar seguimiento ${row.codigo}` : 'Nuevo seguimiento'} onClose={() => { if (!busy) onClose(); }} wide>
+  return <Modal title={row ? `Editar seguimiento ${row.codigo}` : 'Nuevo seguimiento'} onClose={() => { if (!busy) guard.requestClose(); }} wide>{guard.prompt}
     <form className="finding-form" onSubmit={save}>
       <p className="finding-form-equipment">{equipment.codigo} · {equipment.id_interno_cliente || `${equipment.marca} ${equipment.modelo}`}</p>
       {origin && !row && <p className="finding-form-hint">Revisa la nota de {reportLabel(origin)} y deja aquí un solo hallazgo. Puedes crear otro seguimiento para una recomendación diferente del mismo reporte.</p>}
@@ -60,7 +61,7 @@ function FindingForm({ equipment, services, row, origin, onClose, onSaved }: { e
       {row && <label className="finding-full">Nota del cambio{values.estado !== row.estado ? ' *' : ''}<input value={values.nota_cambio} onChange={event => set('nota_cambio', event.target.value)} required={values.estado !== row.estado} maxLength={300} disabled={busy} placeholder="Explica el avance o la corrección" /></label>}
       <p className="finding-form-hint finding-full">Por confirmar conserva una observación pendiente de revisión. Activar un seguimiento requiere definir su prioridad. El estado operativo del equipo se actualiza por separado.</p>
       <div className="finding-full"><ErrorNotice message={error} /></div>
-      <div className="modal-actions finding-full"><button className="button" type="button" onClick={onClose} disabled={busy}>Cancelar</button><button className="button button-dark" type="submit" disabled={busy}>{busy ? 'Guardando…' : 'Guardar seguimiento'}</button></div>
+      <div className="modal-actions finding-full"><button className="button" type="button" onClick={guard.requestClose} disabled={busy}>Cancelar</button><button className="button button-dark" type="submit" disabled={busy}>{busy ? 'Guardando…' : 'Guardar seguimiento'}</button></div>
     </form>
   </Modal>;
 }

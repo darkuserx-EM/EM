@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Check, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
-import { ErrorNotice, Modal } from '../../components/ui';
+import { ErrorNotice, Modal, useUnsavedChanges } from '../../components/ui';
 import { definitions, type EntityRecord, type Scalar } from '../../domain/model';
 import { getDataSource, serverMode } from '../../data/source';
 import { clientDisplayName, clientSectors } from '../../domain/client-profile';
@@ -42,6 +42,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
     const defaults: Record<string, string> = entity === 'Equipo' ? { estado: 'Pendiente de revisión', propiedad: 'Propio' } : entity === 'Cliente' ? { estado: 'Activo' } : entity === 'Sede' && !row ? { departamento: 'Guatemala' } : {};
     return { ...defaults, ...Object.fromEntries(Object.entries(row ?? {}).map(([key, value]) => [key, value === null ? '' : String(value)])), ...(entity === 'Equipo' ? { ...equipmentFormValues(row), ...equipmentStatusValues(row) } : {}), ...(clientId ? { cliente_id: clientId } : {}) };
   });
+  const [initialValues] = useState(values); const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues), onClose);
   const [logoBusy, setLogoBusy] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const [activeStep, setActiveStep] = useState(0);
@@ -131,7 +132,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
     </div>;
   };
   const renderGroup = (group: { title: string; fields: string[] }) => <fieldset className="record-section" key={group.title}><legend>{group.title}</legend><div className="record-fields">{group.fields.map(renderField)}</div>{entity === 'Equipo' && group.title === 'Llantas y rodos' && row?.llantas && <p className="equipment-legacy-note">Dato anterior de llantas (conservado): {row.llantas}</p>}</fieldset>;
-  return <Modal title={`${row ? 'Editar' : entity === 'Sede' ? 'Nueva' : 'Nuevo'} ${names[entity]}`} onClose={() => { if (!busy && !logoBusy) onClose(); }} wide className={entity === 'Equipo' ? 'equipment-form-modal' : ''}><form ref={formRef} onSubmit={save} noValidate={entity === 'Equipo'} className="record-form"><p className="record-intro">{row ? `Código ${row.codigo}. ` : 'El código se genera automáticamente. '}Los campos con <strong>*</strong> son obligatorios.</p>
+  return <Modal title={`${row ? 'Editar' : entity === 'Sede' ? 'Nueva' : 'Nuevo'} ${names[entity]}`} onClose={() => { if (!busy && !logoBusy) guard.requestClose(); }} wide className={entity === 'Equipo' ? 'equipment-form-modal' : ''}>{guard.prompt}<form ref={formRef} onSubmit={save} noValidate={entity === 'Equipo'} className="record-form"><p className="record-intro">{row ? `Código ${row.codigo}. ` : 'El código se genera automáticamente. '}Los campos con <strong>*</strong> son obligatorios.</p>
     {entity === 'Cliente' && <><div className="client-auto-code"><span>Código de cliente</span><strong>{row?.codigo || 'Automático al guardar'}</strong></div><ClientLogoField value={String(values.logo || '')} onChange={value => change('logo',value)} disabled={busy || logoBusy} onBusy={setLogoBusy} /></>}
     {clientId && <div className="record-parent"><Info size={16} />{clientDisplayName(clients.rows.find(client => client.id === clientId))}</div>}
     {entity === 'Equipo' ? <>
@@ -146,7 +147,7 @@ export function RecordForm({ entity, row, clientId, onClose, onSaved }: { entity
     </> : groups[entity].map(renderGroup)}
     {['marca','tipo'].map(key => <datalist id={`suggestions-${key}`} key={key}>{catalogs.rows.filter(item => item.activo && item.categoria === (key === 'marca' ? 'Marcas' : 'Tipos de equipo')).map(item => <option key={item.id} value={String(item.nombre)} />)}</datalist>)}
     {entity === 'Cliente' && !row && <p className="record-footer-note">Al guardar se abrirá la ficha para agregar sus contactos, sedes y equipos.</p>}
-    <ErrorNotice message={error} /><div className="modal-actions record-actions"><button type="button" className="button" onClick={onClose} disabled={busy || logoBusy}>Cancelar</button><div className="equipment-step-actions">
+    <ErrorNotice message={error} /><div className="modal-actions record-actions"><button type="button" className="button" onClick={guard.requestClose} disabled={busy || logoBusy}>Cancelar</button><div className="equipment-step-actions">
       {entity === 'Equipo' && <>
         <button type="button" className="button" disabled={busy || logoBusy || activeStep === 0} onClick={() => changeStep(activeStep - 1, true)}><ChevronLeft size={16} />Anterior</button>
         {activeStep < equipmentFormSteps.length - 1 && <button type="button" className="button" disabled={busy || logoBusy} onClick={() => { if (validateEquipment(true)) changeStep(activeStep + 1, true); }}>Siguiente<ChevronRight size={16} /></button>}
