@@ -1,31 +1,29 @@
 import { type ReactNode } from 'react';
-import { ArrowUpRight, CalendarDays, ClipboardList, Gauge, Wrench } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, ClipboardList, Wrench } from 'lucide-react';
 import { useRows } from '../../app/state';
 import { ErrorNotice } from '../../components/ui';
 import type { EntityRecord } from '../../domain/model';
 import { currentPlan, planTypes, projectPlan } from '../../domain/maintenance-plan';
 import { findingSummary } from '../../domain/equipment-findings';
-import { formatDate, formatNumber } from '../../domain/format';
+import { formatNumber } from '../../domain/format';
 import { PlanCycle, remainingLabel } from './PlanCycle';
 import './equipment-dashboard.css';
 
 export type DashboardBlocks = { indicators: ReactNode; planning: ReactNode; followUp: ReactNode };
 
-export function EquipmentDashboard({ equipment, services, readings, findings, findingsReady, findingsError, followUp, render, onPlan, onFindings, onUsage, onServices }: {
+export function EquipmentDashboard({ equipment, services, readings, findings, findingsReady, findingsError, followUp, render, onPlan, onFindings, onServices }: {
   equipment: EntityRecord; services: EntityRecord[]; readings: EntityRecord[]; findings: EntityRecord[];
   followUp: ReactNode; render?: (blocks: DashboardBlocks) => ReactNode;
-  findingsReady: boolean; findingsError: string; onPlan: () => void; onFindings: () => void; onUsage: () => void; onServices: () => void;
+  findingsReady: boolean; findingsError: string; onPlan: () => void; onFindings: () => void; onServices: () => void;
 }) {
   const plans = useRows('PlanPM', true);
   const cycles = planTypes.map(type => { const plan = currentPlan(plans.rows, equipment.id, type); return { type, plan, projection: projectPlan(plan, readings, services) }; });
   const preventive = cycles[0];
   const totals = findingSummary(findings, equipment.id);
-  const latest = readings.filter(row => row.equipo_id === equipment.id && typeof row.valor === 'number').sort((a,b) => String(b.fecha).localeCompare(String(a.fecha)))[0];
   const ownServices = services.filter(row => row.equipo_id === equipment.id);
   const indicators = <div className="dashboard-indicators" aria-label="Indicadores principales del equipo">
       <button className="dashboard-indicator" onClick={onPlan}><span><CalendarDays size={17} />Próximo preventivo</span><strong>{plans.error ? 'No disponible' : !plans.ready ? 'Cargando…' : remainingLabel(preventive.plan, preventive.projection)}</strong><small>{plans.ready && !plans.error ? preventive.projection.status === remainingLabel(preventive.plan, preventive.projection) ? 'Ver planificación →' : preventive.projection.status : 'Consulta la planificación'}</small></button>
       <button className="dashboard-indicator" onClick={onFindings}><span><ClipboardList size={17} />Hallazgos abiertos</span><strong>{findingsError || !findingsReady ? '—' : totals.active}</strong><small>{findingsError ? 'No se pudieron cargar' : !findingsReady ? 'Cargando seguimientos…' : `${totals.critical} críticos · ${totals.pending} por confirmar`}</small></button>
-      <button className="dashboard-indicator" onClick={onUsage}><span><Gauge size={17} />Último horómetro</span><strong>{latest ? `${formatNumber(Number(latest.valor))} h` : 'Sin lectura'}</strong><small>{latest ? `${formatDate(String(latest.fecha))}${latest.es_estimado === true ? ' · Estimado' : ' · Registrado'}` : 'Pendiente de registrar'}</small></button>
       <button className="dashboard-indicator" onClick={onServices}><span><Wrench size={17} />Servicios del equipo</span><strong>{ownServices.length}</strong><small>Todo el historial →</small></button>
     </div>;
   const planning = <section className="dashboard-next panel" aria-label="Próximo servicio">
