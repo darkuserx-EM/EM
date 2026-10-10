@@ -36,6 +36,8 @@ Operación en Guatemala. El portal se utiliza en escritorio y móvil. Las fechas
 
 Portal EM / Expertos en Montacargas (EMSA). Interfaz en español, lenguaje sencillo y operativo. Conservar la identidad existente. Para la vista de administrador y la Ficha del equipo, el usuario solicitó menos tarjetas innecesarias, textos repetidos, redondeado excesivo y degradados genéricos. Las seis pestañas de la ficha comparten ancho, jerarquía y separadores; se conservan los estados, la evidencia, las acciones y el diseñador opcional.
 
+La ficha usa el ancho máximo común de 1,600 px. Cliente, sede y última lectura pertenecen al encabezado; las especificaciones y observaciones se consultan en un panel lateral desplegable. Los costos se muestran solo a administración en Reparaciones y servicios, según el período seleccionado.
+
 ## Evidence on Hand
 
 Estos hechos provienen de las decisiones y respuestas del usuario en la conversación de desarrollo y de la implementación existente. Las pruebas de interfaz deben usar datos sintéticos; no fabricar métricas, estados ni resultados de mantenimiento. No registrar credenciales ni datos privados de clientes en esta documentación.
