@@ -1,0 +1,46 @@
+.equipment-layout-designer { min-width:0; color:#273328; }
+.layout-editor-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:18px 20px; background:#edf3e7; border:1px solid #cbd9be; border-radius:12px; }
+.layout-editor-heading > div > span { font-size:11px; letter-spacing:1px; color:#52634b; }
+.layout-editor-heading h2 { font-size:22px; margin:6px 0; }
+.layout-editor-heading p { font-size:13px; line-height:1.7; color:#52634b; }
+.layout-editor-toolbar { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 12px; }
+.layout-editor-toolbar .button { min-height:40px; font-size:12px; }
+.layout-editor-controls { display:grid; grid-template-columns:minmax(190px,1.5fr) repeat(2,minmax(130px,1fr)) repeat(2,85px); gap:16px; align-items:end; padding:14px 16px; border:1px solid #dbe1d3; background:#fff; border-radius:9px; }
+.layout-editor-controls label { min-width:0; display:grid; gap:8px; font-size:12px; }
+.layout-editor-controls :is(input,select) { width:100%; min-width:0; min-height:36px; font-size:13px; }
+.layout-editor-controls input[type=range] { padding:0; accent-color:#526e3f; }
+.layout-editor-status { font-size:12px; color:#355730; margin:14px 0 8px; line-height:1.7; }
+.layout-editor-hint,.layout-editor-mobile { font-size:12px; color:#636c5d; line-height:1.8; margin:8px 0 14px; }
+.layout-editor-mobile { display:none; }
+.layout-canvas-scroll { max-width:100%; overflow:auto; padding:3px; border:1px solid #d8dfcf; border-radius:10px; background:#e9ede3; }
+.layout-canvas { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); grid-auto-rows:40px; gap:12px; min-width:1000px; min-height:180px; align-items:stretch; background-image:radial-gradient(#b8c4ad 1px,transparent 1px); background-size:13px 13px; }
+.layout-block { min-width:0; min-height:0; position:relative; display:flex; flex-direction:column; background:#fff; border:1px solid #c7d1bc; border-radius:10px; overflow:hidden; container:layout-block / inline-size; }
+.layout-block.is-selected { border-color:#657f50; box-shadow:0 0 0 2px #657f50; z-index:1; }
+.layout-block-handle { flex-shrink:0; display:flex; align-items:center; gap:8px; width:100%; min-height:36px; padding:7px 10px; background:#f0f4e9; border-bottom:1px solid #d6dfcc; font-size:12px; color:#405434; text-align:left; cursor:grab; touch-action:none; user-select:none; }
+.layout-block-handle:active { cursor:grabbing; }
+.layout-block-handle > strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+.layout-block-handle > svg { flex-shrink:0; }
+.layout-block-handle > span { margin-left:auto; white-space:nowrap; font-size:11px; }
+.layout-block-content { flex:1; min-height:0; min-width:0; overflow:auto; padding:8px; }
+.layout-block-content > :is(.panel,.finding-overview) { border:0; box-shadow:none; }
+.layout-block-resize { position:absolute; right:0; bottom:0; display:grid; place-items:center; width:32px; height:32px; background:#e5eddc; border-radius:9px 0 0 0; color:#39572c; cursor:nwse-resize; touch-action:none; }
+.layout-block :is(.dashboard-indicators,.summary-kpis) { gap:8px; }
+.equipment-dashboard .layout-block .dashboard-indicator { padding:10px; }
+.equipment-dashboard .layout-block .dashboard-indicator strong { font-size:22px; }
+.equipment-dashboard .layout-block .dashboard-next { padding:12px; }
+.equipment-dashboard .layout-block .summary-recent { grid-column:auto; }
+.equipment-layout-designer.is-preview .layout-block { box-shadow:none; border-color:#dce1d5; }
+.equipment-layout-designer.is-preview .layout-canvas { background-image:none; }
+.equipment-layout-designer.is-preview .layout-block-content { padding:0; }
+.equipment-layout-designer :is(button,input,select):focus-visible { outline:2px solid #99531a; outline-offset:2px; }
+@container layout-block (max-width:650px) {
+  .layout-block-content .dashboard-cycle-grid { grid-template-columns:minmax(0,1fr); }
+  .layout-block-content .dashboard-indicators { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .layout-block-content .summary-kpis { grid-template-columns:minmax(0,1fr); }
+}
+@media(max-width:1250px) { .layout-editor-mobile { display:block; } }
+@media(max-width:800px) {
+  .layout-editor-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .layout-editor-controls > label:first-child { grid-column:1/-1; }
+  .layout-editor-heading { padding:16px; }
+}
