@@ -10,7 +10,7 @@ La ficha abre en **Resumen** para administración. Las pestañas Reparaciones y 
 - Gráfica interactiva: puntos seleccionables con teclado, listado alternativo y acceso al reporte de origen. Las lecturas estimadas mantienen su identificación, valor original y explicación. Una disminución del contador interrumpe la línea.
 - Servicios por tipo, últimos preventivos y mayores reportados como completados dentro del período y cinco servicios recientes con acceso al reporte completo.
 - Los estados históricos pendientes se describen como reportes por revisar; no se convierten en averías abiertas ni cambian el estado operativo actual.
-- Sin predicciones, alertas automáticas de vencimiento ni escrituras de datos. Se reutilizan los datos ya disponibles en la ficha, sin agregar consultas o intervalos de sincronización.
+- En esta primera etapa, sin predicciones, alertas automáticas de vencimiento ni escrituras de datos. Las estimaciones mensuales se incorporan en el apartado posterior de esta entrega. Se reutilizan los datos ya disponibles en la ficha, sin agregar consultas o intervalos de sincronización.
 
 ## Etapa 2: seguimiento de hallazgos implementado
 
@@ -76,7 +76,7 @@ Los indicadores y planes consultan todo el historial; el filtro de fechas afecta
 
 El módulo Mantenimiento muestra tarjetas que filtran objetivos alcanzados, próximos vencimientos, bases/lecturas por revisar y ciclos sin configurar. Incluye búsqueda, filtro por cliente y acceso a los planes del equipo. Los contadores expresan ciclos (dos posibles por equipo), no equipos averiados. La configuración sigue restringida a administración.
 
-No se trasladan del prototipo las visitas no planificadas, diagnósticos de fallas repetidas, interpolaciones mensuales, el modo combinado horas/días ni las fechas de ejemplo: faltan datos estructurados o reglas confirmadas para presentarlos como hechos. La agenda de citas y la nueva vista del cliente siguen en la siguiente etapa; esta entrega termina el dashboard administrativo y su planificación.
+No se trasladan del prototipo las visitas no planificadas, diagnósticos de fallas repetidas, el modo combinado horas/días ni las fechas de ejemplo: faltan datos estructurados o reglas confirmadas para presentarlos como hechos. La agenda de citas y la nueva vista del cliente siguen en la siguiente etapa; esta entrega termina el dashboard administrativo y su planificación.
 
 ## Etapa 4: agenda y vista del cliente
 
@@ -85,3 +85,16 @@ Reutilizar el mismo cálculo de planificación para agenda, ficha y portal del c
 ## Validación de la planificación
 
 Pruebas de dominio y HTTP: límites de 250 y 2,000 h, fechas 30/60/90 días, cambios de plan, bases desconocidas o estimadas, lecturas antiguas/simultáneas/decrecientes, equipo sin uso, versiones, autoría, respaldo y permisos. La prueba MySQL comprueba dos cambios simultáneos (uno se confirma y el otro recibe conflicto), conservación del historial y rollback. La revisión visual usa una copia privada en memoria; no crea planes de prueba en producción.
+
+
+## Uso mensual estimado (9 de octubre de 2026)
+
+A solicitud del usuario se incorpora **Uso por mes** debajo de la evolución del horómetro, con barras seleccionables, selector alternativo accesible y agrupación por año. Se reutilizan las lecturas existentes; no se agregan consultas, campos, lecturas sintéticas ni cambios al estado del equipo o a los planes.
+
+- Se reparte cada incremento de H1 proporcionalmente al tiempo entre las dos lecturas consecutivas, cortando en los límites de mes de Guatemala (UTC−6). Se suman sin redondear; solo se redondea la presentación. Es una distribución estimada, no una medición diaria.
+- El filtro de fechas limita los tramos mostrados, usando también las lecturas inmediatamente exteriores para calcular los límites. El día Hasta es inclusivo y el cálculo nunca supera el instante actual. Se muestran hasta 24 meses, con aviso y acceso a los anteriores mediante el filtro.
+- Mes sin cobertura significa **sin datos**, no cero horas. Se distinguen meses parciales, tramos que dependen de lecturas corregidas y separaciones de más de 60 días. Se mantienen los valores originales en el historial.
+- Retrocesos, valores negativos/no finitos, lecturas simultáneas distintas e incrementos superiores a una hora por hora transcurrida interrumpen el cálculo; nunca se conectan a través del tramo dudoso. Los duplicados idénticos no duplican uso. Fechas inválidas y futuras se excluyen y se avisan.
+- Proyección opcional desde la última lectura **hasta hoy**, nunca hasta un cierre futuro: mínimo tres instantes comparables en los últimos 90 días de la lectura más reciente, que abarquen 14 días, incremento positivo y última lectura de hasta 30 días. Se usa únicamente el tramo continuo posterior a cualquier anomalía o estimación, sin lecturas estimadas. Fechas futuras o inválidas impiden proyectar. Se explica la tasa diaria, fechas y cantidad de lecturas. Se puede ocultar sin alterar el historial.
+- La línea de promedio del primer año visible exige tres meses completos. La comparación reciente usa los últimos tres meses completos consecutivos. Los promedios son orientativos y no incluyen meses parciales ni proyección; pueden incluir distribuciones derivadas de una lectura corregida, identificada en el detalle del mes.
+- Verificación con casos sintéticos: límites de mes/año, febrero bisiesto, zona horaria, conservación de horas, filtros sin lecturas interiores, duplicados, reinicios, valores inválidos, estimaciones, proyección reciente/antigua/insuficiente, promedios y ausencia de modificaciones al origen. Revisión visual en escritorio y móvil sobre copia privada de los datos.
