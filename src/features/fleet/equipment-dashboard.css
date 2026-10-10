@@ -1,5 +1,6 @@
 /* Administrative equipment dashboard; scoped to keep other workflows intact. */
 .equipment-dashboard { --dashboard-ink:#273328; --dashboard-muted:#626b60; color:var(--dashboard-ink); }
+.main-content:has(.equipment-dashboard) { max-width:none; padding:24px 32px; }
 .equipment-dashboard .equipment-heading { padding:24px; background:white; border:1px solid #dedfd6; border-radius:16px; gap:24px; }
 .equipment-dashboard .equipment-title { min-width:0; }
 .equipment-dashboard .equipment-title h1 { color:#273328; font-size:28px; }
@@ -26,7 +27,7 @@
 .equipment-dashboard .history-filters :is(label,input,span,button) { font-size:12px; }
 .equipment-dashboard .summary-title h2 { font-size:24px; font-weight:600; color:var(--dashboard-ink); }
 .equipment-dashboard .summary-title p { font-size:13px; color:var(--dashboard-muted); }
-.equipment-dashboard .equipment-summary { gap:24px; }
+.equipment-dashboard .equipment-summary { gap:24px; container:equipment-summary / inline-size; }
 .equipment-dashboard-overview { display:grid; gap:24px; }
 .dashboard-indicators { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
 .dashboard-indicator { display:flex; flex-direction:column; gap:14px; padding:22px; text-align:left; min-width:0; background:#fff; border:1px solid #dfe2d8; border-radius:14px; }
@@ -72,6 +73,7 @@
 
 /* Compact equipment file: stable chart dimensions and details on demand. */
 .equipment-dashboard .equipment-heading { padding:18px 22px; border-radius:12px; }
+.equipment-dashboard .equipment-heading .equipment-photo-large { width:72px; height:88px; flex:0 0 72px; }
 .equipment-dashboard .equipment-title h1 { font-size:25px; }
 .equipment-dashboard .equipment-summary,.equipment-dashboard-overview { gap:16px; }
 .equipment-dashboard .summary-title h2 { font-size:21px; }
@@ -132,7 +134,59 @@
 .equipment-dashboard .summary-maintenance { margin-top:12px; gap:4px; }
 .equipment-dashboard .summary-timeline button { padding:13px 26px 13px 12px; gap:3px; }
 .equipment-dashboard .summary-timeline { margin-top:10px; }
+
+/* Give available width to the content, and group related cards by reading priority. */
+.dashboard-priorities,.summary-charts,.summary-secondary-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; align-items:start; }
+.dashboard-next { min-width:0; container:dashboard-plans / inline-size; }
+.equipment-dashboard .dashboard-priorities .dashboard-next { padding:0; background:transparent; border:0; border-radius:0; }
+.equipment-dashboard .dashboard-priorities .dashboard-cycle { background:#fff; }
+.equipment-dashboard .dashboard-priorities .dashboard-caption { border:0; padding:0; margin-top:10px; }
+.equipment-dashboard .dashboard-priorities .dashboard-next > header { margin-bottom:12px; }
+.equipment-dashboard .dashboard-priorities .dashboard-eyebrow { display:none; }
+.equipment-dashboard .dashboard-priorities .finding-overview { padding:18px 20px; border-radius:12px; min-width:0; }
+.equipment-dashboard .finding-overview-heading { align-items:flex-start; }
+.equipment-dashboard .finding-overview-heading > svg { flex-shrink:0; margin-top:2px; }
+.equipment-dashboard .finding-overview h3 { font-size:17px; }
+.equipment-dashboard .finding-overview-counts { gap:14px; margin:16px 0; }
+.equipment-dashboard .finding-overview-counts strong { font-size:25px; }
+.equipment-dashboard .finding-overview > small { font-size:11px; }
+.summary-secondary-grid > * { min-width:0; }
+.equipment-dashboard .summary-secondary-grid .summary-footnote { margin-top:12px; }
+.equipment-dashboard .summary-secondary-grid .button { margin-top:12px; }
+.equipment-dashboard .history-back-row { margin-bottom:18px; }
+.equipment-dashboard .dashboard-state-disclosure { margin:12px 0; }
+.equipment-dashboard .history-switch { margin-bottom:16px; gap:6px; }
+
+@container dashboard-plans (min-width:850px) {
+  .dashboard-cycle .pm-target { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.8fr); gap:2px 20px; align-items:center; }
+  .dashboard-cycle .pm-target > span { grid-column:1; grid-row:1; }
+  .dashboard-cycle .pm-target > strong { grid-column:1; grid-row:2; }
+  .dashboard-cycle .pm-target > p { grid-column:1; grid-row:3; }
+  .equipment-dashboard .dashboard-cycle .pm-cycle-progress { grid-column:2; grid-row:1/4; margin:0; }
+}
+@container equipment-summary (min-width:760px) {
+  .summary-secondary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .summary-recent { grid-column:1/-1; }
+}
+@container equipment-summary (min-width:900px) and (max-width:1299px) {
+  .dashboard-priorities .finding-overview { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:center; gap:12px 24px; }
+  .dashboard-priorities .finding-overview-counts { margin:0; }
+  .dashboard-priorities .finding-overview > .button { justify-self:start; }
+  .dashboard-priorities .finding-overview > small { margin:0; }
+}
+@container equipment-summary (min-width:1300px) {
+  .dashboard-priorities { grid-template-columns:minmax(0,1fr) 360px; }
+  .summary-charts { grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); }
+  .summary-secondary-grid { grid-template-columns:minmax(0,1.5fr) minmax(0,.8fr) minmax(0,1fr); }
+  .summary-recent { grid-column:auto; }
+  .equipment-dashboard .summary-charts .summary-section-title { align-items:flex-start; flex-direction:column; gap:4px; }
+}
+@container equipment-summary (min-width:1800px) {
+  .dashboard-priorities { grid-template-columns:minmax(0,1fr) 420px; }
+  .summary-charts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 @media(max-width:700px) {
+  .main-content:has(.equipment-dashboard) { padding:20px 16px; }
   .equipment-dashboard .equipment-heading { padding:16px; }
   .equipment-dashboard .equipment-title h1 { font-size:22px; }
   .equipment-dashboard .summary-panel,.equipment-dashboard .dashboard-next { padding:16px; }

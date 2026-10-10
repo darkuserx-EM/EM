@@ -111,3 +111,14 @@ La autoevaluación detectó gráficos SVG cuya altura y rotulación crecían con
 - Las advertencias de lecturas antiguas o no comparables siguen visibles. No se cambian cálculos, datos, permisos ni solicitudes al servidor. Los colores del horómetro mantienen la distinción entre lecturas registradas y estimadas; no se añaden nuevas clasificaciones de visitas en esta revisión visual.
 
 Validación visual en escritorio, pantalla amplia y móvil, más comprobación de selección por teclado, acceso a reportes, filtros, detalles y ausencia de desbordamientos. Capturas y datos de prueba se conservan fuera del repositorio público.
+
+## Distribución de la ficha en pantallas amplias (9 de octubre de 2026)
+
+El resumen administrativo utiliza ahora el ancho disponible junto al menú, con márgenes de 32 px (16 px en móvil), en lugar del límite global de 1,600 px. La regla se aplica solo cuando está presente este dashboard; las demás pantallas conservan su contenedor.
+
+- La planificación y los hallazgos se muestran juntos cuando el contenido alcanza 1,300 px. El seguimiento tiene una columna de 360–420 px y los planes ocupan el espacio restante. Se elimina el contenedor visual doble de planificación y se reduce la imagen de referencia de la cabecera.
+- Horómetro y uso mensual comparten una fila desde 1,300 px de contenido; por debajo vuelven a una columna. Conservan sus 212 px de alto, rótulos, filtros y detalles accesibles. El gráfico mensual recibe más ancho en la distribución intermedia.
+- Servicios recientes, clasificación por tipo y últimos mantenimientos forman una fila de tres tarjetas con tamaños distintos; el historial recibe más espacio de lectura. En pantallas menores pasan a dos o una columna, respetando el orden del contenido y del teclado.
+- Los hallazgos conservan el alcance de todo el equipo y están antes del filtro de actividad. La planificación sigue siendo independiente del período. No se modifican registros, cálculos, permisos ni solicitudes al servidor.
+
+Verificación con una copia privada: anchos de escritorio y móvil, gráficas lado a lado, ausencia de desplazamiento horizontal de la página, detalles del plan, filtros y selección mensual. Las pruebas existentes de dominio y servidor siguen siendo aplicables.
