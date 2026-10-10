@@ -131,6 +131,25 @@ test('operational status persists independently through the HTTP API with truste
   assert.equal(invalid.status,400);
 });
 
+test('historical report import is administrator-only, revision-checked and additive',async t=>{
+  const request=await fixture(t,{...coordinator,role:'Administrador'});
+  const before=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  const clientId=before.entities.Cliente[0].id;
+  const payload={cliente_id:clientId,sede_id:'',equipos:[{serie:'HIST-SERIAL-1',id_interno_cliente:'FC#1',marca:'Crown',modelo:'FC4500'}],reportes:[{origen_id:'source-1',orden_origen:'21',serie:'HIST-SERIAL-1',fecha:'2025-02-08T20:00:00.000Z',fecha_fin:'',estado:'Completado',prioridad:'Programada',tipo:'Correctivo',diagnostico:'Hidráulica',trabajo:'Cambio de manguera',notas_seguridad:'',tecnicos:'Técnico',recibido_por:'Contacto',inspector:'inspector@example.com',horometro:100,odometro_millas:125,ubicacion:'Unisur 4',insumos_origen:'',repuestos_origen:'',adjuntos_referencias:'Foto Antes: antes.jpg',firma_cliente_referencia:'',checklist_origen:'',bocina_origen:'',mes_origen:'febrero',semana_origen:'Semana 6',dia_origen:'sábado',ubicacion_coordenadas:'14.6, -90.4'}]};
+  const response=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload,revision:before.revision})});
+  assert.equal(response.status,200);const saved=await response.json();assert.deepEqual(saved.result,{equipos:1,reportes:1,lecturas:1,repetidos:0});
+  const after=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  assert.equal(after.entities.Equipo.length,before.entities.Equipo.length+1);assert.equal(after.entities.OrdenServicio.length,before.entities.OrdenServicio.length+1);assert.equal(after.entities.LecturaHorometro.length,before.entities.LecturaHorometro.length+1);
+  assert.equal(after.entities.OrdenServicio.at(-1).importado,true);assert.equal(after.entities.OrdenServicio.at(-1).origen_id,'source-1');assert.equal(after.entities.LecturaHorometro.at(-1).valor,100);
+  const repeated=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload:{...payload,equipos:[]},revision:after.revision})});
+  assert.equal(repeated.status,200);assert.deepEqual((await repeated.json()).result,{equipos:0,reportes:0,lecturas:0,repetidos:1});
+});
+test('historical report import rejects stale revision and non-admin users',async t=>{
+  const request=await fixture(t,{...coordinator,role:'Administrador'});const before=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  const stale=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload:{cliente_id:before.entities.Cliente[0].id,equipos:[],reportes:[]},revision:before.revision+1})});assert.equal(stale.status,409);
+  const clientRequest=await fixture(t,client);const denied=await clientRequest('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload:{cliente_id:'client-1',equipos:[],reportes:[]},revision:0})});assert.equal(denied.status,403);
+});
+
 test('client HTTP view includes only its operational status and maintenance alert and rejects status edits',async t=>{
   const request=await fixture(t,client,db=>{withImages(db);Object.assign(db.entities.Equipo[0],{estado_operativo:'En reparación',estado_mantenimiento:'Mantenimiento pendiente',estado_administrativo:'En renta',estado_actualizado_por:'Administrador interno'});});
   const db=await (await request('/api/database',{headers:{Cookie:'em_session=x'}})).json();

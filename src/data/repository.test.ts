@@ -39,6 +39,29 @@ describe('Excel y restauración', () => {
   it('rechaza respaldos incompletos y referencias rotas sin cambiar datos', () => { const { source } = fixture(); const before = source.snapshot(admin); const incomplete = makeBackup(before); delete incomplete.Sheets.Equipo; expect(() => parseBackup(incomplete)).toThrow('Falta la hoja'); const invalid = structuredClone(before); invalid.entities.Equipo[0].cliente_id = 'missing'; expect(() => source.restore(admin, invalid, source.getRevision())).toThrow('no existe'); expect(source.snapshot(admin)).toEqual(before); });
   it('restaura una copia y registra la restauración', async () => { const { source, repo } = fixture(); const backup = source.snapshot(admin); await repo.create(catalog); source.restore(admin, backup, source.getRevision()); expect((await repo.getAll()).some(row => row.nombre === catalog.nombre)).toBe(false); expect(source.snapshot(admin).entities.Bitacora.at(-1)?.accion).toBe('Restauración'); });
 });
+describe('importación aditiva de equipos e historial', () => {
+  it('agrega el equipo, órdenes y lecturas sin modificar filas previas y omite repetidos', () => {
+    const { source } = fixture(); const before = source.snapshot(admin); const client = before.entities.Cliente[0];
+    const payload = { cliente_id: client.id, sede_id: '', equipos: [{ serie: 'SERIE-IMPORT-1', id_interno_cliente: 'FC#1', marca: 'Crown', modelo: 'FC4500' }], reportes: [{ origen_id: 'source-report-1', orden_origen: 'OS-21', serie: 'SERIE-IMPORT-1', fecha: '2025-02-08T20:00:00.000Z', fecha_fin: '', estado: 'Completado', prioridad: 'Programada', tipo: 'Correctivo', diagnostico: 'Hidráulica', trabajo: 'Cambio de manguera', notas_seguridad: '', tecnicos: 'Raul Perez', recibido_por: 'Cliente', inspector: 'admin@example.com', horometro: 100, odometro_millas: 125, ubicacion: 'Unisur 4', insumos_origen: 'Wipe', repuestos_origen: 'Manguera', adjuntos_referencias: 'Foto Antes: antes.jpg', firma_cliente_referencia: '', checklist_origen: '', bocina_origen: '', mes_origen: 'febrero', semana_origen: 'Semana 6', dia_origen: 'sábado', ubicacion_coordenadas: '14.6, -90.4' }] };
+    const result = source.importHistoricalReports(admin, payload, source.getRevision());
+    expect(result).toEqual({ equipos: 1, reportes: 1, lecturas: 1, repetidos: 0 });
+    const after = source.snapshot(admin);
+    expect(after.entities.Cliente).toEqual(before.entities.Cliente);
+    expect(after.entities.Equipo).toHaveLength(before.entities.Equipo.length + 1);
+    expect(after.entities.OrdenServicio).toHaveLength(before.entities.OrdenServicio.length + 1);
+    expect(after.entities.LecturaHorometro).toHaveLength(before.entities.LecturaHorometro.length + 1);
+    expect(after.entities.OrdenServicio.at(-1)).toMatchObject({ importado: true, origen_id: 'source-report-1', orden_origen: 'OS-21', horometro: 100, odometro_millas: 125 });
+    expect(after.entities.LecturaHorometro.at(-1)).toMatchObject({ valor: 100, orden_id: after.entities.OrdenServicio.at(-1)?.id, es_estimado: false });
+    expect(after.entities.Equipo.at(-1)).toMatchObject({ propiedad: 'De cliente', estado_operativo: 'Pendiente de revisión', cliente_id: client.id });
+    expect(source.importHistoricalReports(admin, { ...payload, equipos: [] }, source.getRevision())).toEqual({ equipos: 0, reportes: 0, lecturas: 0, repetidos: 1 });
+    expect(source.snapshot(admin).entities.OrdenServicio).toHaveLength(before.entities.OrdenServicio.length + 1);
+  });
+  it('rechaza errores sin guardar parcialmente', () => {
+    const { source } = fixture(); const before = source.snapshot(admin); const client = before.entities.Cliente[0];
+    expect(() => source.importHistoricalReports(admin, { cliente_id: client.id, sede_id: '', equipos: [{ serie: 'SERIE-IMPORT-1', id_interno_cliente: '', marca: 'Crown', modelo: 'FC4500' }], reportes: [{ origen_id: 'invalid-report', orden_origen: 'X', serie: 'OTHER', fecha: 'bad', fecha_fin: '', estado: 'Completado', prioridad: '', tipo: 'Correctivo', diagnostico: '', trabajo: '', notas_seguridad: '', tecnicos: '', recibido_por: '', inspector: '', horometro: null, odometro_millas: null, ubicacion: '', insumos_origen: '', repuestos_origen: '', adjuntos_referencias: '', firma_cliente_referencia: '', checklist_origen: '', bocina_origen: '', mes_origen: '', semana_origen: '', dia_origen: '', ubicacion_coordenadas: '' }] }, source.getRevision())).toThrow('No hay equipo');
+    expect(source.snapshot(admin)).toEqual(before);
+  });
+});
 describe('formato de Guatemala', () => {
   it('usa quetzales y la zona horaria correcta', () => { expect(formatMoney(1234.5)).toBe('Q 1,234.50'); expect(formatDate('2026-10-05T01:15:00Z')).toBe('04/10/2026'); expect(formatTime('2026-10-05T01:15:00Z')).toBe('19:15'); });
 });
