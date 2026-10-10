@@ -1,4 +1,4 @@
-.equipment-layout-designer { min-width:0; color:#273328; }
+.equipment-layout-designer { min-width:0; color:#273328; container:equipment-designer / inline-size; }
 .layout-editor-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:18px 20px; background:#edf3e7; border:1px solid #cbd9be; border-radius:12px; }
 .layout-editor-heading > div > span { font-size:11px; letter-spacing:1px; color:#52634b; }
 .layout-editor-heading h2 { font-size:22px; margin:6px 0; }
@@ -39,7 +39,7 @@
   .layout-block-content .summary-kpis { grid-template-columns:minmax(0,1fr); }
 }
 @media(max-width:1250px) { .layout-editor-mobile { display:block; } }
-@media(max-width:800px) {
+@container equipment-designer (max-width:800px) {
   .layout-editor-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .layout-editor-controls > label:first-child { grid-column:1/-1; }
   .layout-editor-heading { padding:16px; }
