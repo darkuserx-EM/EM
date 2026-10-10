@@ -122,8 +122,8 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     next();
   }, express.json({ limit:'32mb' }), async (req,res) => {
     const body = req.body;
-    if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
-    if (!['importClients','restore'].includes(body.action) && !['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM'].includes(body.entity)) throw fail(400,'Entidad no editable.');
+    if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','importHistoricalReports','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
+    if (!['importClients','importHistoricalReports','restore'].includes(body.action) && !['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM'].includes(body.entity)) throw fail(400,'Entidad no editable.');
     if (['import','importClients'].includes(body.action) && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
     const conn = await pool.getConnection();
     try {
@@ -137,6 +137,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       let result;
       try {
         if (body.action==='importClients') result = source.importClients(req.actor,body.rows,db.revision);
+        else if (body.action==='importHistoricalReports') result = source.importHistoricalReports(req.actor,body.payload,db.revision);
         else if (body.action==='restore') source.restore(req.actor,body.database,db.revision,body.exportedAt);
         else {
           const repo = source.repository(body.entity,req.actor);

@@ -2,6 +2,7 @@ import type { Actor, Database, EntityName, EntityRecord, Scalar } from '../domai
 import { assertAdmin } from '../domain/permissions';
 import { planClientImport, type ClientImportRow } from '../domain/client-import';
 import type { Repository } from './repository';
+import type { HistoricalReportsImport } from './historical-reports';
 
 let csrf = '';
 let authEpoch = 0;
@@ -78,5 +79,6 @@ export class RemoteDataSource {
     return planClientImport({ Cliente: entities.Cliente, Contacto: entities.Contacto, Sede: entities.Sede }, rows).rows;
   }
   importClients(actor: Actor, rows: ClientImportRow[], revision: number) { assertAdmin(actor); return this.mutate<string | undefined>({ action: 'importClients', rows, revision }); }
+  importHistoricalReports(actor: Actor, payload: HistoricalReportsImport, revision: number) { assertAdmin(actor); return this.mutate<{ equipos: number; reportes: number; lecturas: number; repetidos: number }>({ action: 'importHistoricalReports', payload, revision }); }
   async restore(actor: Actor, database: unknown, revision: number, exportedAt?: string) { assertAdmin(actor); await this.mutate({ action: 'restore', database, revision, exportedAt }); }
 }

@@ -8,6 +8,7 @@ import { clientImportEntities, planClientImport, type ClientImportRow } from '..
 import { administrativeState, equipmentStatusChanges, equipmentStatusValues } from '../domain/equipment-status';
 import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-images';
 import { ValidationError } from '../domain/errors';
+import type { HistoricalReportsImport } from './historical-reports';
 
 export const STORAGE_KEY = 'portal-em.database.v1';
 export const LOCAL_MAX_ROWS = 20000;
@@ -203,6 +204,86 @@ export class LocalDataSource {
     this.audit(next, actor, 'Cliente', 'Importación', `${counts}. ${plan.rows.filter(row => row.action === 'Agregar').length} altas y ${plan.rows.filter(row => row.action === 'Actualizar').length} actualizaciones desde Excel.`);
     this.commit(next);
     return plan.entities.Cliente.find(row => rows.some(item => item.entity === 'Cliente' && (item.id?.trim() ? item.id.trim() === row.id : normalize(item.fields.nombre) === normalize(row.nombre))))?.id;
+  }
+  importHistoricalReports(actor: Actor, payload: HistoricalReportsImport, expectedRevision: number) {
+    assertAdmin(actor);
+    if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron desde la vista previa. Recarga y revisa antes de guardar.');
+    if (!payload || !Array.isArray(payload.equipos) || !Array.isArray(payload.reportes) || payload.reportes.length > 2000 || payload.equipos.length > 2000) throw new ValidationError('La importación debe contener hasta 2,000 equipos y reportes.');
+    const next = structuredClone(this.database);
+    const client = next.entities.Cliente.find(row => row.id === payload.cliente_id);
+    if (!client) throw new ValidationError('Selecciona un cliente existente antes de importar.');
+    const site = payload.sede_id ? next.entities.Sede.find(row => row.id === payload.sede_id) : undefined;
+    if (payload.sede_id && (!site || site.cliente_id !== client.id)) throw new ValidationError('La sede seleccionada no pertenece al cliente.');
+    const equipmentBySerial = new Map(next.entities.Equipo.map(row => [normalize(row.serie), row]));
+    const incomingSerials = new Set<string>();
+    for (const input of payload.equipos) {
+      const serial = String(input.serie || '').trim(); const key = normalize(serial);
+      if (!key || incomingSerials.has(key)) throw new ValidationError(`Serie vacía o repetida: ${serial || '(sin serie)'}.`);
+      incomingSerials.add(key);
+      const existing = equipmentBySerial.get(key);
+      if (existing) {
+        if (existing.cliente_id !== client.id || normalize(existing.modelo) !== normalize(input.modelo) || (existing.id_interno_cliente && input.id_interno_cliente && normalize(existing.id_interno_cliente) !== normalize(input.id_interno_cliente))) throw new ValidationError(`La serie ${serial} ya está registrada con datos distintos.`);
+        continue;
+      }
+      const fields = {
+        marca: String(input.marca || 'Crown').trim(), modelo: String(input.modelo || '').trim(), serie: serial,
+        id_interno_cliente: String(input.id_interno_cliente || '').trim(), tipo: 'Equipo Crown · clasificación pendiente',
+        propiedad: 'De cliente', estado: 'Pendiente de revisión', estado_operativo: 'Pendiente de revisión',
+        estado_mantenimiento: 'Por revisar', motivo_estado: 'Estado actual pendiente de confirmar. Ficha creada desde el historial de reportes.',
+        cliente_id: client.id, sede_id: site?.id || '',
+      };
+      const errors = validateRecord('Equipo', fields); const duplicate = uniqueError('Equipo', fields, next.entities.Equipo);
+      if (errors.length || duplicate) throw new ValidationError(`${serial}: ${errors.join('; ') || duplicate}`);
+      const record = this.record('Equipo', actor, fields, next.entities.Equipo);
+      next.entities.Equipo.push(record); equipmentBySerial.set(key, record);
+    }
+    const sourceIds = new Set(next.entities.OrdenServicio.filter(row => row.importado === true).map(row => String(row.origen_id)));
+    const orderNos = new Set(next.entities.OrdenServicio.filter(row => row.importado === true).map(row => String(row.orden_origen)));
+    const incomingIds = new Set<string>();
+    let addedReports = 0; let addedReadings = 0; const now = new Date().toISOString();
+    for (const input of payload.reportes) {
+      const sourceId = String(input.origen_id || '').trim(); const orderNo = String(input.orden_origen || '').trim();
+      if (!sourceId || !orderNo || incomingIds.has(sourceId)) throw new ValidationError(`ID de origen vacío o repetido: ${sourceId || '(sin ID)'}.`);
+      incomingIds.add(sourceId);
+      if (sourceIds.has(sourceId)) continue;
+      if (orderNos.has(orderNo)) throw new ValidationError(`La orden original ${orderNo} ya existe con otro ID de origen.`);
+      const equipment = equipmentBySerial.get(normalize(input.serie));
+      if (!equipment || equipment.cliente_id !== client.id) throw new ValidationError(`No hay equipo de ${client.nombre} con serie ${input.serie}.`);
+      if (!Number.isFinite(Date.parse(input.fecha)) || !/^\d{4}-\d{2}-\d{2}T/.test(input.fecha)) throw new ValidationError(`La fecha de la orden ${orderNo} no es válida.`);
+      if (input.fecha_fin && (!Number.isFinite(Date.parse(input.fecha_fin)) || !/^\d{4}-\d{2}-\d{2}T/.test(input.fecha_fin))) throw new ValidationError(`La hora final de la orden ${orderNo} no es válida.`);
+      for (const [label, value] of [['H1', input.horometro], ['H3', input.odometro_millas]] as const) if (value !== null && (typeof value !== 'number' || !Number.isFinite(value) || value < 0)) throw new ValidationError(`La lectura ${label} de la orden ${orderNo} no es válida.`);
+      const row: EntityRecord = {
+        id: crypto.randomUUID(), codigo: `OS-H-${String(next.entities.OrdenServicio.length + 1).padStart(4, '0')}`,
+        creado_por: actor.id, fecha_creacion: now, actualizado_por: actor.id, fecha_actualizacion: now,
+        equipo_id: equipment.id, cliente_id: client.id, tecnico_id: '', tecnico: input.tecnicos,
+        fecha: input.fecha, fecha_fin: input.fecha_fin, tipo: input.tipo, estado: input.estado,
+        motivo: input.diagnostico || input.tipo, diagnostico: input.diagnostico, trabajo: input.trabajo,
+        prioridad: input.prioridad, ...(input.horometro === null ? {} : { horometro: input.horometro }), ...(input.odometro_millas === null ? {} : { odometro_millas: input.odometro_millas }),
+        ubicacion: input.ubicacion, recibido_por: input.recibido_por, inspector: input.inspector,
+        notas_seguridad: input.notas_seguridad, insumos_origen: input.insumos_origen, repuestos_origen: input.repuestos_origen,
+        adjuntos_referencias: input.adjuntos_referencias, firma_cliente_referencia: input.firma_cliente_referencia,
+        checklist_origen: input.checklist_origen, bocina_origen: input.bocina_origen, mes_origen: input.mes_origen,
+        semana_origen: input.semana_origen, dia_origen: input.dia_origen, ubicacion_coordenadas: input.ubicacion_coordenadas,
+        importado: true, origen_id: sourceId, orden_origen: orderNo,
+      };
+      next.entities.OrdenServicio.push(row); sourceIds.add(sourceId); orderNos.add(orderNo); addedReports++;
+      if (typeof input.horometro === 'number') {
+        const meter: EntityRecord = {
+          id: crypto.randomUUID(), codigo: `HOR-H-${String(next.entities.LecturaHorometro.length + 1).padStart(4, '0')}`,
+          creado_por: actor.id, fecha_creacion: now, actualizado_por: actor.id, fecha_actualizacion: now,
+          equipo_id: equipment.id, cliente_id: client.id, fecha: input.fecha, valor: input.horometro,
+          origen: 'Orden de servicio', orden_id: row.id, registrado_por: 'Importación histórica AppSheet', ubicacion: input.ubicacion,
+          ...(input.odometro_millas === null ? {} : { odometro_millas: input.odometro_millas }), es_estimado: false,
+        };
+        next.entities.LecturaHorometro.push(meter); addedReadings++;
+      }
+    }
+    if (!addedReports && !payload.equipos.length) return { equipos: 0, reportes: 0, lecturas: 0, repetidos: payload.reportes.length };
+    const newEquipment = next.entities.Equipo.length - this.database.entities.Equipo.length;
+    const duplicateReports = payload.reportes.length - addedReports;
+    this.audit(next, actor, 'Historial', 'Importación histórica', `${newEquipment} equipos, ${addedReports} reportes y ${addedReadings} lecturas agregados para ${client.nombre}; ${duplicateReports} reportes ya existentes omitidos. Valores de horómetro conservados como en origen.`);
+    this.commit(next);
+    return { equipos: newEquipment, reportes: addedReports, lecturas: addedReadings, repetidos: duplicateReports };
   }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.database); }
   async backup(actor: Actor) { return this.snapshot(actor); }
