@@ -1,0 +1,9 @@
+/* All client routes share the portal's light surfaces, including lazy modules and dialogs. */
+.client-shell{color:var(--ink);background:var(--paper);color-scheme:light}
+.client-shell .main-content{max-width:none}
+.client-shell .nav-item:hover{color:#30382a}
+.client-shell .nav-item.active{background:#e8ebdf;color:#384332}
+.client-shell .modal{background:#fff;color:var(--ink)}
+.client-shell .button:not(.button-dark):not(.button-orange){color:#35402e}
+.client-shell .panel{color:var(--ink)}
+.client-shell .planning-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}

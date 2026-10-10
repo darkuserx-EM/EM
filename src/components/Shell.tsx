@@ -7,6 +7,7 @@ import { useActor, useSession } from '../app/state';
 import { serverMode } from '../data/source';
 import { AccountDialog } from '../features/settings/AccountDialog';
 import { canAccessModule } from '../domain/permissions';
+import './client-shell.css';
 
 type NavItem = { module: string; title: string; icon: LucideIcon; stage?: number };
 export const navigation: { label: string; items: NavItem[] }[] = [
@@ -22,7 +23,7 @@ export function Shell() {
   const isClient = actor.rol === 'Cliente';
   useEffect(() => setMenu(false), [location.pathname]);
   useEffect(() => { if (!canAccessModule(actor, module)) navigate(actor.rol === 'Cliente' ? '/portal' : '/inicio', { replace: true }); }, [actor, module, navigate]);
-  return <div className={`app-shell ${isClient ? 'client-theme' : ''}`}>
+  return <div className={`app-shell ${isClient ? 'client-shell' : ''}`}>
     {menu && <button className="sidebar-scrim" aria-label="Cerrar menú" onClick={() => setMenu(false)} />}
     <aside className={`sidebar ${menu ? 'sidebar-open' : ''}`}>
       <NavLink to={isClient ? '/portal' : '/inicio'} className="brand-link" aria-label="Portal EM, inicio"><Brand /></NavLink>
