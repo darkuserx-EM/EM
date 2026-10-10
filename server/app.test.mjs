@@ -399,3 +399,44 @@ test('maintenance plan data and writes are restricted to administration',async t
     assert.equal((await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'create',entity:'PlanPM',revision:0,fields:{},actor:{rol:'Administrador'}})})).status,403);
   }
 });
+
+test('client ticket creation is scoped, idempotent across stale retries and does not allow scheduling',async t=>{
+  const request=await fixture(t,client);
+  const fields={equipo_id:'equipment-1',cliente_id:'client-1',titulo:'Revisión frenos',descripcion:'Recorrido largo',prioridad:'Alta',solicitud_id:'ticket-http-request-001'};
+  const mutate=body=>request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify(body)});
+  const response=await mutate({action:'create',entity:'Ticket',revision:0,fields});assert.equal(response.status,200);
+  const first=await response.json();assert.equal(first.result.estado,'Nuevo');assert.equal(first.database.entities.Ticket.length,1);
+  const repeated=await mutate({action:'create',entity:'Ticket',revision:0,fields});assert.equal(repeated.status,200);
+  const second=await repeated.json();assert.equal(first.result.id,second.result.id);assert.equal(first.database.revision,second.database.revision);
+  assert.equal((await mutate({action:'create',entity:'Ticket',revision:second.database.revision,fields:{...fields,descripcion:'Cambio inadvertido'}})).status,400);
+  assert.equal((await mutate({action:'create',entity:'Ticket',revision:second.database.revision,fields:{...fields,solicitud_id:'ticket-foreign-001',equipo_id:'equipment-2',cliente_id:''}})).status,403);
+  assert.equal((await mutate({action:'create',entity:'Ticket',revision:second.database.revision,fields:{...fields,solicitud_id:'ticket-schedule-001',estado:'Programado',responsable_id:'tech-1',fecha_programada:'2026-10-10'}})).status,400);
+});
+
+test('coordinator schedules orders; only the assigned technician executes and completed orders preserve equipment',async t=>{
+  const user={...coordinator};const request=await fixture(t,user);
+  const mutate=body=>request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify(body)});
+  const snapshot=async()=> (await request('/api/database',{headers:jsonHeaders})).json();
+  const original=await snapshot();
+  const fields={equipo_id:'equipment-1',cliente_id:'client-1',sintoma:'Revisar frenos',tipo:'Correctivo',prioridad:'Alta',estado:'Programada',fecha_programada:'2026-10-10',tecnico_id:'tech-1',visible_cliente:true};
+  const create=await mutate({action:'create',entity:'OrdenServicio',revision:original.revision,fields});assert.equal(create.status,200);let saved=await create.json();
+  Object.assign(user,{role:'Técnico',technician_id:'tech-2',id:'tech-user-2'});
+  assert.equal((await mutate({action:'update',entity:'OrdenServicio',revision:saved.database.revision,id:saved.result.id,fields:{estado:'En proceso',expected_updated_at:saved.result.fecha_actualizacion}})).status,403);
+  Object.assign(user,{technician_id:'tech-1',id:'tech-user-1'});
+  assert.equal((await mutate({action:'update',entity:'OrdenServicio',revision:saved.database.revision,id:saved.result.id,fields:{tecnico_id:'tech-2',expected_updated_at:saved.result.fecha_actualizacion}})).status,400);
+  const initialTimestamp=saved.result.fecha_actualizacion;
+  const start=await mutate({action:'update',entity:'OrdenServicio',revision:saved.database.revision,id:saved.result.id,fields:{estado:'En proceso',expected_updated_at:initialTimestamp}});assert.equal(start.status,200);saved=await start.json();
+  assert.equal((await mutate({action:'update',entity:'OrdenServicio',revision:saved.database.revision,id:saved.result.id,fields:{diagnostico:'Formulario viejo',expected_updated_at:initialTimestamp}})).status,409);
+  const closeFields={estado:'Completada',diagnostico:'Ajuste insuficiente',trabajo_realizado:'Ajuste del freno',pruebas_realizadas:'Retención',resultado_pruebas:'Satisfactorio',horometro:900,expected_updated_at:saved.result.fecha_actualizacion};
+  const close=await mutate({action:'update',entity:'OrdenServicio',revision:saved.database.revision,id:saved.result.id,fields:closeFields});assert.equal(close.status,200);saved=await close.json();
+  assert.equal(saved.result.estado,'Completada');assert.equal(saved.database.entities.LecturaHorometro.at(-1).valor,900);
+  Object.assign(user,{role:'Coordinador'});const after=await snapshot();assert.deepEqual(after.entities.Equipo,original.entities.Equipo);assert.deepEqual(after.entities.Hallazgo,original.entities.Hallazgo);
+  Object.assign(user,{role:'Cliente',client_id:'client-1'});const visible=await snapshot();assert.deepEqual(visible.entities.OrdenServicio.map(row=>row.id),[saved.result.id]);assert.equal(JSON.stringify(visible).includes('solicitud_datos'),false);
+});
+
+test('technician image scope follows orders and never exposes another technician equipment images',async t=>{
+  const user={...coordinator,role:'Técnico',technician_id:'tech-1'};
+  const request=await fixture(t,user,db=>{withImages(db);db.entities.Equipo[1].foto_equipo=picture;});
+  assert.equal((await request(`/api/equipment-images/equipment-1/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,200);
+  assert.equal((await request(`/api/equipment-images/equipment-2/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,404);
+});

@@ -3,13 +3,14 @@ import { localDay } from './equipment-history';
 import { completedService } from './equipment-findings';
 
 export const planTypes = ['Preventivo', 'Mayor'] as const;
+export const planIntervalLimits = { Horas: 20000, 'Días': 3650 } as const;
 export const planMetadata = ['version', 'vigente', 'anterior_id', 'confirmado_por', 'confirmado_el', 'vigente_desde'] as const;
 export const todayGT = () => localDay(new Date().toISOString());
 export const validDay = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 export const dayGap = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 export const addDays = (day: string, days: number) => new Date(Date.parse(day) + days * 86400000).toISOString().slice(0, 10);
 export const currentPlan = (plans: EntityRecord[], equipmentId: string, type: string) => plans.find(row => row.schema_plan === 1 && row.vigente === true && row.equipo_id === equipmentId && row.tipo_plan === type);
-export const planService = (row: EntityRecord, equipmentId: string, type: string) => row.equipo_id === equipmentId && completedService(row) && (type === 'Mayor' ? row.tipo === 'Mantenimiento Mayor' : ['Preventivo', 'Mantenimiento Preventivo'].includes(String(row.tipo)));
+export const planService = (row: EntityRecord, equipmentId: string, type: string) => row.equipo_id === equipmentId && completedService(row) && (type === 'Mayor' ? ['Mantenimiento Mayor', 'Mantenimiento mayor'].includes(String(row.tipo)) : ['Preventivo', 'Mantenimiento Preventivo', 'Mantenimiento preventivo'].includes(String(row.tipo)));
 
 export function planFieldErrors(row: Record<string, unknown>) {
   if (row.schema_plan === undefined) return []; // Preserve legacy, unconfigured records.
@@ -18,7 +19,9 @@ export function planFieldErrors(row: Record<string, unknown>) {
   if (!planTypes.includes(row.tipo_plan as typeof planTypes[number])) errors.push('Selecciona preventivo o mayor.');
   if (!['Horas', 'Días'].includes(String(row.criterio))) errors.push('Selecciona horas o días.');
   if (!['Activo', 'Pausado'].includes(String(row.estado_plan))) errors.push('Estado del plan inválido.');
-  if (row.tipo_plan === 'Mayor' ? row.criterio !== 'Horas' || row.intervalo !== 2000 : row.criterio === 'Horas' ? row.intervalo !== 250 : ![30, 60, 90].includes(Number(row.intervalo))) errors.push('Usa 250 h, 30/60/90 días o 2,000 h para el mayor.');
+  const maximum = row.criterio === 'Días' ? planIntervalLimits['Días'] : planIntervalLimits.Horas;
+  if (typeof row.intervalo !== 'number' || !Number.isInteger(row.intervalo) || row.intervalo < 1 || row.intervalo > maximum) errors.push(`Indica un intervalo entero entre 1 y ${maximum.toLocaleString('es-GT')} ${row.criterio === 'Días' ? 'días' : 'horas'}.`);
+  if (row.tipo_plan === 'Mayor' && row.criterio !== 'Horas') errors.push('El ciclo de mantenimiento mayor se configura por horas.');
   if (!String(row.motivo || '').trim()) errors.push('Indica el motivo de esta configuración.');
   if (!['Pendiente', 'Servicio', 'Base inicial'].includes(String(row.base_origen))) errors.push('Selecciona el origen de la base.');
   if (row.base_origen === 'Pendiente') {

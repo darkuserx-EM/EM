@@ -4,7 +4,7 @@ export const findingStates = ['Por confirmar', 'Abierto', 'Cotizado', 'Aprobado'
 export const findingPriorities = ['Por definir', 'Baja', 'Media', 'Alta', 'Crítica'] as const;
 export const findingComponents = ['Por clasificar', 'Batería', 'Sistema eléctrico', 'Motor', 'Hidráulico', 'Torre y cadenas', 'Cuchillas y aditamentos', 'Frenos', 'Llantas y rodos', 'Estructura', 'Otro'] as const;
 export const findingClosed = (row: Record<string, unknown>) => ['Resuelto', 'Descartado'].includes(String(row.estado));
-export const completedService = (row: EntityRecord) => ['Completado', 'Completado con observaciones'].includes(String(row.estado));
+export const completedService = (row: EntityRecord) => ['Completado', 'Completado con observaciones', 'Completada'].includes(String(row.estado));
 
 export function recommendationReports(reports: EntityRecord[], equipmentId: string) {
   return reports.filter(row => row.equipo_id === equipmentId && typeof row.notas_seguridad === 'string' && row.notas_seguridad.trim())

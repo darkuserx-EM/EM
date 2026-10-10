@@ -3,6 +3,7 @@ import { assertAdmin } from '../domain/permissions';
 import { planClientImport, type ClientImportRow } from '../domain/client-import';
 import type { Repository } from './repository';
 import type { HistoricalReportsImport } from './historical-reports';
+import { isOperationalEntity } from '../domain/operations';
 
 let csrf = '';
 let authEpoch = 0;
@@ -39,6 +40,7 @@ export class RemoteDataSource {
   private lastAccepted = 0;
   private generation = 0;
   private listeners = new Set<() => void>();
+  private pendingCreates = new Map<string, string>();
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getRevision = () => this.database?.revision ?? -1;
   private accept(db: SyncedDatabase, sequence: number, generation: number) {
@@ -48,7 +50,7 @@ export class RemoteDataSource {
     if (accessChanged && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('portal-access-changed', {detail:db.access}));
     this.listeners.forEach(listener => listener());
   }
-  clear() { this.generation++; this.database = undefined; setCsrf(''); this.listeners.forEach(listener => listener()); }
+  clear() { this.generation++; this.database = undefined; this.pendingCreates.clear(); setCsrf(''); this.listeners.forEach(listener => listener()); }
   async refresh() {
     const sequence = ++this.sequence; const generation = this.generation;
     const since = this.database?.syncToken;
@@ -66,8 +68,19 @@ export class RemoteDataSource {
     return {
       getAll, getById: async id => (await getAll()).find(row => row.id === id),
       export: async predicate => { assertAdmin(actor); const rows = (await getAll()).filter(predicate || (() => true)); return entity === 'Equipo' ? (await api<{rows:EntityRecord[]}>('equipment-export', {ids:rows.map(row => row.id)})).rows : rows; },
-      create: async (fields: Record<string, Scalar>) => { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'create', entity, fields }); },
-      update: async (id, fields) => { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'update', entity, id, fields }); },
+      create: async (fields: Record<string, Scalar>) => {
+        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'create', entity, fields }); }
+        const key = JSON.stringify([actor.id, entity, Object.entries(fields).sort(([a], [b]) => a.localeCompare(b))]);
+        const requestId = fields.solicitud_id || this.pendingCreates.get(key) || crypto.randomUUID();
+        if (this.pendingCreates.size >= 100) this.pendingCreates.delete(this.pendingCreates.keys().next().value!);
+        this.pendingCreates.set(key, String(requestId));
+        const result = await this.mutate<EntityRecord>({ action: 'create', entity, fields: { ...fields, solicitud_id: requestId } });
+        this.pendingCreates.delete(key); return result;
+      },
+      update: async (id, fields) => {
+        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'update', entity, id, fields }); }
+        return this.mutate<EntityRecord>({ action: 'update', entity, id, fields: { expected_updated_at: this.current().entities[entity].find(row => row.id === id)?.fecha_actualizacion || '', ...fields } });
+      },
       remove: async id => { assertAdmin(actor); await this.mutate({ action: 'remove', entity, id }); },
       import: async (rows, revision) => { assertAdmin(actor); await this.mutate({ action: 'import', entity, rows, revision }); },
     };

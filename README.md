@@ -1,6 +1,6 @@
 # Portal EM · Base y pruebas en línea
 
-Base navegable para Expertos en Montacargas, S.A. (EMSA). Versión 0.2: prototipo local y primera conexión con servidor Node.js/MySQL para pruebas. Incluye cuenta inicial de administración, sesiones y persistencia compartida de clientes, contactos, sedes, equipos y catálogos. Publicado para pruebas en https://portal.expertosenmontacargas.com. El 04/10/2026 se verificaron HTTPS, acceso, escritura/importación en MySQL, sesiones independientes y persistencia tras reiniciar.
+Base navegable para Expertos en Montacargas, S.A. (EMSA). Versión 0.3: operación autenticada con solicitudes, órdenes de servicio, calendario anual/mensual/semanal, kanban, reportes y vistas de cliente/técnico. Incluye cuenta inicial de administración, sesiones y persistencia compartida de clientes, contactos, sedes, equipos y catálogos. Publicado para pruebas en https://portal.expertosenmontacargas.com. El 04/10/2026 se verificaron HTTPS, acceso, escritura/importación en MySQL, sesiones independientes y persistencia tras reiniciar.
 
 ## Trabajar desde GitHub
 
@@ -16,7 +16,7 @@ npx pnpm@10.18.3 install --frozen-lockfile
 npx pnpm@10.18.3 dev
 ```
 
-Antes de subir cambios, ejecuta `npx pnpm@10.18.3 test` y `npx pnpm@10.18.3 build`. Guarda el trabajo en tu rama y abre una solicitud de cambios hacia `main` para revisarlo. El repositorio es público: contiene código, documentación y una plantilla vacía de clientes. Los reportes reales, archivos de clientes, respaldos y credenciales deben conservarse fuera del repositorio. El despliegue en Hostinger se configura por separado.
+Antes de subir cambios, ejecuta `npx pnpm@10.18.3 test` y `npx pnpm@10.18.3 build`. Guarda el trabajo en tu rama y abre una solicitud de cambios hacia `main` para revisarlo. El repositorio es privado: contiene código, documentación y una plantilla vacía de clientes. Los reportes reales, archivos de clientes, respaldos y credenciales deben conservarse fuera del repositorio. El despliegue en Hostinger se configura por separado.
 
 ## Iniciar
 
@@ -85,7 +85,7 @@ El modo en línea usa servidor y cuenta autenticada; no muestra el selector de r
 
 El selector de usuario **no es autenticación**. El filtrado local demuestra la experiencia de uso, pero no protege información frente a alguien con acceso al navegador. Los dispositivos no comparten datos. No introducir datos reales, contraseñas ni claves privadas.
 
-El respaldo incluye datos tabulares y el logo compacto del cliente. Aún no incluye fotografías de trabajos, firmas ni otros archivos adjuntos; necesitarán almacenamiento y respaldo propios.
+El respaldo incluye datos tabulares y el logo compacto del cliente. Las fotografías y documentos de órdenes se guardan por separado en MySQL y requieren descargar también el respaldo de evidencias JSONL. Las firmas digitales trazables siguen pendientes.
 
 Los identificadores son estables y los correlativos se calculan desde los registros existentes. El servidor MySQL aplica transacciones y control de revisión compartida; esas garantías no se extienden al adaptador local. El modo local detecta revisiones cambiadas entre pestañas, pero no ofrece una base de datos multiusuario.
 
@@ -100,3 +100,7 @@ El 04/10/2026 se verificó en hPanel: Business Web Hosting, 200 GB de almacenami
 Se autorizó la creación local del proyecto y la descarga de dependencias. El usuario autorizó posteriormente publicar un entorno de pruebas independiente en Hostinger. Se creó la aplicación Node.js, la base dedicada y la cuenta de administración de pruebas. WordPress continúa en el dominio comercial. El resultado de despliegue se documenta en docs/HOSTINGER.md.
 
 Ver `docs/ARQUITECTURA.md` y `docs/HOSTINGER.md`.
+
+## Entrega operativa 0.3
+
+Ver [docs/OPERACION-0.3.md](docs/OPERACION-0.3.md) para alcance, pruebas, permisos, recuperación y límites de esta entrega.

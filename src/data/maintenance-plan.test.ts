@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createSeed, demoUsers } from './seed';
 import { LocalDataSource } from './repository';
 import { makeBackup, parseBackup } from './excel';
-import { addDays, currentPlan, projectPlan } from '../domain/maintenance-plan';
+import { addDays, currentPlan, projectPlan, planService } from '../domain/maintenance-plan';
 import { validateDatabase } from '../domain/validation';
 import type { EntityRecord, Scalar } from '../domain/model';
 
@@ -14,6 +14,33 @@ const reading = (date: string, value: number, fields: Record<string, Scalar> = {
 function fixture() { const db=createSeed(); let saved=JSON.stringify(db); const source=new LocalDataSource({getItem:()=>saved,setItem:(_k,v)=>{saved=v;}},{demoHistory:false}); return {source,repo:source.repository('PlanPM',admin)}; }
 
 describe('planificación y calidad de la base',()=>{
+  it('guarda intervalos personalizados por equipo con motivo y mantiene separados los ciclos',async()=>{
+    const {source,repo}=fixture(); const before=source.snapshot(admin);
+    const preventive=await repo.create({...raw,intervalo:500,motivo:'Intervalo revisado para la condición de uso de este equipo'});
+    const major=await repo.create({...raw,tipo_plan:'Mayor',intervalo:3000,motivo:'Recomendación documentada para este equipo'});
+    expect(projectPlan(preventive,[reading('2026-01-20',1400)],[],'2026-01-21')).toMatchObject({target:1500,remaining:100});
+    expect(projectPlan(major,[reading('2026-01-20',1400)],[],'2026-01-21')).toMatchObject({target:4000,remaining:2600});
+    const byDays=await repo.create({...raw,criterio:'Días',intervalo:45,base_horas:null,motivo:'Ciclo por días revisado'});
+    expect(projectPlan(byDays,[],[],'2026-01-21').target).toBe('2026-02-15');
+    expect(source.snapshot(admin).entities.Equipo).toEqual(before.entities.Equipo);
+    expect(source.snapshot(admin).entities.LecturaHorometro).toEqual(before.entities.LecturaHorometro);
+  });
+  it('reconoce el tipo de mantenimiento de reportes históricos y de captura actual',()=>{
+    for(const tipo of ['Mantenimiento Mayor','Mantenimiento mayor']) for(const estado of ['Completado','Completada']) expect(planService(row({equipo_id:'equipment-1',tipo,estado}),'equipment-1','Mayor')).toBe(true);
+    for(const tipo of ['Preventivo','Mantenimiento Preventivo','Mantenimiento preventivo']) expect(planService(row({equipo_id:'equipment-1',tipo,estado:'Completado'}),'equipment-1','Preventivo')).toBe(true);
+    expect(planService(row({equipo_id:'equipment-1',tipo:'Correctivo',estado:'Completado'}),'equipment-1','Mayor')).toBe(false);
+  });
+  it('una nueva orden completada sirve como base revisada de mayor y evidencia de hallazgo',async()=>{
+    const {source,repo}=fixture(); const orders=source.repository('OrdenServicio',admin);
+    const order=await orders.create({equipo_id:'equipment-1',cliente_id:'client-1',sintoma:'Inspección mayor',tipo:'Mantenimiento mayor',prioridad:'Media',estado:'Programada',fecha_programada:'2026-10-10',tecnico_id:'tech-1'});
+    await orders.update(order.id,{estado:'En proceso'});
+    const completed=await orders.update(order.id,{estado:'Completada',diagnostico:'Revisión de componentes',trabajo_realizado:'Servicio mayor realizado',pruebas_realizadas:'Prueba de elevación y freno',resultado_pruebas:'Satisfactoria',horometro:900});
+    const major=await repo.create({...raw,tipo_plan:'Mayor',intervalo:2000,base_origen:'Servicio',base_orden_id:completed.id,motivo:'Base revisada después del mantenimiento mayor'});
+    expect(major.base_horas).toBe(900); expect(major.base_orden_id).toBe(completed.id);
+    const findings=source.repository('Hallazgo',admin);const finding=await findings.create({equipo_id:'equipment-1',descripcion:'Revisión de componentes antes de liberar',componente:'Hidráulico',prioridad:'Alta',estado:'Abierto'});
+    const resolved=await findings.update(finding.id,{estado:'Resuelto',orden_resolucion_id:completed.id,detalle_resolucion:'Componentes revisados y prueba documentada.',nota_cambio:'Evidencia validada'});
+    expect(resolved.estado).toBe('Resuelto');expect(resolved.orden_resolucion_id).toBe(completed.id);
+  });
   it('calcula 250 h y 2,000 h sin mezclar ciclos y respeta el límite exacto',()=>{
     expect(projectPlan(plan(),[reading('2026-01-20',1249)],[],'2026-01-21')).toMatchObject({target:1250,remaining:1,status:'Por vencer'});
     expect(projectPlan(plan(),[reading('2026-01-20',1250)],[],'2026-01-21')).toMatchObject({remaining:0,status:'Vencido'});
@@ -73,7 +100,7 @@ describe('planificación y calidad de la base',()=>{
   });
   it('rechaza planes incompletos y conserva la versión vigente ante un error',async()=>{
     const {source,repo}=fixture(); await repo.create(raw);const before=source.snapshot(admin);
-    const changes: Record<string,Scalar>[]=[{equipo_id:'missing'},{intervalo:500},{base_fecha:'2026-02-30'},{base_fecha:'2099-01-01'},{base_horas:null},{base_confirmada:false},{tipo_plan:'Mayor',criterio:'Días',intervalo:30},{motivo:''},{schema_plan:2}];
+    const changes: Record<string,Scalar>[]=[{equipo_id:'missing'},{intervalo:0},{intervalo:20001},{intervalo:2.5},{criterio:'Días',intervalo:3651},{base_fecha:'2026-02-30'},{base_fecha:'2099-01-01'},{base_horas:null},{base_confirmada:false},{tipo_plan:'Mayor',criterio:'Días',intervalo:30},{motivo:''},{schema_plan:2}];
     for(const change of changes) { await expect(repo.create({...raw,...change})).rejects.toThrow();expect(source.snapshot(admin)).toEqual(before); }
     await expect(repo.create({equipo_id:'equipment-1'})).rejects.toThrow('formulario');
   });

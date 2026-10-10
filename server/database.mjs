@@ -11,8 +11,20 @@ export async function migrate(pool) {
     `CREATE TABLE IF NOT EXISTS em_users (id VARCHAR(128) PRIMARY KEY, email VARCHAR(254) NOT NULL UNIQUE, name VARCHAR(160) NOT NULL, role VARCHAR(30) NOT NULL, password_hash VARCHAR(220) NOT NULL, client_id VARCHAR(128), technician_id VARCHAR(128), active BOOLEAN NOT NULL DEFAULT TRUE) ENGINE=InnoDB`,
     `CREATE TABLE IF NOT EXISTS em_sessions (token_hash CHAR(64) PRIMARY KEY, user_id VARCHAR(128) NOT NULL, csrf CHAR(43) NOT NULL, expires_at BIGINT NOT NULL, INDEX(user_id), FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB`,
     `CREATE TABLE IF NOT EXISTS em_login_limits (bucket CHAR(64) PRIMARY KEY, attempts INT NOT NULL, expires_at BIGINT NOT NULL) ENGINE=InnoDB`,
+    `CREATE TABLE IF NOT EXISTS em_security_events (id VARCHAR(128) PRIMARY KEY, actor_id VARCHAR(128) NOT NULL, target_id VARCHAR(128) NOT NULL, action VARCHAR(50) NOT NULL, created_at BIGINT NOT NULL) ENGINE=InnoDB`,
+    `CREATE TABLE IF NOT EXISTS em_attachments (id VARCHAR(128) PRIMARY KEY, order_id VARCHAR(128) NOT NULL, request_id CHAR(36) NOT NULL UNIQUE, category VARCHAR(30) NOT NULL, name VARCHAR(160) NOT NULL, mime VARCHAR(40) NOT NULL, size INT NOT NULL, sha256 CHAR(64) NOT NULL, uploaded_by VARCHAR(128) NOT NULL, created_at BIGINT NOT NULL, content MEDIUMBLOB NOT NULL, INDEX(order_id)) ENGINE=InnoDB`,
   ];
   for (const statement of sql) await pool.query(statement);
+  const [userColumns] = await pool.query("SHOW COLUMNS FROM em_users LIKE 'expires_at'");
+  if (!userColumns.length) {
+    try { await pool.query('ALTER TABLE em_users ADD COLUMN expires_at BIGINT NULL'); }
+    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+  }
+  const [requestColumns] = await pool.query("SHOW COLUMNS FROM em_users LIKE 'creation_request'");
+  if (!requestColumns.length) {
+    try { await pool.query('ALTER TABLE em_users ADD COLUMN creation_request CHAR(36) NULL UNIQUE'); }
+    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+  }
   for (const table of ['em_sessions', 'em_login_limits']) {
     const [indexes] = await pool.query(`SHOW INDEX FROM ${table} WHERE Column_name='expires_at' AND Seq_in_index=1`);
     if (!indexes.length) {

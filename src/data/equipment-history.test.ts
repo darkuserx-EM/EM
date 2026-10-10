@@ -112,11 +112,13 @@ describe('historial y cálculo de uso', () => {
 describe('permisos y exportación del expediente', () => {
   it('excluye costos internos del repositorio de coordinación, técnico y cliente', async () => {
     const source = new LocalDataSource(memory(createSeed()));
+    const published = (await source.repository('OrdenServicio', admin).getAll()).find(row => row.cliente_id === demoUsers[5].cliente_id)!;
+    await source.repository('OrdenServicio', admin).update(published.id, { visible_cliente: true, expected_updated_at: published.fecha_actualizacion });
     for (const actor of [demoUsers[1], demoUsers[2], demoUsers[5]]) {
       const orders = await source.repository('OrdenServicio', actor).getAll();
       expect(orders.length).toBeGreaterThan(0);
       expect(orders.every(row => !Object.keys(row).some(key => key.startsWith('costo_')))).toBe(true);
-      if (actor.rol === 'Cliente') expect(orders.every(row => row.cliente_id === actor.cliente_id)).toBe(true);
+      if (actor.rol === 'Cliente') { expect(orders.every(row => row.cliente_id === actor.cliente_id)).toBe(true); expect(orders.map(row => row.id)).toEqual([published.id]); }
       if (actor.rol === 'Técnico') expect(orders.every(row => row.tecnico_id === actor.tecnico_id)).toBe(true);
     }
     expect((await source.repository('OrdenServicio', admin).getAll())[0].costo_mano_obra).toBe(240);
