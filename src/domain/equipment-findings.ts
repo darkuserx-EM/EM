@@ -1,10 +1,11 @@
 import type { EntityRecord } from './model';
+import { isCompletedService } from './vocabulary';
 
 export const findingStates = ['Por confirmar', 'Abierto', 'Cotizado', 'Aprobado', 'Programado', 'Resuelto', 'Descartado'] as const;
 export const findingPriorities = ['Por definir', 'Baja', 'Media', 'Alta', 'Crítica'] as const;
 export const findingComponents = ['Por clasificar', 'Batería', 'Sistema eléctrico', 'Motor', 'Hidráulico', 'Torre y cadenas', 'Cuchillas y aditamentos', 'Frenos', 'Llantas y rodos', 'Estructura', 'Otro'] as const;
 export const findingClosed = (row: Record<string, unknown>) => ['Resuelto', 'Descartado'].includes(String(row.estado));
-export const completedService = (row: EntityRecord) => ['Completado', 'Completado con observaciones', 'Completada'].includes(String(row.estado));
+export const completedService = (row: EntityRecord) => isCompletedService(row);
 
 export function recommendationReports(reports: EntityRecord[], equipmentId: string) {
   return reports.filter(row => row.equipo_id === equipmentId && typeof row.notas_seguridad === 'string' && row.notas_seguridad.trim())

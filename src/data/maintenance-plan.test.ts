@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createSeed, demoUsers } from './seed';
 import { LocalDataSource } from './repository';
 import { makeBackup, parseBackup } from './excel';
-import { addDays, currentPlan, projectPlan, planService } from '../domain/maintenance-plan';
+import { addDays, currentPlan, planStatusLabel, projectPlan, planService } from '../domain/maintenance-plan';
 import { validateDatabase } from '../domain/validation';
 import type { EntityRecord, Scalar } from '../domain/model';
 
@@ -70,9 +70,24 @@ describe('planificación y calidad de la base',()=>{
     }
   });
   it('conserva las estimaciones y nunca las proyecta como definitivas',()=>{
-    expect(projectPlan(plan({base_calidad:'Estimada'}),[reading('2026-01-20',1400)],[],'2026-01-21')).toMatchObject({estimated:true,status:'Base o lectura estimada'});
+    expect(projectPlan(plan({base_calidad:'Estimada'}),[reading('2026-01-20',1200)],[],'2026-01-21')).toMatchObject({estimated:true,status:'Base o lectura estimada',tone:'warning'});
     const p=projectPlan(plan(),[reading('2026-01-02',1050),reading('2026-01-16',1100,{es_estimado:true}),reading('2026-01-30',1200)],[],'2026-01-31');
     expect(p.estimated).toBe(true);expect(p.forecast).toBeUndefined();
+  });
+  it('una estimación no oculta un vencimiento por horas ni por días',()=>{
+    const byHours=projectPlan(plan({base_calidad:'Estimada'}),[reading('2026-01-20',1400)],[],'2026-01-21');
+    expect(byHours).toMatchObject({estimated:true,status:'Vencido',tone:'danger',remaining:-150});
+    expect(planStatusLabel(byHours)).toBe('Vencido · estimado');
+    const estimatedReading=projectPlan(plan(),[reading('2026-01-20',1310,{es_estimado:true})],[],'2026-01-21');
+    expect(estimatedReading).toMatchObject({estimated:true,status:'Vencido',tone:'danger'});
+    const days=plan({criterio:'Días',intervalo:90,base_fecha:'2026-01-01',base_horas:null,base_calidad:'Estimada'});
+    expect(projectPlan(days,[],[],'2026-04-15')).toMatchObject({estimated:true,status:'Vencido',tone:'danger'});
+    expect(projectPlan(days,[],[],'2026-04-01')).toMatchObject({estimated:true,status:'Vence hoy'});
+    expect(projectPlan(days,[],[],'2026-03-01')).toMatchObject({estimated:true,status:'Base estimada'});
+    expect(planStatusLabel(projectPlan(plan(),[reading('2026-01-20',1300)],[],'2026-01-21'))).toBe('Vencido');
+  });
+  it('un vencimiento con lectura antigua sigue siendo vencido',()=>{
+    expect(projectPlan(plan(),[reading('2026-01-20',1300)],[],'2026-03-01')).toMatchObject({status:'Vencido',tone:'danger'});
   });
   it('proyecta solo con tres lecturas recientes comparables y ritmo positivo',()=>{
     const rows=[reading('2026-01-02',1000),reading('2026-01-16',1100),reading('2026-01-30',1200)];
