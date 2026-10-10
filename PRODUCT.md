@@ -34,7 +34,7 @@ Operación en Guatemala. El portal se utiliza en escritorio y móvil. Las fechas
 
 ## Brand Commitments
 
-Portal EM / Expertos en Montacargas (EMSA). Interfaz en español, lenguaje sencillo y operativo. Conservar la identidad existente. Para la vista de administrador, el usuario solicitó menos tarjetas innecesarias, textos repetidos, redondeado excesivo y degradados genéricos.
+Portal EM / Expertos en Montacargas (EMSA). Interfaz en español, lenguaje sencillo y operativo. Conservar la identidad existente. Para la vista de administrador y la Ficha del equipo, el usuario solicitó menos tarjetas innecesarias, textos repetidos, redondeado excesivo y degradados genéricos. Las seis pestañas de la ficha comparten ancho, jerarquía y separadores; se conservan los estados, la evidencia, las acciones y el diseñador opcional.
 
 ## Evidence on Hand
 

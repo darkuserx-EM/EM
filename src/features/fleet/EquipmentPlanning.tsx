@@ -71,7 +71,7 @@ export function EquipmentPlanning({ equipment, services, readings, onReport }: {
   const plans = useRows('PlanPM', true); const [editing, setEditing] = useState<string | null>(null);
   if (plans.error) return <ErrorNotice message={plans.error} />;
   if (!plans.ready) return <p role="status">Cargando planes…</p>;
-  return <section className="equipment-planning" aria-label="Planificación del equipo"><header className="pm-heading"><CalendarDays size={27} /><div><span>MANTENIMIENTO · {equipment.id_interno_cliente || equipment.codigo}</span><h2>El próximo servicio, con una base clara</h2><p>Preventivo y mayor tienen intervalos y puntos de inicio independientes.</p></div></header>
+  return <section className="equipment-planning" aria-label="Planificación del equipo"><header className="pm-heading"><CalendarDays size={27} /><div><h2>Planes de mantenimiento</h2><p>Preventivo y mayor tienen intervalos y puntos de inicio independientes.</p></div></header>
     <div className="pm-cards">{planTypes.map(type => {
       const plan = currentPlan(plans.rows, equipment.id, type); const projection = projectPlan(plan, readings, services);
       const versions = plans.rows.filter(row => row.schema_plan === 1 && row.equipo_id === equipment.id && row.tipo_plan === type).sort((a,b) => Number(b.version) - Number(a.version));
