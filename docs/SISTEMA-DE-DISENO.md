@@ -57,9 +57,16 @@ Todos los colores y tamaños de las vistas anual, mensual y semanal, del tablero
 - **Título del mes:** solo la primera letra en mayúscula («Octubre de 2026»). Antes `text-transform: capitalize` mostraba «Octubre De 2026».
 - **Eventos compactos** de la vista mensual: con 12 px se recortan antes. El texto completo sigue en el título emergente y en el detalle del día.
 
+## Paso 4 · Flota y clientes
+
+- Reescritos con tokens: `equipment-status.css`, `client-directory.css`, `equipment-form.css`, `equipment-images.css` y `equipment-specifications.css`.
+- `records.css` (nuevo, importado en `RecordsPage`) reemplaza con tokens las reglas de Flota y del formulario de registros que siguen en `styles.css`. No se edita `styles.css` para evitar conflictos.
+- `base.css`: `.field-help` y la vista previa de importación con tokens; en móvil, los botones de importación ya no bajan a 9 px.
+- **Corrección del paso 1:** `base.css` había dejado en 14 px los campos de formulario en móvil. Vuelven a 16 px para evitar el zoom automático de iOS.
+
 ## Siguientes pasos
 
 1. ~~Base global~~ (paso 1, `base.css`).
-2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → Flota y clientes → resto de la ficha → Inicio → administración → portal del cliente.
+2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → resto de la ficha → Inicio → administración → portal del cliente.
 3. **Componentes compartidos:** `Button`, `Field`, `Badge`, `Tabs`/`Steps`, `KpiCard`, `DataTable`.
 4. **Control en CI:** Stylelint contra colores y tamaños fuera de los tokens, y prueba de contraste.

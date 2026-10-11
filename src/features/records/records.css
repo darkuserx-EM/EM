@@ -1,0 +1,31 @@
+/*
+ * Flota, Clientes y formulario de registros · paso 4 del sistema de diseño (docs/SISTEMA-DE-DISENO.md).
+ * Reemplaza con tokens las reglas equivalentes de styles.css: se carga después y gana por orden.
+ * Las reglas de styles.css se retirarán cuando ese archivo se divida por pantalla.
+ */
+
+/* Aviso de altas y ediciones (Flota) */
+.capture-banner { border-color: var(--color-border); border-radius: var(--radius-md); background: var(--color-accent-soft); }
+.capture-banner-icon { background: var(--color-surface); color: var(--color-accent); }
+.capture-banner strong { font-size: var(--text-sm); color: var(--color-text); }
+.capture-banner p { font-size: var(--text-sm); color: var(--color-text-muted); }
+
+/* Celda del equipo en la tabla */
+.equipment-cell strong { font-size: var(--text-sm); color: var(--color-text); }
+.equipment-cell small { font-size: var(--text-xs); color: var(--color-text-muted); }
+
+/* Formulario de registros (equipo, cliente, contacto y sede) */
+.record-intro { font-size: var(--text-sm); color: var(--color-text-muted); }
+.record-parent { background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-sm); }
+.record-section { border-top-color: var(--color-border); }
+.record-section legend { font-size: var(--text-md); color: var(--color-text); }
+.record-field input, .record-field select, .record-field textarea { color: var(--color-text); background: var(--color-surface); }
+.record-field input:disabled, .record-field select:disabled { background: var(--color-surface-subtle); }
+.record-field small { font-size: var(--text-xs); color: var(--color-text-muted); }
+.required-mark { color: var(--color-brand-text); }
+.record-actions { border-top-color: var(--color-border); background: var(--color-surface); }
+.record-footer-note { background: var(--color-surface-subtle); font-size: var(--text-xs); color: var(--color-text-muted); }
+
+@media (max-width: 600px) {
+  .record-intro, .capture-banner p, .capture-banner strong { font-size: var(--text-sm); }
+}
