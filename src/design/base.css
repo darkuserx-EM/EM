@@ -66,6 +66,8 @@ input:focus, select:focus, textarea:focus, .search-box:focus-within { outline: 2
 .record-field input:disabled, .record-field select:disabled { color: var(--color-text-muted); }
 
 /* ── Tablas ───────────────────────────────────────────────────── */
+/* Contiene los textos .sr-only (posición absoluta) de las cabeceras: sin esto escapan del desplazamiento y ensanchan la página en móvil. */
+.table-scroll { position: relative; }
 .data-table { font-size: var(--text-sm); }
 .data-table th { font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--color-text-muted); }
 .data-table small { font-size: var(--text-xs); }
