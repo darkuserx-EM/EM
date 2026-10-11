@@ -41,9 +41,15 @@ No cambia anchos, rellenos ni rejillas. En móvil reemplaza las reducciones a 8�
 
 Las declaraciones equivalentes de `styles.css` quedan anuladas por orden y se retirarán al migrar cada pantalla. Los archivos de cada pantalla pueden seguir ajustando estos componentes, pero no por debajo de `--text-xs`.
 
+## Paso 2 · Órdenes y solicitudes (`operations.css`)
+
+Todos los colores y tamaños de Órdenes, del formulario de 5 pasos, del reporte, de Solicitudes y de los estados de operación usan tokens. Se conservan la distribución, las reglas de móvil y la impresión del reporte.
+
+Además, `.table-scroll` tiene `position: relative` en `base.css`. Los textos `.sr-only` de las cabeceras se escapaban del desplazamiento y ensanchaban toda la página en móvil (Órdenes medía 550 px en una pantalla de 375).
+
 ## Siguientes pasos
 
 1. ~~Base global~~ (paso 1, `base.css`).
-2. **Por pantalla:** Órdenes → Calendario y planificador → Flota y clientes → resto de la ficha → Inicio → administración → portal del cliente.
+2. **Por pantalla:** ~~Órdenes~~ (paso 2) → Calendario y planificador → Flota y clientes → resto de la ficha → Inicio → administración → portal del cliente.
 3. **Componentes compartidos:** `Button`, `Field`, `Badge`, `Tabs`/`Steps`, `KpiCard`, `DataTable`.
 4. **Control en CI:** Stylelint contra colores y tamaños fuera de los tokens, y prueba de contraste.
