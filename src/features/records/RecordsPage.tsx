@@ -17,6 +17,7 @@ import type { ClientSection } from './ClientInspector';
 import { RecordForm, type EditableRecord } from './RecordForm';
 import { getDataSource, serverMode } from '../../data/source';
 import { assertAdmin } from '../../domain/permissions';
+import './records.css';
 const ClientImportDialog = lazy(() => import('./ClientImportDialog'));
 
 export function RecordsPage({ module }: { module: 'flota' | 'clientes' }) {

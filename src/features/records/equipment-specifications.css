@@ -1,8 +1,15 @@
-.equipment-spec-controls{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
-.equipment-measurement{display:flex;align-items:flex-start;gap:8px;min-width:0}
-.equipment-measurement select{padding-right:4px}
-.equipment-metric{flex:0 0 auto;min-width:76px;padding:12px 8px;text-align:center;border:1px solid #e2e8d9;border-radius:6px;background:#f4f7ef;color:#52673f;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.equipment-unit-label{font-weight:400;color:#84916e}
-.equipment-legacy-note{padding:12px 15px;background:#f7f8f3;border-radius:6px;font-size:11px;line-height:1.7;color:#758266;margin-top:16px;overflow-wrap:anywhere}
-.equipment-spec-field:has(#record-bateria){max-width:270px}
-@media(max-width:600px){.equipment-metric{min-width:78px;padding-top:14px;padding-bottom:14px}.equipment-spec-field:has(#record-bateria){max-width:none}.equipment-measurement select{font-size:14px}}
+/* Especificaciones del equipo (formulario) · migrado a tokens en el paso 4 del sistema de diseño (docs/SISTEMA-DE-DISENO.md). */
+.equipment-spec-controls { display: flex; flex-direction: column; flex: 1; gap: 8px; min-width: 0; }
+.equipment-measurement { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.equipment-measurement select { padding-right: 4px; }
+.equipment-metric { flex: 0 0 auto; min-width: 76px; padding: 12px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-subtle); color: var(--color-text); font-size: var(--text-sm); font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
+.equipment-unit-label { font-weight: var(--weight-regular); color: var(--color-text-muted); }
+.equipment-legacy-note { margin-top: 16px; padding: 12px 15px; border-radius: var(--radius-sm); background: var(--color-surface-subtle); font-size: var(--text-xs); line-height: 1.7; color: var(--color-text-muted); overflow-wrap: anywhere; }
+.equipment-spec-field:has(#record-bateria) { max-width: 270px; }
+
+@media (max-width: 600px) {
+  .equipment-metric { min-width: 78px; padding-top: 14px; padding-bottom: 14px; }
+  .equipment-spec-field:has(#record-bateria) { max-width: none; }
+  /* 16 px evita el zoom automático de iOS al enfocar */
+  .equipment-measurement select { font-size: 16px; }
+}
