@@ -1,0 +1,97 @@
+/*
+ * Portal EM · Tokens de diseño (paso 0 del sistema de diseño)
+ * Base: pantalla de Mantenimiento (equipment-planning.css), que ya cumple contraste AA y tamaños.
+ * Contrastes medidos sobre --color-surface (#fff) y --color-bg (#f4f3f0).
+ * Se importa antes que styles.css (src/main.tsx). Las variables antiguas apuntan aquí.
+ */
+:root {
+  /* ── Color · neutros ───────────────────────────────────────────── */
+  --color-bg: #f4f3f0;              /* fondo de página (actual --paper) */
+  --color-surface: #ffffff;         /* paneles, tarjetas, tablas, modales */
+  --color-surface-subtle: #f6f8f2;  /* filas alternas, cabeceras, hover (reúne ~20 tonos casi iguales) */
+  --color-surface-muted: #eef2e8;   /* bloques secundarios, chips neutros */
+  --color-border: #dde2d6;          /* separadores y bordes decorativos (no identifican controles) */
+  --color-border-strong: #8a9580;   /* bordes de campos y controles · 3.14:1 sobre blanco (WCAG 1.4.11) */
+
+  --color-text: #273328;            /* texto principal · 13.2:1 blanco · 11.9:1 fondo */
+  --color-text-muted: #59634f;      /* texto secundario y metadatos · 6.3:1 blanco · 5.7:1 fondo */
+  --color-text-inverse: #ffffff;    /* texto sobre --color-primary o --color-accent */
+
+  /* ── Color · marca y acciones ─────────────────────────────────── */
+  --color-brand: #f58220;           /* SOLO decorativo: punto del título, iconos, barras · 2.6:1 (no apto para texto) */
+  --color-brand-text: #a3500a;      /* naranja para texto o enlaces · 5.7:1 */
+  --color-primary: #3a3e33;         /* botón principal (actual .button-dark) · texto blanco 11.0:1 */
+  --color-primary-hover: #2a2d25;
+  --color-accent: #4d693d;          /* selección: pestaña activa, filtro activo · texto blanco 6.2:1 */
+  --color-accent-soft: #edf4e6;     /* fondo de seleccionado */
+  --color-focus: #a3500a;           /* anillo de foco · 5.7:1 (el naranja de marca no alcanza 3:1) */
+
+  /* ── Color · semánticos (texto sobre su fondo, todos ≥ 4.5:1) ─── */
+  --color-success-text: #3f6a2c;  --color-success-bg: #edf4e6;   /* 5.65:1 · Al día, Completada, Operativo */
+  --color-warning-text: #7a5a12;  --color-warning-bg: #fbf2dc;   /* 5.71:1 · Por vencer, estimado, por revisar */
+  --color-danger-text:  #9b2c1f;  --color-danger-bg:  #fdecea;   /* 6.62:1 · Vencido, crítico, no operativo */
+  --color-info-text:    #2f5f8a;  --color-info-bg:    #e8f0f8;   /* 5.84:1 · Programada, informativo */
+
+  /* ── Tipografía ───────────────────────────────────────────────── */
+  --font-body: Inter, Arial, sans-serif;
+  --font-display: Poppins, Inter, sans-serif;
+  --text-xs: 12px;     /* mínimo absoluto: metadatos, etiquetas, ayudas */
+  --text-sm: 13px;     /* texto secundario, etiquetas de campo */
+  --text-md: 14px;     /* cuerpo, tablas, campos, botones */
+  --text-lg: 16px;     /* subtítulos, texto destacado */
+  --text-xl: 20px;     /* títulos de sección y panel */
+  --text-2xl: 24px;    /* valores de indicadores */
+  --text-3xl: 30px;    /* título de página */
+  --text-4xl: 40px;    /* cifras grandes excepcionales */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --leading-tight: 1.25;   /* títulos y cifras */
+  --leading-normal: 1.5;   /* cuerpo y tablas */
+
+  /* ── Espaciado (base 4 px) ────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Bordes, radios y sombras ─────────────────────────────────── */
+  --border-width: 1px;
+  --radius-sm: 6px;      /* chips y etiquetas */
+  --radius-md: 8px;      /* botones y campos */
+  --radius-lg: 12px;     /* paneles, tarjetas y modales */
+  --radius-full: 999px;  /* píldoras y avatares */
+  --shadow-sm: 0 1px 3px #2733281a;
+  --shadow-md: 0 4px 16px #27332814;
+  --shadow-overlay: 0 16px 48px #24301d33;   /* modales y paneles laterales */
+
+  /* ── Interacción ──────────────────────────────────────────────── */
+  --focus-ring: 0 0 0 3px var(--color-focus);
+  --control-height: 40px;
+  --target-min: 44px;           /* objetivo táctil mínimo */
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --easing: ease-out;
+}
+
+/* Objetivos táctiles en pantallas de dedo */
+@media (pointer: coarse) {
+  :root { --control-height: var(--target-min); }
+}
+
+/* Sin animaciones para quien lo pide */
+@media (prefers-reduced-motion: reduce) {
+  :root { --duration-fast: 0ms; --duration-base: 0ms; }
+}
+
+/*
+ * Breakpoints (las variables CSS no funcionan dentro de @media; usar estos 4 valores):
+ *   móvil ≤ 600px · tableta ≤ 900px · escritorio ≤ 1200px · amplio ≥ 1600px
+ * Reglas: docs/SISTEMA-DE-DISENO.md
+ */

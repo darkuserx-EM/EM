@@ -1,9 +1,9 @@
 /* Administrator home: quiet supporting sections and one dominant work table. */
 .admin-home {
-  --home-muted: #596452;
-  --home-line: #dce1d5;
-  --home-accent: #4d693d;
-  --home-soft: #ecefe6;
+  --home-muted: var(--color-text-muted);
+  --home-line: var(--color-border);
+  --home-accent: var(--color-accent);
+  --home-soft: var(--color-surface-muted);
   --home-radius: 4px;
   gap: 24px;
   color: var(--home-ink);
