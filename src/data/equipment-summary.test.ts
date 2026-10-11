@@ -18,10 +18,24 @@ describe('resumen del equipo con datos históricos', () => {
     ], [], [], [], '2026-01-01', '2026-01-31');
     const summary = summarizeEquipment(history);
     expect(summary.serviceTypes.reduce((sum, group) => sum + group.count, 0)).toBe(4);
-    expect(summary.serviceTypes.find(group => group.label === 'Otros')?.count).toBe(1);
+    expect(summary.serviceTypes.find(group => group.label === 'Inspecciones')?.count).toBe(1);
+    expect(summary.serviceTypes.find(group => group.label === 'Otros')).toBeUndefined();
     expect(summary.pendingReports).toBe(1);
     expect(summary.lastPreventive?.id).toBe('pm');
     expect(summary.lastMajor?.id).toBe('major');
+  });
+  it('cuenta las órdenes cerradas en el portal con su vocabulario («Completada», «Mantenimiento mayor»)', () => {
+    const history = equipmentHistory('test-equipment', [
+      report('portal-major', '2026-01-09', 'Mantenimiento mayor', 'Completada'),
+      report('portal-pm', '2026-01-07', 'Preventivo', 'Completada'),
+      report('unknown', '2026-01-03', 'Instalación', 'Completada'),
+      report('draft', '2026-01-08', 'Mantenimiento mayor', 'Borrador'),
+    ], [], [], [], '2026-01-01', '2026-01-31');
+    const summary = summarizeEquipment(history);
+    expect(summary.serviceTypes.find(group => group.label === 'Mayores')?.count).toBe(2);
+    expect(summary.serviceTypes.find(group => group.label === 'Otros')?.count).toBe(1);
+    expect(summary.lastMajor?.id).toBe('portal-major');
+    expect(summary.lastPreventive?.id).toBe('portal-pm');
   });
   it('no supone mantenimiento completado cuando falta confirmación en el reporte', () => {
     const history = equipmentHistory('test-equipment', [report('pm', '2026-01-05', 'Preventivo', 'Pendiente de firma'), report('major', '2026-01-06', 'Mantenimiento Mayor', 'Pendiente')], [], [], []);

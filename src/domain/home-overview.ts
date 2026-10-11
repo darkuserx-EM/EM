@@ -2,7 +2,7 @@ import type { EntityRecord } from './model';
 import { clientDisplayName } from './client-profile';
 import { findingClosed } from './equipment-findings';
 import { maintenanceState, operationalState, retiredEquipment } from './equipment-status';
-import { currentPlan, projectPlan, todayGT, validDay, type PlanProjection } from './maintenance-plan';
+import { currentPlan, planStatusLabel, projectPlan, todayGT, validDay, type PlanProjection } from './maintenance-plan';
 import { operationalOrders } from './planning';
 
 export const normalizeSearch = (value: unknown) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
@@ -36,11 +36,11 @@ export function equipmentAttention(equipment: EntityRecord[], readings: EntityRe
     const reasons: string[] = [];
     if (critical) reasons.push('Hallazgo crítico abierto');
     if (state === 'No operativo') reasons.push('Equipo no operativo');
-    if (projection?.status === 'Vencido') reasons.push('Preventivo vencido');
-    if (major && !['Al día', 'En pausa'].includes(major.status)) reasons.push(`Mantenimiento mayor: ${major.status.toLocaleLowerCase('es')}`);
+    if (projection?.status === 'Vencido') reasons.push(projection.estimated ? 'Preventivo vencido · estimado' : 'Preventivo vencido');
+    if (major && !['Al día', 'En pausa'].includes(major.status)) reasons.push(`Mantenimiento mayor: ${planStatusLabel(major).toLocaleLowerCase('es')}`);
     if (state === 'En reparación' || state === 'En mantenimiento') reasons.push(state);
     if (maintenanceState(machine) === 'Mantenimiento pendiente') reasons.push('Mantenimiento pendiente');
-    if (projection && ['Vence hoy', 'Por vencer', 'Revisar lecturas', 'Revisar base', 'Actualizar lectura', 'Base estimada', 'Base o lectura estimada'].includes(projection.status)) reasons.push(projection.status);
+    if (projection && ['Vence hoy', 'Por vencer', 'Revisar lecturas', 'Revisar base', 'Actualizar lectura', 'Base estimada', 'Base o lectura estimada'].includes(projection.status)) reasons.push(planStatusLabel(projection));
     if (unknown) reasons.push('Estado por confirmar');
     if (missingReading) reasons.push('Sin lectura registrada');
     if (missingPlan) reasons.push(plan ? 'Base del plan pendiente' : 'Sin plan preventivo');

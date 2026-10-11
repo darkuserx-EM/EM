@@ -1,6 +1,6 @@
 import type { EntityRecord, Scalar } from './model';
 import { localDay } from './equipment-history';
-import { completedService } from './equipment-findings';
+import { isCompletedService, serviceKind } from './vocabulary';
 
 export const planTypes = ['Preventivo', 'Mayor'] as const;
 export const planIntervalLimits = { Horas: 20000, 'Días': 3650 } as const;
@@ -10,7 +10,7 @@ export const validDay = (value: unknown): value is string => typeof value === 's
 export const dayGap = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 export const addDays = (day: string, days: number) => new Date(Date.parse(day) + days * 86400000).toISOString().slice(0, 10);
 export const currentPlan = (plans: EntityRecord[], equipmentId: string, type: string) => plans.find(row => row.schema_plan === 1 && row.vigente === true && row.equipo_id === equipmentId && row.tipo_plan === type);
-export const planService = (row: EntityRecord, equipmentId: string, type: string) => row.equipo_id === equipmentId && completedService(row) && (type === 'Mayor' ? ['Mantenimiento Mayor', 'Mantenimiento mayor'].includes(String(row.tipo)) : ['Preventivo', 'Mantenimiento Preventivo', 'Mantenimiento preventivo'].includes(String(row.tipo)));
+export const planService = (row: EntityRecord, equipmentId: string, type: string) => row.equipo_id === equipmentId && isCompletedService(row) && serviceKind(row) === (type === 'Mayor' ? 'Mayor' : 'Preventivo');
 
 export function planFieldErrors(row: Record<string, unknown>) {
   if (row.schema_plan === undefined) return []; // Preserve legacy, unconfigured records.
@@ -78,6 +78,8 @@ export interface PlanProjection {
   target?: number | string; remaining?: number; latest?: number; latestDay?: string; estimated?: boolean;
   forecast?: string; rate?: number;
 }
+/** Visible status; a due date computed from estimates says so instead of hiding it. */
+export const planStatusLabel = (projection: PlanProjection) => projection.estimated && ['Vencido', 'Vence hoy'].includes(projection.status) ? `${projection.status} · estimado` : projection.status;
 export function projectPlan(plan: EntityRecord | undefined, readings: EntityRecord[], services: EntityRecord[] = [], today = todayGT()): PlanProjection {
   const pending = (status: string, detail: string): PlanProjection => ({ status, detail, tone: 'neutral' });
   if (!plan) return pending('Sin plan', 'Configura el intervalo y confirma desde dónde comienza el conteo.');
@@ -88,7 +90,8 @@ export function projectPlan(plan: EntityRecord | undefined, readings: EntityReco
   if (plan.criterio === 'Días') {
     const target = addDays(plan.base_fecha, interval); const remaining = dayGap(today, target);
     const estimated = plan.base_calidad === 'Estimada';
-    return { target, remaining, estimated, status: estimated ? 'Base estimada' : remaining < 0 ? 'Vencido' : remaining === 0 ? 'Vence hoy' : remaining <= 7 ? 'Por vencer' : 'Al día', tone: estimated ? 'warning' : remaining < 0 ? 'danger' : remaining <= 7 ? 'warning' : 'good', detail: estimated ? 'Fecha orientativa; confirma la base antes de programar como definitivo.' : 'Calculado por días calendario, con fecha local de Guatemala.' };
+    // An estimate never hides a due date: it stays flagged in `estimated` and in the label.
+    return { target, remaining, estimated, status: remaining < 0 ? 'Vencido' : remaining === 0 ? 'Vence hoy' : estimated ? 'Base estimada' : remaining <= 7 ? 'Por vencer' : 'Al día', tone: remaining < 0 ? 'danger' : estimated || remaining <= 7 ? 'warning' : 'good', detail: estimated ? 'Fecha orientativa; confirma la base antes de programar como definitivo.' : 'Calculado por días calendario, con fecha local de Guatemala.' };
   }
   if (typeof plan.base_horas !== 'number') return pending('Base pendiente', 'Falta la lectura base.');
   const baseService = services.find(row => row.id === plan.base_orden_id);
@@ -104,7 +107,7 @@ export function projectPlan(plan: EntityRecord | undefined, readings: EntityReco
   const value = latest ? Number(latest.valor) : plan.base_horas;
   const target = plan.base_horas + interval; const remaining = Math.round((target - value) * 100) / 100;
   const age = dayGap(latestDay, today); const estimated = plan.base_calidad === 'Estimada' || rows.some(row => row.es_estimado === true);
-  const result: PlanProjection = { target, remaining, latest: value, latestDay, estimated, status: estimated ? 'Base o lectura estimada' : remaining <= 0 ? 'Vencido' : age > 30 ? 'Actualizar lectura' : remaining <= 25 ? 'Por vencer' : 'Al día', tone: estimated || age > 30 ? 'warning' : remaining <= 0 ? 'danger' : remaining <= 25 ? 'warning' : 'good', detail: `Comparación con ${latest ? 'la lectura' : 'la base confirmada'} del ${latestDay}. ${age > 30 ? 'Han pasado más de 30 días; actualiza la lectura para evaluar el estado actual.' : 'El vencimiento por horas se confirma con una lectura.'}${estimated ? ' Cálculo orientativo con estimaciones; pendiente de confirmar.' : ''}` };
+  const result: PlanProjection = { target, remaining, latest: value, latestDay, estimated, status: remaining <= 0 ? 'Vencido' : estimated ? 'Base o lectura estimada' : age > 30 ? 'Actualizar lectura' : remaining <= 25 ? 'Por vencer' : 'Al día', tone: remaining <= 0 ? 'danger' : estimated || age > 30 || remaining <= 25 ? 'warning' : 'good', detail: `Comparación con ${latest ? 'la lectura' : 'la base confirmada'} del ${latestDay}. ${age > 30 ? 'Han pasado más de 30 días; actualiza la lectura para evaluar el estado actual.' : 'El vencimiento por horas se confirma con una lectura.'}${estimated ? ' Cálculo orientativo con estimaciones; pendiente de confirmar.' : ''}` };
   const recent = [...new Map(rows.filter(row => dayGap(localDay(String(row.fecha)), latestDay) <= 90).map(row => [String(row.fecha), row])).values()];
   const span = recent.length >= 3 ? (Date.parse(String(recent.at(-1)!.fecha)) - Date.parse(String(recent[0].fecha))) / 86400000 : 0;
   const rate = span >= 14 ? (Number(recent.at(-1)!.valor) - Number(recent[0].valor)) / span : 0;

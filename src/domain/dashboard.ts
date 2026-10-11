@@ -1,6 +1,7 @@
 import type {EntityRecord} from './model';
 import {localDay} from './equipment-history';
 import {validDay} from './maintenance-plan';
+import {isCompletedService} from './vocabulary';
 const safeDay=(value:unknown)=>{
  if(typeof value!=='string'||!value)return '';
  if(/^\d{4}-\d{2}-\d{2}$/.test(value))return validDay(value)?value:'';
@@ -8,7 +9,7 @@ const safeDay=(value:unknown)=>{
  return localDay(value);
 };
 export const orderDay=(row:EntityRecord)=>row.schema_operacion===1?safeDay(row.fecha)||safeDay(row.fecha_programada)||safeDay(row.fecha_creacion):safeDay(row.fecha);
-export const orderClosed=(row:EntityRecord)=>['Completada','Completado','Completado con observaciones','Cerrada','Cerrado','Finalizado','Finalizada'].includes(String(row.estado));
+export const orderClosed=(row:EntityRecord)=>isCompletedService(row);
 export function dashboardOrders(rows:EntityRecord[],filter:{from:string;to:string;client:string;equipment:string;origin:string}){
  return rows.filter(row=>{const day=orderDay(row);return (!filter.from||!!day&&day>=filter.from)&&(!filter.to||!!day&&day<=filter.to)&&(!filter.client||row.cliente_id===filter.client)&&(!filter.equipment||row.equipo_id===filter.equipment)&&(!filter.origin||(filter.origin==='Actual')===(row.schema_operacion===1));});
 }
