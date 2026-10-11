@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, ArrowUpRight, ClipboardList, Plus, CheckCircle2, Pencil } from 'lucide-react';
 import { useActor, useToast } from '../../app/state';
-import { ErrorNotice, Modal } from '../../components/ui';
+import { ErrorNotice, Modal, useUnsavedChanges } from '../../components/ui';
 import { getDataSource } from '../../data/source';
 import type { EntityRecord } from '../../domain/model';
 import { completedService, findingClosed, findingComponents, findingPriorities, findingStates, findingSummary, recommendationReports } from '../../domain/equipment-findings';
@@ -15,7 +15,7 @@ export function FindingOverview({ equipmentId, findings, services, onOpen, loadi
   const totals = findingSummary(findings, equipmentId);
   const recommendations = recommendationReports(services, equipmentId);
   const unlinked = recommendations.filter(report => !findings.some(row => row.equipo_id === equipmentId && row.orden_origen_id === report.id)).length;
-  return <section className="finding-overview" aria-label="Seguimiento del equipo"><div className="finding-overview-heading"><ClipboardList size={23} /><div><h3>Hallazgos y recomendaciones</h3><p>Organiza lo que necesita atención y registra cómo se resolvió.</p></div></div>{loading ? <p role="status">Cargando seguimientos…</p> : error ? <ErrorNotice message={error} /> : <><div className="finding-overview-counts"><div><strong>{totals.active}</strong><span>En seguimiento</span></div><div><strong>{totals.pending}</strong><span>Por confirmar</span></div><div><strong>{unlinked}</strong><span>Reportes con notas sin vincular</span></div></div><button className="button button-dark" onClick={onOpen}>Revisar hallazgos y notas<ArrowRight size={16} /></button><small>Las notas históricas requieren revisión; no se cuentan automáticamente como fallas abiertas.</small></>}</section>;
+  return <section className="finding-overview" aria-label="Seguimiento del equipo"><div className="finding-overview-heading"><ClipboardList size={23} /><div><h3>Hallazgos y recomendaciones</h3></div></div>{loading ? <p role="status">Cargando seguimientos…</p> : error ? <ErrorNotice message={error} /> : <><div className="finding-overview-counts"><div><strong>{totals.active}</strong><span>En seguimiento</span></div><div><strong>{totals.pending}</strong><span>Por confirmar</span></div><div><strong>{unlinked}</strong><span>Reportes con notas sin vincular</span></div></div><button className="button button-dark" onClick={onOpen}>Revisar hallazgos y notas<ArrowRight size={16} /></button><small>Las notas históricas requieren revisión; no se cuentan automáticamente como fallas abiertas.</small></>}</section>;
 }
 
 function FindingForm({ equipment, services, row, origin, onClose, onSaved }: { equipment: EntityRecord; services: EntityRecord[]; row?: EntityRecord; origin?: EntityRecord; onClose: () => void; onSaved: (state: string) => void }) {
@@ -27,6 +27,7 @@ function FindingForm({ equipment, services, row, origin, onClose, onSaved }: { e
     fecha_programada: String(row?.fecha_programada || ''), orden_origen_id: String(row?.orden_origen_id || origin?.id || ''),
     orden_resolucion_id: String(row?.orden_resolucion_id || ''), detalle_resolucion: String(row?.detalle_resolucion || ''), nota_cambio: '',
   }));
+  const [initialValues] = useState(values); const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues), onClose);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const set = (key: string, value: string) => setValues(previous => ({ ...previous, [key]: value }));
   const ownServices = services.filter(service => service.equipo_id === equipment.id).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
@@ -45,7 +46,7 @@ function FindingForm({ equipment, services, row, origin, onClose, onSaved }: { e
     finally { setBusy(false); }
   }
   const choose = (key: string, label: string, options: readonly string[]) => <label>{label}<select value={values[key]} onChange={event => set(key, event.target.value)} disabled={busy}>{options.map(value => <option key={value}>{value}</option>)}</select></label>;
-  return <Modal title={row ? `Editar seguimiento ${row.codigo}` : 'Nuevo seguimiento'} onClose={() => { if (!busy) onClose(); }} wide>
+  return <Modal title={row ? `Editar seguimiento ${row.codigo}` : 'Nuevo seguimiento'} onClose={() => { if (!busy) guard.requestClose(); }} wide>{guard.prompt}
     <form className="finding-form" onSubmit={save}>
       <p className="finding-form-equipment">{equipment.codigo} · {equipment.id_interno_cliente || `${equipment.marca} ${equipment.modelo}`}</p>
       {origin && !row && <p className="finding-form-hint">Revisa la nota de {reportLabel(origin)} y deja aquí un solo hallazgo. Puedes crear otro seguimiento para una recomendación diferente del mismo reporte.</p>}
@@ -60,7 +61,7 @@ function FindingForm({ equipment, services, row, origin, onClose, onSaved }: { e
       {row && <label className="finding-full">Nota del cambio{values.estado !== row.estado ? ' *' : ''}<input value={values.nota_cambio} onChange={event => set('nota_cambio', event.target.value)} required={values.estado !== row.estado} maxLength={300} disabled={busy} placeholder="Explica el avance o la corrección" /></label>}
       <p className="finding-form-hint finding-full">Por confirmar conserva una observación pendiente de revisión. Activar un seguimiento requiere definir su prioridad. El estado operativo del equipo se actualiza por separado.</p>
       <div className="finding-full"><ErrorNotice message={error} /></div>
-      <div className="modal-actions finding-full"><button className="button" type="button" onClick={onClose} disabled={busy}>Cancelar</button><button className="button button-dark" type="submit" disabled={busy}>{busy ? 'Guardando…' : 'Guardar seguimiento'}</button></div>
+      <div className="modal-actions finding-full"><button className="button" type="button" onClick={guard.requestClose} disabled={busy}>Cancelar</button><button className="button button-dark" type="submit" disabled={busy}>{busy ? 'Guardando…' : 'Guardar seguimiento'}</button></div>
     </form>
   </Modal>;
 }
@@ -76,7 +77,7 @@ export function EquipmentFindings({ equipment, findings, services, audit, onRepo
   const visible = own.filter(row => findingClosed(row) === (section === 'closed') && (stateFilter === 'Todos' || row.estado === stateFilter) && match(`${row.codigo} ${row.descripcion} ${row.componente} ${row.responsable}`));
   const visibleReports = reports.filter(row => match(`${reportLabel(row)} ${row.notas_seguridad}`));
   return <section className="equipment-findings" aria-label="Hallazgos y recomendaciones del equipo">
-    <header className="findings-heading"><div><span>SEGUIMIENTO DEL EQUIPO · {equipment.id_interno_cliente || equipment.codigo}</span><h2>Del reporte a la solución</h2><p>Revisa las recomendaciones, asigna su atención y conserva evidencia del cierre.</p></div><button className="button button-dark" onClick={() => setEditing({})}><Plus size={16} />Nuevo seguimiento</button></header>
+    <header className="findings-heading"><div><h2>Hallazgos y notas</h2></div><button className="button button-dark" onClick={() => setEditing({})}><Plus size={16} />Nuevo seguimiento</button></header>
     <div className="findings-counters"><div><strong>{totals.active}</strong><span>En seguimiento</span></div><div className={totals.critical ? 'has-critical' : ''}><strong>{totals.critical}</strong><span>Críticos confirmados</span></div><div><strong>{totals.pending}</strong><span>Por confirmar</span></div><div><strong>{totals.closed}</strong><span>Cerrados</span></div></div>
     <div className="finding-sections" aria-label="Listas de seguimiento"><button aria-pressed={section === 'notes'} onClick={() => { setSection('notes'); setStateFilter('Todos'); }}>Recomendaciones <b>{reports.length}</b></button><button aria-pressed={section === 'active'} onClick={() => { setSection('active'); setStateFilter('Todos'); }}>Seguimientos <b>{totals.active + totals.pending}</b></button><button aria-pressed={section === 'closed'} onClick={() => { setSection('closed'); setStateFilter('Todos'); }}>Cerrados <b>{totals.closed}</b></button></div>
     <div className="finding-search"><label>Buscar en {section === 'notes' ? 'recomendaciones' : 'seguimientos'}<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Descripción, responsable o reporte" /></label>{section !== 'notes' && <label>Estado<select value={stateFilter} onChange={event => setStateFilter(event.target.value)}><option>Todos</option>{findingStates.filter(state => findingClosed({estado: state}) === (section === 'closed')).map(state => <option key={state}>{state}</option>)}</select></label>}</div>

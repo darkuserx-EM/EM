@@ -40,7 +40,7 @@ export function equipmentAttention(equipment: EntityRecord[], readings: EntityRe
     if (major && !['Al día', 'En pausa'].includes(major.status)) reasons.push(`Mantenimiento mayor: ${planStatusLabel(major).toLocaleLowerCase('es')}`);
     if (state === 'En reparación' || state === 'En mantenimiento') reasons.push(state);
     if (maintenanceState(machine) === 'Mantenimiento pendiente') reasons.push('Mantenimiento pendiente');
-    if (projection && ['Vence hoy', 'Por vencer', 'Revisar lecturas', 'Revisar base', 'Actualizar lectura', 'Base estimada', 'Base o lectura estimada'].includes(projection.status)) reasons.push(projection.status);
+    if (projection && ['Vence hoy', 'Por vencer', 'Revisar lecturas', 'Revisar base', 'Actualizar lectura', 'Base estimada', 'Base o lectura estimada'].includes(projection.status)) reasons.push(planStatusLabel(projection));
     if (unknown) reasons.push('Estado por confirmar');
     if (missingReading) reasons.push('Sin lectura registrada');
     if (missingPlan) reasons.push(plan ? 'Base del plan pendiente' : 'Sin plan preventivo');

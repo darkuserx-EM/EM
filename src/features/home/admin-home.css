@@ -1,0 +1,152 @@
+/* Administrator home: quiet supporting sections and one dominant work table. */
+.admin-home {
+  --home-muted: var(--color-text-muted);
+  --home-line: var(--color-border);
+  --home-accent: var(--color-accent);
+  --home-soft: var(--color-surface-muted);
+  --home-radius: 4px;
+  gap: 24px;
+  color: var(--home-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-home ::selection { background: #dce6cd; color: var(--home-ink); }
+.admin-home input { caret-color: var(--home-accent); }
+.admin-home input::placeholder { color: var(--home-muted); opacity: 1; }
+.admin-home .table-scroll { scrollbar-color: #8a967e var(--home-soft); }
+.admin-home .home-heading { padding: 0; }
+.admin-home .home-heading h1 { margin: 0 0 8px; letter-spacing: -.025em; }
+.admin-home .button, .admin-home select, .admin-home input, .admin-home .icon-button {
+  border-radius: var(--home-radius);
+}
+.admin-home .button { min-height: 44px; font-size: 12px; }
+.admin-home .text-link { color: var(--home-accent); min-height: 44px; }
+.admin-home :is(button, a):focus-visible { outline: 2px solid var(--home-accent); outline-offset: 3px; }
+.admin-home .home-search { padding: 0 0 16px; border-bottom: 1px solid var(--home-line); gap: 16px; }
+.admin-home .home-search-input { color: var(--home-muted); }
+.admin-home .home-search select { min-height: 44px; }
+.admin-home .home-scope { font-size: 12px; }
+
+.admin-home .home-kpis { gap: 0; grid-template-columns: 1.45fr repeat(3, minmax(0, 1fr)); }
+.admin-home .home-kpis > button {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 4px 24px;
+  min-width: 0;
+  text-align: left;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--home-line);
+  box-shadow: none;
+}
+.admin-home .home-kpis > button:first-child { border-left: 0; padding-left: 0; }
+.admin-home .home-kpis > button:last-child { padding-right: 0; }
+.admin-home .home-kpis > button:hover { background: var(--home-soft); }
+.admin-home .home-kpis > button:hover .home-card-label { text-decoration: underline; text-underline-offset: 4px; }
+.admin-home .home-card-label { color: var(--home-muted); font-size: 13px; }
+.admin-home .home-card-label svg { display: none; }
+.admin-home .home-card-value, .admin-home .home-stat > strong { font-size: 32px; letter-spacing: -.02em; }
+.admin-home .home-card-value small { display: inline; font-size: 12px; margin-left: 4px; }
+.admin-home .home-progress, .admin-home .home-progress i { border-radius: 0; height: 3px; }
+.admin-home .home-kpi-help, .admin-home .home-stat > small { font-size: 12px; }
+.admin-home .home-stat-alert > strong { color: #a43a21; }
+
+.admin-home .home-attention-banner {
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--home-line);
+  border-bottom: 1px solid var(--home-line);
+  border-radius: 0;
+  background: transparent;
+}
+.admin-home .home-attention-banner strong { color: var(--home-ink); }
+.admin-home .home-attention-banner p { color: var(--home-muted); font-size: 12px; }
+.admin-home .home-pending-actions { gap: 4px 12px; }
+.admin-home .home-pending-actions :is(button, a) {
+  background: transparent;
+  border: 0;
+  border-radius: var(--home-radius);
+  min-height: 44px;
+  padding: 8px;
+  font-size: 12px;
+  color: #735517;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.admin-home .home-pending-actions :is(button, a):hover { background: #ede8d9; }
+
+.admin-home .home-main-grid { grid-template-columns: minmax(0, 2.6fr) minmax(260px, 1fr); gap: 32px; }
+.admin-home .home-equipment { border-radius: var(--home-radius); }
+.admin-home .panel-heading h2 { font-size: 18px; letter-spacing: -.02em; }
+.admin-home .home-table-toolbar { padding-bottom: 16px; font-size: 12px; }
+.admin-home .home-table-toolbar select { min-height: 44px; font-size: 12px; }
+.admin-home .home-attention-table th { font-size: 12px !important; color: var(--home-muted); }
+.admin-home .home-attention-table td { padding: 16px !important; }
+.admin-home .home-attention-table strong { font-size: 14px; }
+.admin-home .home-attention-table :is(small, td > a > span, .home-more-reasons, .home-reason) { font-size: 12px; color: var(--home-muted); }
+.admin-home .home-attention-table td > a > span { color: var(--home-ink); margin-top: 4px; }
+.admin-home .home-attention-table .status { font-size: var(--text-xs); }
+.admin-home .home-attention-table .urgent { color: #a43a21; }
+.admin-home .home-attention-table .home-estimate { color: #825b18 !important; }
+.admin-home .home-attention-table a:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+.admin-home .home-more-reasons summary { min-height: 32px; padding: 6px 0; }
+.admin-home .home-pagination { padding: 8px 16px; font-size: 12px; }
+.admin-home .home-pagination .icon-button { min-width: 44px; min-height: 44px; }
+.admin-home .home-muted { color: var(--home-muted); }
+
+.admin-home .home-side { gap: 24px; }
+.admin-home .home-side .panel-heading { padding: 0 0 12px; }
+.admin-home .home-side h2 { font-size: 16px; }
+.admin-home .home-side .panel-heading p { font-size: 12px; }
+.admin-home .home-quiet { border: 0; border-radius: 0; background: none; padding: 0; margin: 0 0 16px; }
+.admin-home .home-quiet > svg { display: none; }
+.admin-home .home-quiet p { color: var(--home-muted); font-size: 13px; margin: 0 0 8px; }
+.admin-home .home-agenda-footer { padding: 8px 0; min-height: 44px; }
+.admin-home .home-agenda-list { padding: 0 0 12px; }
+.admin-home .home-activity { border-top: 1px solid var(--home-line); padding-top: 20px; }
+.admin-home .home-activity ol { padding: 0; }
+.admin-home .home-activity strong, .admin-home .home-order-link strong { font-size: 13px; }
+.admin-home .home-activity small, .admin-home .home-order-link small { font-size: 12px; }
+.admin-home .home-empty-note { padding: 0 0 16px; font-size: 13px; }
+.admin-home .home-trends { border-top: 1px solid var(--home-line); padding-top: 24px; }
+.admin-home .home-trends .panel-heading { padding: 0 0 16px; }
+.admin-home .home-trend-filters { padding: 0 0 16px; }
+.admin-home .home-trend-filters label { font-size: 12px; }
+.admin-home .home-trend-filters :is(input, select) { font-size: 13px; min-height: 44px; }
+.admin-home .home-bars { margin: 0; }
+.admin-home .home-chart-note { padding: 12px 0 0; font-size: 12px; }
+.admin-home .home-loading { background: none; border: 0; }
+
+@media (max-width: 1250px) {
+  .admin-home .home-main-grid { grid-template-columns: minmax(0, 1fr); }
+  .admin-home .home-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-home .home-activity { padding: 0; border: 0; }
+  .admin-home .home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 20px; }
+  .admin-home .home-kpis > button:nth-child(3) { border-left: 0; padding-left: 0; }
+  .admin-home .home-kpis > button:nth-child(2) { padding-right: 0; }
+}
+@media (max-width: 650px) {
+  .admin-home { gap: 20px; }
+  .admin-home .home-heading h1 { font-size: 28px; }
+  .admin-home .home-search { gap: 12px; }
+  .admin-home .home-search-input input { font-size: 16px; }
+  .admin-home .home-actions .button { font-size: 12px; min-height: 44px; }
+  .admin-home .home-kpis > button { padding: 4px 12px; gap: 8px; }
+  .admin-home .home-card-value, .admin-home .home-stat > strong { font-size: 28px; }
+  .admin-home .home-card-value small { display: block; margin: 4px 0 0; line-height: 1.5; }
+  .admin-home .home-kpi-help { gap: 4px; }
+  .admin-home .home-attention-banner { gap: 8px; padding: 12px 0; }
+  .admin-home .home-pending-actions { gap: 4px; }
+  .admin-home .home-main-grid { gap: 24px; }
+  .admin-home .home-side { grid-template-columns: minmax(0, 1fr); }
+  .admin-home .home-activity { border-top: 1px solid var(--home-line); padding-top: 20px; }
+  .admin-home .home-equipment .panel-heading { flex-wrap: wrap; gap: 0 12px; }
+  .admin-home .home-table-toolbar { align-items: flex-start; flex-wrap: wrap; padding: 0 16px 16px; }
+  .admin-home .home-table-toolbar label { flex-wrap: wrap; gap: 8px; }
+  .admin-home .home-table-toolbar select { max-width: 100%; }
+  .admin-home .home-trend-filters { gap: 12px; }
+  .admin-home .home-trend-filters :is(input, select) { font-size: 16px; }
+}

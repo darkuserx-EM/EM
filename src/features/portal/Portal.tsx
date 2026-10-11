@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, CalendarDays, FileText, Forklift, QrCode, Ticket } from 'lucide-react';
 import { useActor, useRows } from '../../app/state';
 import { Brand, EmptyState, ErrorNotice, Modal, SectionTitle } from '../../components/ui';
+import { latestEquipmentReading } from '../../domain/equipment-history';
 import { formatHourMeter, formatNumber } from '../../domain/format';
 import { filterEquipmentStatus, operationalState } from '../../domain/equipment-status';
 import { clientDisplayName } from '../../domain/client-profile';
@@ -29,7 +30,7 @@ export function ClientPortal() {
   const selected = ownEquipment.find(row => row.id === params.get('equipo'));
   const selectedReadings = readings.rows.filter(row => row.equipo_id === selected?.id && typeof row.valor === 'number').sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
   const selectedReports = visibleReports.filter(row => row.equipo_id === selected?.id && (!from || operationDay(row.fecha || row.fecha_programada) >= from) && (!to || operationDay(row.fecha || row.fecha_programada) <= to)).sort((a, b) => String(b.fecha || b.fecha_programada).localeCompare(String(a.fecha || a.fecha_programada)));
-  const latestReading = (id: string) => readings.rows.filter(row => row.equipo_id === id && typeof row.valor === 'number').sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0];
+  const latestReading = (id: string) => latestEquipmentReading(id, readings.rows);
   const queries = [clients, query, readings, orders, tickets]; const loading = queries.some(item => !item.ready); const error = queries.find(item => item.error)?.error || '';
   const open = (id: string, tab = 'Resumen') => { setDetailTab(tab); setFrom(''); setTo(''); setParams({ equipo: id }); };
   const company = clients.rows.find(row => row.id === actor.cliente_id);

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowUpRight, Check, Pencil, Plus, Ticket } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
-import { EmptyState, ErrorNotice, Modal, SectionTitle } from '../../components/ui';
+import { EmptyState, ErrorNotice, Modal, SectionTitle, useUnsavedChanges } from '../../components/ui';
 import { getDataSource } from '../../data/source';
 import { clientDisplayName } from '../../domain/client-profile';
 import type { EntityRecord, Scalar } from '../../domain/model';
@@ -16,6 +16,7 @@ function TicketForm({ row, onClose, onSaved }: { row?: EntityRecord; onClose: ()
   const equipment = useRows('Equipo', true); const clients = useRows('Cliente', true); const technicians = useRows('Tecnico', true);
   const [requestId] = useState(() => crypto.randomUUID());
   const [values, setValues] = useState<Record<string, string>>(() => ({ cliente_id: String(row?.cliente_id || actor.cliente_id || ''), equipo_id: String(row?.equipo_id || ''), titulo: String(row?.titulo || ''), descripcion: String(row?.descripcion || ''), prioridad: String(row?.prioridad || 'Media'), estado: String(row?.estado || 'Nuevo'), responsable_id: String(row?.responsable_id || ''), fecha_programada: String(row?.fecha_programada || '') }));
+  const [initialValues] = useState(values); const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues), onClose);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const set = (key: string, value: string) => setValues(previous => ({ ...previous, [key]: value }));
   const queries = [equipment, clients, technicians]; const ready = queries.every(query => query.ready); const queryError = queries.find(query => query.error)?.error || '';
   async function save(event: FormEvent) {
@@ -33,14 +34,14 @@ function TicketForm({ row, onClose, onSaved }: { row?: EntityRecord; onClose: ()
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'No se pudo guardar. La información permanece en el formulario.'); }
     finally { setBusy(false); }
   }
-  return <Modal title={row ? `Revisar solicitud ${row.codigo}` : 'Reportar una solicitud'} wide onClose={() => { if (!busy) onClose(); }}><form onSubmit={save} className="os-form-grid">
+  return <Modal title={row ? `Revisar solicitud ${row.codigo}` : 'Reportar una solicitud'} wide onClose={() => { if (!busy) guard.requestClose(); }}>{guard.prompt}<form onSubmit={save} className="os-form-grid">
     <p className="os-intro os-span">Identifica el equipo y describe lo ocurrido. El equipo de operaciones revisará la solicitud y organizará la atención.</p>
     {manager && <label className="os-field">Cliente *<select required value={values.cliente_id} disabled={busy || !!row || !ready} onChange={event => setValues(previous => ({ ...previous, cliente_id: event.target.value, equipo_id: '' }))}><option value="">Selecciona un cliente</option>{clients.rows.map(client => <option value={client.id} key={client.id}>{clientDisplayName(client)}</option>)}</select></label>}
     <label className={`os-field ${manager ? '' : 'os-span'}`}>Equipo *<select required value={values.equipo_id} disabled={busy || !!row || !ready} onChange={event => set('equipo_id', event.target.value)}><option value="">Selecciona el equipo</option>{equipment.rows.filter(machine => machine.cliente_id === values.cliente_id).map(machine => <option value={machine.id} key={machine.id}>{equipmentLabel(machine)}</option>)}</select></label>
     <label className="os-field os-span">Asunto *<input required maxLength={200} value={values.titulo} onChange={event => set('titulo', event.target.value)} disabled={busy} placeholder="Ej.: el equipo no eleva la carga" /></label>
     <label className="os-field os-span">Descripción de lo ocurrido *<textarea required rows={5} maxLength={4000} value={values.descripcion} onChange={event => set('descripcion', event.target.value)} disabled={busy} placeholder="Indica síntomas, lugar, momento de la falla y cualquier riesgo observado." /></label>
     {manager && <><label className="os-field">Prioridad<select value={values.prioridad} onChange={event => set('prioridad', event.target.value)} disabled={busy}>{priorities.map(value => <option key={value}>{value}</option>)}</select></label><label className="os-field">Estado<select value={values.estado} onChange={event => set('estado', event.target.value)} disabled={busy}>{allowedOperationStates('Ticket', row, actor).map(value => <option key={value}>{value}</option>)}</select></label><label className="os-field">Responsable{values.estado === 'Programado' ? ' *' : ''}<select value={values.responsable_id} onChange={event => set('responsable_id', event.target.value)} disabled={busy} required={values.estado === 'Programado'}><option value="">Sin asignar</option>{technicians.rows.map(technician => <option value={technician.id} key={technician.id}>{technician.nombre}</option>)}</select></label><label className="os-field">Fecha programada<input type="date" value={values.fecha_programada} onChange={event => set('fecha_programada', event.target.value)} disabled={busy} required={values.estado === 'Programado'} /></label></>}
-    <div className="os-span"><ErrorNotice message={error || queryError} /></div><footer className="modal-actions os-span"><button className="button" type="button" onClick={onClose} disabled={busy}>Cancelar</button><button className="button button-dark" type="submit" disabled={busy || !ready || !!queryError}><Check size={16} />{busy ? 'Guardando…' : 'Guardar solicitud'}</button></footer>
+    <div className="os-span"><ErrorNotice message={error || queryError} /></div><footer className="modal-actions os-span"><button className="button" type="button" onClick={guard.requestClose} disabled={busy}>Cancelar</button><button className="button button-dark" type="submit" disabled={busy || !ready || !!queryError}><Check size={16} />{busy ? 'Guardando…' : 'Guardar solicitud'}</button></footer>
   </form></Modal>;
 }
 

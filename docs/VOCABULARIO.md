@@ -23,8 +23,8 @@ No completado: Pendiente, Pendiente de firma, Borrador, Programada, En proceso, 
 
 ## Estado de un plan · `projectPlan` y `planStatusLabel`
 
-- Un vencimiento calculado con base o lectura estimada **sigue siendo «Vencido» o «Vence hoy»**, con tono de peligro y `estimated: true`.
-- En pantalla se muestra «Vencido · estimado» mediante `planStatusLabel`.
+- Un vencimiento calculado con base o lectura estimada **sigue siendo «Vencido» o «Vence hoy»**, con `estimated: true`. «Vencido» mantiene el tono de peligro; «Vence hoy» conserva el aviso preventivo.
+- En pantalla se muestra «Vencido · estimado» o «Vence hoy · estimado» mediante `planStatusLabel`, incluidos los motivos de atención de Inicio.
 - Las estimaciones que aún no vencen conservan «Base estimada» o «Base o lectura estimada» para que se revisen.
 
 ## Al agregar un valor nuevo

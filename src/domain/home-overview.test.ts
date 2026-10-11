@@ -39,6 +39,21 @@ describe('inicio operativo', () => {
     expect(overdue[0].reasons).toContain('Mantenimiento mayor: vencido');
     expect(filterAttention(overdue, 'overdue')).toHaveLength(1);
   });
+  it('incluye vencidos estimados en el filtro y conserva la prioridad del hallazgo crítico', () => {
+    const plans = [plan('TCE-1', {base_fecha:'2026-09-01', base_calidad:'Estimada'})];
+    const findings = [row('critical', {equipo_id:'TCE-2', estado:'Abierto', prioridad:'Crítica'})];
+    const result = equipmentAttention(equipment, [], plans, [], findings, true, today);
+    expect(result[0].equipment.id).toBe('TCE-2');
+    const overdue = filterAttention(result, 'overdue');
+    expect(overdue.map(item => item.equipment.id)).toEqual(['TCE-1']);
+    expect(overdue[0].reasons).toContain('Preventivo vencido · estimado');
+    expect(overdue[0].projection).toMatchObject({status:'Vencido', tone:'danger', estimated:true});
+  });
+  it('identifica como estimado el aviso que vence hoy sin contarlo aún como atrasado', () => {
+    const result = equipmentAttention([equipment[0]], [], [plan('TCE-1', {base_fecha:'2026-09-10', base_calidad:'Estimada'})], [], [], true, today);
+    expect(result[0].reasons).toContain('Vence hoy · estimado');
+    expect(filterAttention(result, 'overdue')).toEqual([]);
+  });
   it('la agenda excluye importados, borradores y canceladas; las cerradas no son atrasadas', () => {
     const orders = [row('historical', {fecha_programada:today, estado:'Pendiente'}), row('draft', {schema_operacion:1, fecha_programada:today, estado:'Borrador'}), row('cancelled', {schema_operacion:1, fecha_programada:today, estado:'Cancelada'}), row('done', {schema_operacion:1, fecha_programada:'2026-10-09', estado:'Completada'}), row('late', {schema_operacion:1, fecha_programada:'2026-10-09', estado:'En espera'}), row('today', {schema_operacion:1, fecha_programada:today, estado:'Programada'})];
     expect(currentWork(orders, today).late.map(row => row.id)).toEqual(['late']);

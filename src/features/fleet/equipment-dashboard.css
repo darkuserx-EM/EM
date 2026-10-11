@@ -1,6 +1,5 @@
 /* Administrative equipment dashboard; scoped to keep other workflows intact. */
-.equipment-dashboard { --dashboard-ink:#273328; --dashboard-muted:#626b60; color:var(--dashboard-ink); }
-.main-content:has(.equipment-detail) { max-width:none; padding:24px 32px; }
+.equipment-dashboard { --dashboard-ink:var(--color-text); --dashboard-muted:var(--color-text-muted); color:var(--dashboard-ink); }
 .equipment-dashboard .equipment-heading { padding:24px; background:white; border:1px solid #dedfd6; border-radius:16px; gap:24px; }
 .equipment-dashboard .equipment-title { min-width:0; }
 .equipment-dashboard .equipment-title h1 { color:#273328; font-size:28px; }
@@ -186,7 +185,6 @@
   .summary-charts { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media(max-width:700px) {
-  .main-content:has(.equipment-detail) { padding:20px 16px; }
   .equipment-dashboard .equipment-heading { padding:16px; }
   .equipment-dashboard .equipment-title h1 { font-size:22px; }
   .equipment-dashboard .summary-panel,.equipment-dashboard .dashboard-next { padding:16px; }

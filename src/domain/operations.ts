@@ -109,9 +109,9 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
   }
   if (entity === 'LecturaHorometro') {
     row.fecha = row.fecha || new Date().toISOString(); row.origen = row.orden_id ? 'Orden de servicio' : 'Registro manual'; row.registrado_por = actor.nombre;
-    const readings = entities.LecturaHorometro.filter(item => item.equipo_id === equipment.id && typeof item.valor === 'number').sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    const readings = entities.LecturaHorometro.filter(item => item.equipo_id === equipment.id && typeof item.valor === 'number').sort((a, b) => Date.parse(String(a.fecha)) - Date.parse(String(b.fecha)));
     const previous = readings.at(-1);
-    if (previous && String(row.fecha) <= String(previous.fecha)) throw new ValidationError('La lectura debe ser posterior a la última registrada. Conserva el historial y solicita una corrección si corresponde.');
+    if (previous && Date.parse(String(row.fecha)) <= Date.parse(String(previous.fecha))) throw new ValidationError('La lectura debe ser posterior a la última registrada. Conserva el historial y solicita una corrección si corresponde.');
     if (previous && Number(row.valor) < Number(previous.valor)) throw new ValidationError('El horómetro disminuye respecto de la última lectura. Verifica el dato; un cambio de contador requiere revisión documentada.');
     row.es_estimado = false;
   } else {

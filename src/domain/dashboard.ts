@@ -8,7 +8,7 @@ const safeDay=(value:unknown)=>{
  if(!/^\d{4}-\d{2}-\d{2}T/.test(value)||!validDay(value.slice(0,10))||!Number.isFinite(Date.parse(value)))return '';
  return localDay(value);
 };
-export const orderDay=(row:EntityRecord)=>row.schema_operacion===1?safeDay(row.fecha_programada)||safeDay(row.fecha)||safeDay(row.fecha_creacion):safeDay(row.fecha);
+export const orderDay=(row:EntityRecord)=>row.schema_operacion===1?safeDay(row.fecha)||safeDay(row.fecha_programada)||safeDay(row.fecha_creacion):safeDay(row.fecha);
 export const orderClosed=(row:EntityRecord)=>isCompletedService(row);
 export function dashboardOrders(rows:EntityRecord[],filter:{from:string;to:string;client:string;equipment:string;origin:string}){
  return rows.filter(row=>{const day=orderDay(row);return (!filter.from||!!day&&day>=filter.from)&&(!filter.to||!!day&&day<=filter.to)&&(!filter.client||row.cliente_id===filter.client)&&(!filter.equipment||row.equipo_id===filter.equipment)&&(!filter.origin||(filter.origin==='Actual')===(row.schema_operacion===1));});
