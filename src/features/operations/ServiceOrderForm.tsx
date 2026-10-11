@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
-import { ErrorNotice, Modal } from '../../components/ui';
+import { ErrorNotice, Modal, useUnsavedChanges } from '../../components/ui';
 import { getDataSource } from '../../data/source';
 import type { EntityRecord, Scalar } from '../../domain/model';
 import { clientDisplayName } from '../../domain/client-profile';
@@ -26,6 +26,7 @@ export default function ServiceOrderForm({ row, ticket, onClose, onSaved }: { ro
     sintoma: String(row?.sintoma || ticket?.descripcion || ''), fecha_programada: String(row?.fecha_programada || ticket?.fecha_programada || ''),
     fecha: dateTimeInput(row?.fecha), fecha_fin: dateTimeInput(row?.fecha_fin), visible_cliente: row?.visible_cliente === true ? 'true' : 'false',
   }));
+  const [initialValues] = useState(values); const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues), onClose);
   const [step, setStep] = useState(0); const [saving, setBusy] = useState(false); const [attachmentBusy, setAttachmentBusy] = useState(false); const [error, setError] = useState(''); const busy = saving || attachmentBusy;
   const form = useRef<HTMLFormElement>(null); const pendingFocus = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => { pendingFocus.current?.focus(); pendingFocus.current = null; }, [step]);
@@ -61,7 +62,7 @@ export default function ServiceOrderForm({ row, ticket, onClose, onSaved }: { ro
   const text = (key: string, label: string, required = false, hint?: string) => <label className="os-field os-span">{label}{required ? ' *' : ''}<textarea rows={3} maxLength={4000} value={values[key]} onChange={event => set(key, event.target.value)} disabled={busy || key === 'sintoma' && !manager} required={required} />{hint && <small>{hint}</small>}</label>;
   const input = (key: string, label: string, type = 'text', required = false, disabled = false) => <label className="os-field">{label}{required ? ' *' : ''}<input type={type} value={values[key]} onChange={event => set(key, event.target.value)} disabled={busy || disabled} required={required} min={type === 'number' ? '0' : undefined} step={type === 'number' ? 'any' : undefined} maxLength={type === 'text' ? 500 : undefined} /></label>;
   const choose = (key: string, label: string, options: readonly string[], disabled = false) => <label className="os-field">{label}<select value={values[key]} onChange={event => set(key, event.target.value)} disabled={busy || disabled}>{!options.includes(values[key]) && <option>{values[key]}</option>}{options.map(option => <option key={option}>{option}</option>)}</select></label>;
-  return <Modal title={row ? `Editar ${row.codigo}` : 'Nueva orden de servicio'} wide className="os-form-modal" onClose={() => { if (!busy) onClose(); }}>
+  return <Modal title={row ? `Editar ${row.codigo}` : 'Nueva orden de servicio'} wide className="os-form-modal" onClose={() => { if (!busy) guard.requestClose(); }}>{guard.prompt}
     <form ref={form} onSubmit={save} noValidate>
       <p className="os-intro">Identifica el equipo, documenta el trabajo y registra las pruebas. Los campos con * son obligatorios.</p>
       <nav className="os-steps" aria-label="Pasos del reporte">{steps.map((label, index) => <button type="button" key={label} aria-current={step === index ? 'step' : undefined} disabled={busy} onClick={() => { setStep(index); setError(''); }}><span>{index + 1}</span>{label}</button>)}</nav>
@@ -94,7 +95,7 @@ export default function ServiceOrderForm({ row, ticket, onClose, onSaved }: { ro
         {row ? <div className="os-span"><AttachmentPanel orderId={row.id} onBusy={setAttachmentBusy} editable={!saving && (actor.rol === 'Administrador' || actor.rol === 'Técnico' && row.tecnico_id === actor.tecnico_id)} /></div> : <div className="os-evidence-note os-span"><h3>Fotografías antes y después</h3><p>Guarda primero el reporte como borrador o programado. Así podrás adjuntar las evidencias a su orden y mantenerlas relacionadas con el equipo.</p><p>Al guardar se abrirá el detalle con las opciones de evidencia. Agrégalas antes de completar la orden.</p></div>}
       </section>
       <ErrorNotice message={error} />
-      <footer className="modal-actions os-form-actions"><button type="button" className="button" onClick={onClose} disabled={busy}>Cancelar</button><div>{step > 0 && <button type="button" className="button" onClick={() => setStep(step - 1)} disabled={busy}><ChevronLeft size={16} />Anterior</button>}{step < steps.length - 1 && <button type="button" className="button" disabled={busy} onClick={() => { if (validate(true)) { setStep(step + 1); setError(''); } }}>Siguiente<ChevronRight size={16} /></button>}<button type="submit" className="button button-dark" disabled={busy || loading || !!queryError}><Check size={16} />{busy ? 'Guardando…' : 'Guardar reporte'}</button></div></footer>
+      <footer className="modal-actions os-form-actions"><button type="button" className="button" onClick={guard.requestClose} disabled={busy}>Cancelar</button><div>{step > 0 && <button type="button" className="button" onClick={() => setStep(step - 1)} disabled={busy}><ChevronLeft size={16} />Anterior</button>}{step < steps.length - 1 && <button type="button" className="button" disabled={busy} onClick={() => { if (validate(true)) { setStep(step + 1); setError(''); } }}>Siguiente<ChevronRight size={16} /></button>}<button type="submit" className="button button-dark" disabled={busy || loading || !!queryError}><Check size={16} />{busy ? 'Guardando…' : 'Guardar reporte'}</button></div></footer>
     </form>
   </Modal>;
 }

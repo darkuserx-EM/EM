@@ -1,6 +1,11 @@
 import type { EntityRecord } from './model';
 
 export interface UsageReading { row: EntityRecord; previous?: EntityRecord; delta: number | null; estimated: boolean }
+/** Select by the actual instant, retaining the original value, quality and date. */
+export function latestEquipmentReading(equipmentId: string, readings: EntityRecord[]) {
+  return readings.filter(row => row.equipo_id === equipmentId && typeof row.valor === 'number' && Number.isFinite(row.valor) && Number.isFinite(Date.parse(String(row.fecha))))
+    .reduce<EntityRecord | undefined>((latest, row) => !latest || Date.parse(String(row.fecha)) > Date.parse(String(latest.fecha)) ? row : latest, undefined);
+}
 export const localDay = (date: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guatemala', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(date));
 export function inDateRange(row: EntityRecord, from: string, to: string) {
   if (typeof row.fecha !== 'string' || !Number.isFinite(Date.parse(row.fecha))) return false;

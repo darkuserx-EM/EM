@@ -72,7 +72,13 @@ export function parseBackup(workbook: XLSX.WorkBook): Database {
   for (const entity of entityNames) {
     if (entity === 'Hallazgo' && !workbook.Sheets[entity] && !metadata.hallazgos) { database.entities.Hallazgo = []; continue; }
     if (!workbook.Sheets[entity]) throw new Error(`Falta la hoja ${entity}. El respaldo no está completo.`);
-    database.entities[entity] = XLSX.utils.sheet_to_json<EntityRecord>(workbook.Sheets[entity], { defval: '', raw: true });
+    database.entities[entity] = XLSX.utils.sheet_to_json<EntityRecord>(workbook.Sheets[entity], { raw: true }).map(row => {
+      // XLSX has no null scalar. Blank optional numeric/boolean cells must not become zero or ''.
+      for (const column of definitions[entity].columns) {
+        if (!column.required && column.type !== 'text' && (row[column.key] === '' || row[column.key] === null)) delete row[column.key];
+      }
+      return row;
+    });
   }
   restoreEquipmentImages(workbook,database.entities.Equipo);
   validateDatabase(database); return database;

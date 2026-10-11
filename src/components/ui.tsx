@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, X, AlertCircle, ArrowUpRight, Forklift } from 'lucide-react';
 import { useToast } from '../app/state';
 
@@ -30,6 +30,13 @@ export function Modal({ title, children, onClose, wide = false, className = '' }
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = overflow; previous?.focus(); };
   }, []);
   return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><div className={`modal ${wide ? 'modal-wide' : ''} ${className}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}><div className="modal-heading"><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="Cerrar ventana"><X size={20} /></button></div>{children}</div></div>;
+}
+/** Asks before closing a form with edits: Escape, the X, the backdrop and Cancel all go through requestClose. */
+export function useUnsavedChanges(dirty: boolean, onClose: () => void) {
+  const [asking, setAsking] = useState(false);
+  const requestClose = () => { if (dirty) setAsking(true); else onClose(); };
+  const prompt = asking ? <div className="discard-prompt" role="alertdialog" aria-labelledby="discard-prompt-text"><p id="discard-prompt-text">Hay cambios sin guardar. ¿Quieres descartarlos?</p><div><button type="button" className="button" onClick={() => setAsking(false)} autoFocus>Seguir editando</button><button type="button" className="button button-danger" onClick={onClose}>Descartar cambios</button></div></div> : null;
+  return { requestClose, prompt };
 }
 export function ErrorNotice({ message }: { message: string }) { return message ? <div className="error-notice" role="alert"><AlertCircle size={18} /><span>{message}</span></div> : null; }
 export function Toast() {
