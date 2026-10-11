@@ -88,7 +88,7 @@
 .admin-home .home-attention-table strong { font-size: 14px; }
 .admin-home .home-attention-table :is(small, td > a > span, .home-more-reasons, .home-reason) { font-size: 12px; color: var(--home-muted); }
 .admin-home .home-attention-table td > a > span { color: var(--home-ink); margin-top: 4px; }
-.admin-home .home-attention-table .status { font-size: 11px; }
+.admin-home .home-attention-table .status { font-size: var(--text-xs); }
 .admin-home .home-attention-table .urgent { color: #a43a21; }
 .admin-home .home-attention-table .home-estimate { color: #825b18 !important; }
 .admin-home .home-attention-table a:hover strong { text-decoration: underline; text-underline-offset: 3px; }

@@ -8,6 +8,7 @@ import '@fontsource/poppins/latin-600.css';
 import '@fontsource/poppins/latin-700.css';
 import './design/tokens.css';
 import './styles.css';
+import './design/base.css';
 import App from './app/App';
 import { AuthGate } from './app/AuthGate';
 

@@ -29,9 +29,21 @@ Las variables existentes se conservan y apuntan a los tokens para no romper esti
 
 No usar las variables anteriores en código nuevo. Se retirarán al migrar cada pantalla.
 
+## Paso 1 · Base global (`src/design/base.css`)
+
+Capa cargada **después** de `styles.css`. Fija con tokens la tipografía, el color, los bordes de los campos y el foco de los componentes compartidos:
+- menú lateral y barra superior;
+- encabezado de página (`SectionTitle`), paneles y botones;
+- campos, búsqueda, tablas y etiquetas de estado (`.status`);
+- ventanas, avisos y estados vacíos.
+
+No cambia anchos, rellenos ni rejillas. En móvil reemplaza las reducciones a 8–11 px de `styles.css`. Los tonos de `.status` se definen solo aquí.
+
+Las declaraciones equivalentes de `styles.css` quedan anuladas por orden y se retirarán al migrar cada pantalla. Los archivos de cada pantalla pueden seguir ajustando estos componentes, pero no por debajo de `--text-xs`.
+
 ## Siguientes pasos
 
-1. **Base global** (`styles.css`): barra lateral, cabeceras, botones, campos, etiquetas de estado y tablas.
+1. ~~Base global~~ (paso 1, `base.css`).
 2. **Por pantalla:** Órdenes → Calendario y planificador → Flota y clientes → resto de la ficha → Inicio → administración → portal del cliente.
 3. **Componentes compartidos:** `Button`, `Field`, `Badge`, `Tabs`/`Steps`, `KpiCard`, `DataTable`.
 4. **Control en CI:** Stylelint contra colores y tamaños fuera de los tokens, y prueba de contraste.
