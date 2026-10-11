@@ -1,6 +1,6 @@
 /* Equipment file only: shared hierarchy across all six views.
    Designer coordinates, chart semantics and form surfaces remain independent. */
-.equipment-detail.equipment-file { --file-line:#d6dbd1; --file-muted:#596451; color:#283426; }
+.equipment-detail.equipment-file { --file-line:var(--color-border); --file-muted:var(--color-text-muted); color:#283426; }
 .equipment-detail.equipment-file .equipment-heading { padding:0 0 18px; border:0; border-bottom:1px solid var(--file-line); border-radius:0; background:transparent; flex-wrap:wrap; gap:16px 24px; margin-bottom:0; }
 .equipment-detail.equipment-file .equipment-title { flex:1 1 340px; }
 .equipment-detail.equipment-file .equipment-title h1 { font-size:26px; letter-spacing:-.6px; line-height:1.2; }

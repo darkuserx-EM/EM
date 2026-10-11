@@ -1,5 +1,5 @@
 /* Administrative equipment dashboard; scoped to keep other workflows intact. */
-.equipment-dashboard { --dashboard-ink:#273328; --dashboard-muted:#626b60; color:var(--dashboard-ink); }
+.equipment-dashboard { --dashboard-ink:var(--color-text); --dashboard-muted:var(--color-text-muted); color:var(--dashboard-ink); }
 .equipment-dashboard .equipment-heading { padding:24px; background:white; border:1px solid #dedfd6; border-radius:16px; gap:24px; }
 .equipment-dashboard .equipment-title { min-width:0; }
 .equipment-dashboard .equipment-title h1 { color:#273328; font-size:28px; }
