@@ -11,7 +11,7 @@ import { ImportedReportDetails } from '../fleet/ImportedReportDetails';
 import ServiceOrderForm from './ServiceOrderForm';
 import AttachmentPanel from '../attachments/AttachmentPanel';
 import { OperationStatus } from './OperationStatus';
-import { emptyOperationFilters, equipmentLabel, filterOperations, isOperationalOrder, operationDateLabel, serviceLabel, serviceStates } from './operations-ui';
+import { operationFiltersFromParams, operationFilterParams, emptyOperationFilters, equipmentLabel, filterOperations, isOperationalOrder, operationDateLabel, serviceLabel, serviceStates } from './operations-ui';
 import './operations.css';
 
 function ReportSection({ title, value }: { title: string; value: unknown }) {
@@ -22,7 +22,8 @@ export default function ServiceOrders() {
   const actor = useActor(); const manager = ['Administrador', 'Coordinador'].includes(actor.rol);
   const notify = useToast(state => state.notify); const [sharing, setSharing] = useState(false); const [shareError, setShareError] = useState('');
   const orders = useRows('OrdenServicio', true); const equipment = useRows('Equipo', true); const clients = useRows('Cliente', true); const technicians = useRows('Tecnico', true); const tickets = useRows('Ticket', true);
-  const [params, setParams] = useSearchParams(); const [filters, setFilters] = useState({ ...emptyOperationFilters }); const [page, setPage] = useState(1);
+  const [params, setParams] = useSearchParams(); const filters = operationFiltersFromParams(params);
+  const setFilters = (next: typeof filters) => { setParams(operationFilterParams(next, params), { replace: true }); }; const [page, setPage] = useState(1);
   const [editor, setEditor] = useState<EntityRecord | 'new' | null>(null); const [dismissedTicket, setDismissedTicket] = useState(''); const [attachmentBusy, setAttachmentBusy] = useState(false);
   const queries = [orders, equipment, clients, technicians, tickets]; const loading = queries.some(query => !query.ready); const error = queries.find(query => query.error)?.error || '';
   const rows = orders.rows.filter(row => actor.rol === 'Técnico' ? row.tecnico_id === actor.tecnico_id : actor.rol !== 'Cliente' || (row.cliente_id === actor.cliente_id && row.visible_cliente === true));
@@ -34,9 +35,9 @@ export default function ServiceOrders() {
   const selectedClient = clients.rows.find(row => row.id === selected?.cliente_id);
   const ticket = manager && params.get('ticket') !== dismissedTicket ? tickets.rows.find(row => row.id === params.get('ticket')) : undefined;
   const createFromLink = manager && params.get('nueva') === '1';
-  const change = (key: keyof typeof filters, value: string) => { setPage(1); setFilters(previous => ({ ...previous, [key]: value })); };
-  const open = (id: string) => { setShareError(''); setParams({ orden: id }); };
-  const close = () => { if (!attachmentBusy && !sharing) setParams({}); };
+  const change = (key: keyof typeof filters, value: string) => { setPage(1); setFilters({ ...filters, [key]: value, ...(key === 'client' ? { equipment: '' } : {}) }); };
+  const open = (id: string) => { setShareError(''); const next = new URLSearchParams(params); next.delete('nueva'); next.delete('ticket'); next.set('orden', id); setParams(next); };
+  const close = () => { if (!attachmentBusy && !sharing) { const next = new URLSearchParams(params); next.delete('orden'); setParams(next); } };
   async function share() {
     if (!selected || sharing) return;
     setSharing(true); setShareError('');
@@ -50,10 +51,10 @@ export default function ServiceOrders() {
     <section className="panel os-list-panel">
       <div className="os-filters">
         <label className="os-filter-search"><span><Search size={14} />Buscar reporte o equipo</span><input type="search" placeholder="Código, serie, ID del cliente o diagnóstico" value={filters.search} onChange={event => change('search', event.target.value)} /></label>
-        {actor.rol !== 'Cliente' && <label>Cliente<select value={filters.client} onChange={event => { change('client', event.target.value); change('equipment', ''); }}><option value="">Todos</option>{clients.rows.map(client => <option value={client.id} key={client.id}>{clientDisplayName(client)}</option>)}</select></label>}
+        {actor.rol !== 'Cliente' && <label>Cliente<select value={filters.client} onChange={event => { change('client', event.target.value); }}><option value="">Todos</option>{clients.rows.map(client => <option value={client.id} key={client.id}>{clientDisplayName(client)}</option>)}</select></label>}
         <label>Equipo<select value={filters.equipment} onChange={event => change('equipment', event.target.value)}><option value="">Todos</option>{equipment.rows.filter(row => !filters.client || row.cliente_id === filters.client).map(row => <option value={row.id} key={row.id}>{row.codigo} · {row.id_interno_cliente || row.modelo}</option>)}</select></label>
         {actor.rol !== 'Técnico' && actor.rol !== 'Cliente' && <label>Técnico<select value={filters.technician} onChange={event => change('technician', event.target.value)}><option value="">Todos</option>{technicians.rows.map(row => <option value={row.id} key={row.id}>{row.nombre}</option>)}</select></label>}
-        <label>Estado<select value={filters.state} onChange={event => change('state', event.target.value)}><option value="">Todos</option>{Array.from(new Set([...serviceStates, ...rows.map(row => String(row.estado || ''))])).filter(Boolean).map(value => <option key={value}>{value}</option>)}</select></label>
+        <label>Estado<select value={filters.state} onChange={event => change('state', event.target.value)}><option value="">Todos</option><option value="abiertas">Abiertas</option>{Array.from(new Set([...serviceStates, ...rows.map(row => String(row.estado || ''))])).filter(Boolean).map(value => <option key={value}>{value}</option>)}</select></label>
         <label>Origen<select value={filters.origin} onChange={event => change('origin', event.target.value)}><option value="">Todos</option><option value="actual">Órdenes actuales</option><option value="historico">Historial</option></select></label>
         <label>Desde<input type="date" value={filters.from} onChange={event => change('from', event.target.value)} /></label><label>Hasta<input type="date" value={filters.to} min={filters.from || undefined} onChange={event => change('to', event.target.value)} /></label>
       </div>

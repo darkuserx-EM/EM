@@ -74,7 +74,7 @@ export class LocalDataSource {
     return { id: crypto.randomUUID(), codigo: `${prefix}-${String(max + 1).padStart(3, '0')}`, creado_por: actor.id, fecha_creacion: now, actualizado_por: actor.id, fecha_actualizacion: now, ...cleanFields(entity, fields) };
   }
   private audit(db: Database, actor: Actor, entity: string, action: string, detail: string) {
-    db.entities.Bitacora.push(this.record('Bitacora', actor, { entidad: entity, accion: action, detalle: detail.slice(0, 500) }, db.entities.Bitacora));
+    db.entities.Bitacora.push({ ...this.record('Bitacora', actor, { entidad: entity, accion: action, detalle: detail.slice(0, 500) }, db.entities.Bitacora), registrado_por: actor.nombre, registrado_rol: actor.rol });
   }
   private recordEquipmentStatus(db: Database, actor: Actor, row: EntityRecord, previous?: EntityRecord) {
     const changed = equipmentStatusChanges(previous ?? {}, row);

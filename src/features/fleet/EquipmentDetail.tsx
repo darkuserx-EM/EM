@@ -11,7 +11,7 @@ import { assertAdmin } from '../../domain/permissions';
 import { ClipboardList, LayoutDashboard, PanelsTopLeft, Camera, ArrowLeft, ChevronDown, Download, Gauge, MapPin, Wrench, Clock3, Package, SlidersHorizontal, TrendingUp, Pencil } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
 import { EmptyState, ErrorNotice, Status } from '../../components/ui';
-import { equipmentHistory } from '../../domain/equipment-history';
+import { equipmentHistory, latestEquipmentReading } from '../../domain/equipment-history';
 import { formatDate, formatHourMeter, formatMoney, formatNumber, formatTime } from '../../domain/format';
 import type { EntityRecord } from '../../domain/model';
 import { EquipmentDataDrawer } from './EquipmentDataDrawer';
@@ -40,7 +40,7 @@ export function EquipmentDetail({ equipment, clients, onBack, onEdit, initialVie
   const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [exporting, setExporting] = useState(false);
   const invalidRange = !!from && !!to && from > to;
   const history = equipmentHistory(equipment.id, services.rows, readings.rows, parts.rows, labor.rows, from, to);
-  const latest = equipmentHistory(equipment.id, [], readings.rows, [], []).usage.at(-1)?.row;
+  const latest = latestEquipmentReading(equipment.id, readings.rows);
   const admin = actor.rol === 'Administrador';
   const loading = [services, readings, parts, labor, technicians].some(result => result.loading);
   const error = [services, readings, parts, labor, technicians].find(result => result.error)?.error ?? '';
@@ -89,7 +89,7 @@ export function EquipmentDetail({ equipment, clients, onBack, onEdit, initialVie
             const usedParts = history.parts.filter(row => row.orden_id === repair.id); const usedLabor = history.labor.filter(row => row.orden_id === repair.id);
             const technician = technicians.rows.find(row => row.id === repair.tecnico_id);
             return <details className="repair-card" id={`equipment-report-${repair.id}`} key={repair.id} open={selectedReport ? repair.id === selectedReport : index === 0}>
-              <summary><span className={`repair-kind ${['Correctivo','Emergencia'].includes(String(repair.tipo)) ? 'corrective' : ''}`}><Wrench size={18} /></span><span className="repair-summary"><span className="repair-meta">{formatDate(String(repair.fecha))}<span>·</span>{repair.orden_origen ? `OS ${repair.orden_origen}` : repair.codigo}<span>·</span>{repair.tipo}</span><strong>{repair.motivo}</strong><span className="repair-subtitle">{repair.tecnicos || technician?.nombre || 'Técnico no registrado'}<span>·</span>{formatNumber(Number(repair.horometro))} h de horómetro{repair.horometro_estimado === true && <span className="estimate-tag">Estimado</span>}</span></span><ChevronDown size={18} className="repair-chevron" /></summary>
+              <summary><span className={`repair-kind ${['Correctivo','Emergencia'].includes(String(repair.tipo)) ? 'corrective' : ''}`}><Wrench size={18} /></span><span className="repair-summary"><span className="repair-meta">{formatDate(String(repair.fecha))}<span>·</span>{repair.orden_origen ? `OS ${repair.orden_origen}` : repair.codigo}<span>·</span>{repair.tipo}</span><strong>{repair.motivo}</strong><span className="repair-subtitle">{repair.tecnicos || technician?.nombre || 'Técnico no registrado'}<span>·</span>{typeof repair.horometro === 'number' && Number.isFinite(repair.horometro) ? `${formatNumber(repair.horometro)} h de horómetro` : 'Sin lectura de horómetro'}{repair.horometro_estimado === true && <span className="estimate-tag">Estimado</span>}</span></span><ChevronDown size={18} className="repair-chevron" /></summary>
               <div className="repair-body"><div className="repair-status-line"><Status value={String(repair.estado)} /><span><MapPin size={13} />{repair.ubicacion}</span></div><div className="repair-description"><div><h3>{repair.importado ? 'Tipo de falla registrado' : 'Diagnóstico'}</h3><p>{repair.diagnostico || 'Sin diagnóstico registrado.'}</p></div><div><h3>{repair.importado ? 'Trabajo descrito en el reporte' : 'Trabajo realizado'}</h3><p>{repair.trabajo || 'Sin trabajo registrado.'}</p></div></div>
                 <div className="repair-resources"><div><h3><Package size={14} />Repuestos y materiales</h3>{usedParts.length ? <ul>{usedParts.map(part => <li key={part.id}><span>{part.descripcion}</span><strong>× {formatNumber(Number(part.cantidad))}</strong></li>)}</ul> : repair.importado ? <div className="repair-source-materials"><p><strong>Insumos:</strong> {repair.insumos_origen || 'Sin detalle en el origen.'}</p><p><strong>Repuestos:</strong> {repair.repuestos_origen || 'Sin detalle en el origen.'}</p></div> : <p>Sin repuestos registrados.</p>}</div><div><h3><Clock3 size={14} />Mano de obra</h3>{usedLabor.length ? <ul>{usedLabor.map(row => <li key={row.id}><span>{technicians.rows.find(tech => tech.id === row.tecnico_id)?.nombre ?? 'Técnico'}</span><strong>{formatNumber(Number(row.horas))} h</strong></li>)}</ul> : <p>Sin horas registradas.</p>}</div></div>
                 <ImportedReportDetails report={repair} />
