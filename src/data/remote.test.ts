@@ -51,3 +51,23 @@ it('al recibir un conflicto recupera la revisión nueva sin repetir la escritura
   await expect(source.repository('Catalogos',demoUsers[0]).create({})).rejects.toThrow('Los datos cambiaron');
   expect(source.getRevision()).toBe(db.revision+1);expect(fetch).toHaveBeenCalledTimes(3);
 });
+it('indica fallo y recuperación real, incluido el sondeo sin cambios',async()=>{
+  const fetch=vi.fn().mockResolvedValueOnce(Response.json({...createSeed(),syncToken:'one'})).mockRejectedValueOnce(new TypeError('Offline')).mockResolvedValueOnce(new Response(null,{status:204}));vi.stubGlobal('fetch',fetch);
+  const source=new RemoteDataSource();expect(source.getConnection()).toBe('syncing');
+  await source.refresh();expect(source.getConnection()).toBe('ok');
+  await expect(source.refresh()).rejects.toThrow('conectar');expect(source.getConnection()).toBe('error');
+  await source.refresh();expect(source.getConnection()).toBe('ok');
+});
+it('una conexión anterior no cambia el estado de una nueva sesión',async()=>{
+  let finish!: (response:Response)=>void;
+  vi.stubGlobal('fetch',vi.fn().mockImplementationOnce(()=>new Promise<Response>(resolve=>{finish=resolve;})).mockRejectedValueOnce(new TypeError('Offline')));
+  const source=new RemoteDataSource();const pending=source.refresh();source.clear();await expect(source.refresh()).rejects.toThrow();
+  finish(Response.json(createSeed()));await pending;expect(source.getConnection()).toBe('error');
+});
+it('marca las consultas automáticas y comunica el cierre por inactividad',async()=>{
+  const dispatchEvent=vi.fn();vi.stubGlobal('window',{dispatchEvent});
+  const fetch=vi.fn().mockResolvedValueOnce(Response.json(createSeed())).mockResolvedValueOnce(Response.json({error:'Tu sesión se cerró por inactividad.',code:'SESSION_IDLE'},{status:401}));vi.stubGlobal('fetch',fetch);
+  const source=new RemoteDataSource();await source.refresh(true);expect(fetch.mock.calls[0][1].headers['X-Portal-Poll']).toBe('1');
+  await expect(source.refresh(true)).rejects.toMatchObject({status:401,code:'SESSION_IDLE'});
+  expect(dispatchEvent).toHaveBeenCalledTimes(1);expect(dispatchEvent.mock.calls[0][0].detail).toBe('SESSION_IDLE');
+});

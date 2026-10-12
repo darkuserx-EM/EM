@@ -1,4 +1,6 @@
+import { clearSessionCookies } from './session-policy.mjs';
 import { rateLimit } from 'express-rate-limit';
+import { randomUUID } from 'node:crypto';
 import { hashPassword, verifyPassword } from './security.mjs';
 
 const fail = (status, message) => Object.assign(new Error(message), {status, expose:true});
@@ -19,12 +21,13 @@ export function registerAccountRoutes(app, pool) {
       if (!await verifyPassword(body.currentPassword,users[0].password_hash)) throw fail(400,'La contraseña actual no es correcta.');
       if (kind === 'password') {
         if (body.newPassword === body.currentPassword) throw fail(400,'Elige una contraseña diferente de la actual.');
-        await conn.execute('UPDATE em_users SET password_hash=? WHERE id=?',[await hashPassword(body.newPassword),req.actor.id]);
+        await conn.execute('UPDATE em_users SET password_hash=?,must_change_password=FALSE WHERE id=?',[await hashPassword(body.newPassword),req.actor.id]);
+        await conn.execute('INSERT INTO em_security_events (id,actor_id,target_id,action,created_at) VALUES (?,?,?,?,?)',[randomUUID(),req.actor.id,req.actor.id,'account.password-changed',Date.now()]);
       }
       const all = kind === 'sessions' && body.scope === 'all';
       await conn.execute(`DELETE FROM em_sessions WHERE user_id=?${all ? '' : ' AND token_hash<>?'}`,all ? [req.actor.id] : [req.actor.id,req.sessionHash]);
       await conn.commit();
-      if (all) res.clearCookie('em_session',{path:'/',secure:app.get('portal production'),httpOnly:true,sameSite:'strict'});
+      if (all) clearSessionCookies(res,app.get('portal production'));
       res.json({ok:true,signedOut:all});
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   }

@@ -132,3 +132,7 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
 El mensaje de error indica archivo, línea y valor. Las ilustraciones SVG con atributos de color, como el montacargas de `ui.tsx`, no se revisan.
 
 Para agregar estilos: usar la hoja de la pantalla y los tokens. Si hace falta un color nuevo, se agrega como token en `tokens.css`, con su contraste documentado.
+
+## Decisión de mantenimiento
+
+Se conservan los tokens y componentes compartidos ya aprobados, junto con las hojas de cada pantalla. Tailwind no justifica reescribir pantallas funcionales; excluir documentación y pruebas evita utilidades accidentales. Migrar componentes cuando se modifica su pantalla, con la revisión automática de diseño vigente.

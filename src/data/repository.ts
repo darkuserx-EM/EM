@@ -1,3 +1,4 @@
+import {localAuditPage, type AuditQuery} from './audit-log';
 import { preparePlan, todayGT } from '../domain/maintenance-plan';
 import { findingClosed, upgradeFindingCollection } from '../domain/equipment-findings';
 import { definitions, type Actor, type Database, type EntityName, type EntityRecord, type Scalar } from '../domain/model';
@@ -50,6 +51,7 @@ export class LocalDataSource {
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getRevision = () => this.database.revision;
+  async auditLog(actor: Actor, query: AuditQuery = {}) { assertAdmin(actor); return localAuditPage(this.database.entities.Bitacora,query); }
   refresh() {
     const saved = this.storage.getItem(STORAGE_KEY);
     if (saved) { const current: unknown = upgradeFindingCollection(JSON.parse(saved)); this.validate(current); this.database = current; this.listeners.forEach(listener => listener()); }
@@ -312,10 +314,12 @@ export class LocalDataSource {
     if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron. Revisa nuevamente el respaldo antes de restaurarlo.');
     if (exportedAt !== undefined && (!/^\d{4}-\d{2}-\d{2}T/.test(exportedAt) || !Number.isFinite(Date.parse(exportedAt)))) throw new ValidationError('La fecha de exportación del respaldo no es válida.');
     const next = structuredClone(candidate);
-    // The live audit is authoritative: a backup cannot erase or rewrite it.
-    next.entities.Bitacora = structuredClone(this.database.entities.Bitacora);
+    // A live audit is authoritative. A genuinely empty operational database can
+    // recover the original history; subsequent retries retain that live history.
+    const emptyDatabase = Object.entries(this.database.entities).every(([name, rows]) => name === 'Catalogos' || rows.length === 0);
+    if (!emptyDatabase) next.entities.Bitacora = structuredClone(this.database.entities.Bitacora);
     if (this.options.demoHistory) addEquipmentHistoryDemo(next.entities);
-    this.audit(next, actor, 'Sistema', 'Restauración', `Respaldo revisión ${candidate.revision}; exportado: ${exportedAt ? new Date(exportedAt).toISOString() : 'fecha no disponible'}. Reemplaza revisión ${this.database.revision}. Se conservó la bitácora actual.`); this.commit(next);
+    this.audit(next, actor, 'Sistema', 'Restauración', `Respaldo revisión ${candidate.revision}; exportado: ${exportedAt ? new Date(exportedAt).toISOString() : 'fecha no disponible'}. Reemplaza revisión ${this.database.revision}. ${emptyDatabase ? 'Se recuperó la bitácora en una base operativa vacía.' : 'Se conservó la bitácora actual.'}`); this.commit(next);
   }
 }
 let singleton: LocalDataSource | undefined;

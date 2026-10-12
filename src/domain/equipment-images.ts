@@ -23,9 +23,9 @@ export function validEquipmentImage(value: unknown): boolean {
     return raw.startsWith('RIFF') && raw.slice(8,12) === 'WEBP';
   } catch { return false; }
 }
-export function equipmentImageSource(row: Partial<EntityRecord>, field: EquipmentImageField) {
+export function equipmentImageSource(row: Partial<EntityRecord>, field: EquipmentImageField, preview = false) {
   const value = row[field];
   if (!value || !validEquipmentImage(value)) return '';
-  if (isEquipmentImageReference(value)) return row.id ? `/api/equipment-images/${encodeURIComponent(row.id)}/${field}/${value.slice(6)}` : '';
+  if (isEquipmentImageReference(value)) return row.id ? `/api/equipment-images/${encodeURIComponent(row.id)}/${field}/${value.slice(6)}${preview ? '?preview=1' : ''}` : '';
   return String(value);
 }

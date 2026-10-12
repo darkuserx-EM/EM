@@ -18,9 +18,9 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
  const conn=await pool.getConnection();try{await conn.beginTransaction();const before=await readDatabase(conn,true),db=structuredClone(before);for(const id of ['a','b']){db.entities.Cliente.push(row(`client-${id}`,`CLI-${id}`,{nombre:`Cliente ${id} PRUEBA`,estado:'Activo'}));db.entities.Equipo.push(row(`eq-${id}`,`TCE-${id}`,{marca:'Crown',modelo:'QA',serie:`SYNTHETIC-${id}`,tipo:'Reach',propiedad:'De cliente',estado:'Disponible',cliente_id:`client-${id}`,horometro:100}));}db.revision++;await saveDatabase(conn,db,before);await conn.commit();}finally{conn.release();}
  const origin='http://localhost:3000',setupToken=token();server=createApp({pool,origin,setupToken,production:false}).listen(0,'127.0.0.1');await once(server,'listening');const url=`http://127.0.0.1:${server.address().port}`;let serial=1;
  async function call(path,body,session){const r=await fetch(`${url}/api/${path}`,{method:body===undefined?'GET':'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Forwarded-For':`198.51.100.${serial++}`,...(session?{Cookie:session.cookie,'X-CSRF-Token':session.csrf}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,headers:r.headers,data:(r.headers.get('content-type')||'').includes('json')?await r.json():Buffer.from(await r.arrayBuffer())};}
- async function login(email,password){const r=await call('login',{email,password});assert.equal(r.status,200,JSON.stringify(r.data));const s={cookie:r.headers.getSetCookie()[0].split(';')[0],csrf:''};s.csrf=(await call('session',undefined,s)).data.csrf;return s;}
+ async function login(email,password){const r=await call('login',{email,password});assert.equal(r.status,200,JSON.stringify(r.data));const s={cookie:r.headers.getSetCookie()[0].split(';')[0],csrf:''};const state=(await call('session',undefined,s)).data;s.csrf=state.csrf;if(state.mustChangePassword)assert.equal((await call('password',{currentPassword:password,newPassword:password+' changed'},s)).status,200);return s;}
  const password='Synthetic QA password 2026!';assert.equal((await call('setup',{email:'admin@example.invalid',name:'QA Admin',password,setupToken})).status,201);const admin=await login('admin@example.invalid',password);
- const technicianRequest={name:'Técnico PRUEBA',email:'tech@example.invalid',role:'Técnico',days:7,password:'Synthetic technician stable password 2026!',requestId:randomUUID()};
+ const technicianRequest={name:'Técnico PRUEBA',email:'tech@example.invalid',role:'Técnico',specialty:'Mantenimiento sintético',days:7,password:'Synthetic technician stable password 2026!',requestId:randomUUID()};
  const tech=(await call('admin/users',technicianRequest,admin));assert.equal(tech.status,201,JSON.stringify(tech.data));
  const clientA=await call('admin/users',{name:'A PRUEBA',email:'a@example.invalid',role:'Cliente',clientId:'client-a',days:7},admin);assert.equal(clientA.status,201);
  const clientB=await call('admin/users',{name:'B PRUEBA',email:'b@example.invalid',role:'Cliente',clientId:'client-b',days:7},admin);assert.equal(clientB.status,201);
@@ -31,9 +31,11 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
    assert.equal((await readSnapshot(pool)).entities.Tecnico.filter(row=>row.id===tech.data.technicianId).length,1);
  });
  await t.test('reintentar alta de cuenta conserva usuario, técnico y vigencia sin duplicar eventos',async()=>{
+   const retryRequest={...technicianRequest,email:'retry@example.invalid',requestId:randomUUID()};
+   const first=await call('admin/users',retryRequest,admin);assert.equal(first.status,201);
    const before=await readSnapshot(pool);
-   const repeated=await call('admin/users',technicianRequest,admin);assert.equal(repeated.status,200,JSON.stringify(repeated.data));
-   assert.deepEqual(repeated.data,tech.data);
+   const repeated=await call('admin/users',retryRequest,admin);assert.equal(repeated.status,200,JSON.stringify(repeated.data));
+   assert.deepEqual(repeated.data,first.data);
    assert.deepEqual(await readSnapshot(pool),before);
    const [users]=await pool.execute('SELECT id,technician_id FROM em_users WHERE email=?',[technicianRequest.email]);assert.equal(users.length,1);assert.equal(users[0].technician_id,tech.data.technicianId);
    const [events]=await pool.execute("SELECT id FROM em_security_events WHERE target_id=? AND action='account.created'",[tech.data.id]);assert.equal(events.length,1);
@@ -44,6 +46,21 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
  });
  async function mutate(action,entity,fields,id){const revision=(await call('database',undefined,admin)).data.revision;return call('mutate',{revision,action,entity,fields,id},admin);}
  const created=await mutate('create','OrdenServicio',{equipo_id:'eq-a',tipo:'Preventivo',sintoma:'Prueba sintética',estado:'Programada',prioridad:'Media',tecnico_id:tech.data.technicianId,fecha_programada:'2026-10-10',visible_cliente:true,solicitud_id:randomUUID()});assert.equal(created.status,200,JSON.stringify(created.data));const order=created.data.result;
+ await t.test('ediciones operativas usan la versión del registro y conservan validación bajo bloqueo',async()=>{
+   assert.equal((await mutate('create','LecturaHorometro',{equipo_id:'eq-a',valor:100,fecha:new Date(Date.now()-60000).toISOString()})).status,200);
+   const initial=(await call('database',undefined,admin)).data;
+   const ticket=await call('mutate',{action:'create',entity:'Ticket',revision:initial.revision,fields:{equipo_id:'eq-a',titulo:'Solicitud concurrente',descripcion:'Prueba de independencia',prioridad:'Media',solicitud_id:randomUUID()}},admin);assert.equal(ticket.status,200,JSON.stringify(ticket.data));
+   const edit={action:'update',entity:'OrdenServicio',id:order.id,revision:initial.revision,fields:{estado:'En proceso',expected_updated_at:order.fecha_actualizacion}};
+   const saved=await call('mutate',edit,technician);assert.equal(saved.status,200,JSON.stringify(saved.data));
+   const stale=await call('mutate',edit,technician);assert.equal(stale.status,409);assert.match(stale.data.error,/Este registro cambió/);
+   const clientConflict=await call('mutate',{action:'update',entity:'Cliente',id:'client-a',revision:initial.revision,fields:{nombre:'No debe guardarse'}},admin);assert.equal(clientConflict.status,409);
+   const date=new Date().toISOString();
+   const readings=await Promise.all([90,110].map(valor=>call('mutate',{action:'create',entity:'LecturaHorometro',revision:initial.revision,fields:{equipo_id:'eq-a',orden_id:order.id,fecha:date,valor,solicitud_id:randomUUID()}},technician)));
+   assert.deepEqual(readings.map(r=>r.status).sort(),[200,400]);
+   const final=await readSnapshot(pool);assert.equal(Math.max(...final.entities.LecturaHorometro.filter(r=>r.equipo_id==='eq-a').map(r=>r.valor)),110);
+   assert.equal(final.entities.Equipo.find(r=>r.id==='eq-a').horometro,100); // La ficha conserva la lectura de ingreso.
+   assert.equal(final.entities.LecturaHorometro.filter(r=>r.equipo_id==='eq-a'&&r.valor===90).length,0);
+ });
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');const body={orderId:order.id,requestId:randomUUID(),category:'Antes',name:'evidencia.png',base64:bytes.toString('base64')};let file;
  await t.test('subida autorizada e idempotente, rechazo HTML y acceso cruzado',async()=>{
    assert.equal((await call('attachments',body,a)).status,403);const up=await call('attachments',body,technician);assert.equal(up.status,201,JSON.stringify(up.data));file=up.data.file;

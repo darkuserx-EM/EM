@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import sharp from 'sharp';
 import { createApp } from './app.mjs';
 import { createSeed, LocalDataSource, equipmentImageFields } from './generated/domain.mjs';
 import { token } from './security.mjs';
@@ -14,6 +15,7 @@ const coordinator = {id:'test-coord',name:'Prueba',role:'Coordinador',csrf,token
 const client = {id:'test-client',name:'Prueba',role:'Cliente',client_id:'client-1',csrf,token_hash:'hash'};
 function poolFor(user, prepare = () => {}) {
   const db = createSeed();
+  const media = new Map();
   prepare(db);
   const fake = {
     async query(sql) {
@@ -24,11 +26,21 @@ function poolFor(user, prepare = () => {}) {
       throw new Error('Unexpected query');
     },
     async execute(sql, args) {
+      if(sql.includes('FROM em_media WHERE equipment_id=?')) {
+        const row = media.get(JSON.stringify(args.slice(0,3)));
+        return [row ? [{...row, bytes: sql.includes('COALESCE') ? row.thumbnail || row.content : row.content, preview: sql.includes('COALESCE') && !!row.thumbnail}] : []];
+      }
+      if(sql.startsWith('INSERT INTO em_media ')) {
+        const [equipment_id,field,hash,mime,size,sha256,uploaded_by,created_at,content,thumbnail] = args;
+        media.set(JSON.stringify([equipment_id,field,hash]),{equipment_id,field,hash,mime,size,sha256,uploaded_by,created_at,content,thumbnail}); return [{}];
+      }
+      if(sql.startsWith("SELECT payload FROM em_records WHERE entity='OrdenServicio'")) return [db.entities.OrdenServicio.filter(row=>row.equipo_id===args[0]&&row.tecnico_id===args[1]).map(row=>({payload:JSON.stringify(row)}))];
       if(sql.includes('em_sessions s')) return [user?[user]:[]];
       if(sql.startsWith("SELECT payload FROM em_records WHERE entity='Equipo'")) {
         const row=db.entities.Equipo.find(item=>item.id===args[0]);
         return [row?[{payload:JSON.stringify(row)}]:[]];
       }
+      if(sql.startsWith('INSERT INTO em_audit_index')) return [{}];
       if(sql.startsWith('INSERT INTO em_records')) {
         for(let i=0;i<args.length;i+=3) {
           const [entity,id,payload]=args.slice(i,i+3); const row=JSON.parse(payload); const index=db.entities[entity].findIndex(item=>item.id===id);
@@ -166,7 +178,7 @@ test('equipment images require authentication and equipment visibility, includin
   const other=await fixture(t,{...client,client_id:'client-2'},withImages); assert.equal((await other(path,{headers:{Cookie:'em_session=x'}})).status,404);
   const technician=await fixture(t,{...client,role:'Técnico'},withImages); assert.equal((await technician(path,{headers:{Cookie:'em_session=x'}})).status,404);
   const allowed=await fixture(t,client,withImages);const response=await allowed(path,{headers:{Cookie:'em_session=x'}});
-  assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');assert.equal(response.headers.get('cache-control'),'no-store');
+  assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');assert.equal(response.headers.get('cache-control'),'private, no-cache');
   assert.deepEqual(Buffer.from(await response.arrayBuffer()),Buffer.from(picture.split(',')[1],'base64'));
   assert.equal((await allowed(`/api/equipment-images/equipment-1/foto_equipo/${'0'.repeat(64)}`,{headers:{Cookie:'em_session=x'}})).status,404);
   for(const field of equipmentImageFields) {
@@ -184,8 +196,8 @@ test('normal responses exclude image bytes and only administration exports compl
   const admin=await fixture(t,{...coordinator,role:'Administrador'},withImages);
   const backup=await (await admin('/api/backup',{headers:{Cookie:'em_session=x'}})).json();assert.equal(backup.entities.Equipo[0].foto_equipo,picture);
   const exported=await (await admin('/api/equipment-export',{method:'POST',headers:jsonHeaders,body:JSON.stringify({ids:['equipment-1']})})).json();
-  assert.equal(exported.rows.length,1);assert.equal(exported.rows[0].foto_equipo,picture);
-  for(const field of equipmentImageFields) {assert.equal(db.entities.Equipo[0][field],imageReference(picture));assert.equal(backup.entities.Equipo[0][field],picture);assert.equal(exported.rows[0][field],picture);}
+  assert.equal(exported.rows.length,1);assert.equal(exported.rows[0].foto_equipo,undefined);
+  for(const field of equipmentImageFields) {assert.equal(db.entities.Equipo[0][field],imageReference(picture));assert.equal(backup.entities.Equipo[0][field],picture);assert.equal(exported.rows[0][field],undefined);}
 });
 
 test('image reads touch only the requested equipment and honor reassignment without a snapshot',async t=>{
@@ -232,7 +244,8 @@ test('image references resolve only to the same original equipment and field',()
 test('an administrator saves all six photos together above the former 8 MB limit',async t=>{
   const request=await fixture(t,{...coordinator,role:'Administrador'});
   const db=await (await request('/api/database',{headers:{Cookie:'em_session=x'}})).json();
-  const fields=Object.fromEntries(equipmentImageFields.map((field,index)=>[field,'data:image/png;base64,'+Buffer.concat([Buffer.from(picture.split(',')[1],'base64'),Buffer.alloc(1100000,65+index)]).toString('base64')]));
+  const original = await sharp({create:{width:700,height:600,channels:3,background:'#315d29'}}).png({compressionLevel:0}).toBuffer();
+  const fields=Object.fromEntries(equipmentImageFields.map(field=>[field,'data:image/png;base64,'+original.toString('base64')]));
   const body=JSON.stringify({action:'update',entity:'Equipo',id:'equipment-1',revision:db.revision,fields});
   assert.ok(Buffer.byteLength(body)>8*1024*1024);
   const response=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body});
@@ -440,3 +453,5 @@ test('technician image scope follows orders and never exposes another technician
   assert.equal((await request(`/api/equipment-images/equipment-1/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,200);
   assert.equal((await request(`/api/equipment-images/equipment-2/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,404);
 });
+
+test('la muestra de operador no se sirve en producción',async t=>{const request=await fixture(t,null);assert.equal((await request('/revision/TCL-001')).status,404);});

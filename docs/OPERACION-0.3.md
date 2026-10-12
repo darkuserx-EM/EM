@@ -1,5 +1,9 @@
 # Portal EMSA · Entrega operativa 0.3
 
+Gestión actual de altas, renovaciones, reactivación y recuperación administrativa: [Cuentas y recuperación](CUENTAS-Y-RECUPERACION.md). Respaldo de fotografías y evidencias: [Fotografías MySQL](FOTOGRAFIAS-MYSQL.md).
+
+Las altas y actualizaciones de tickets, órdenes y lecturas se validan contra los datos actuales dentro de la transacción. Un cambio ajeno no rechaza el guardado por revisión global. Las actualizaciones siguen exigiendo la versión original del registro (`expected_updated_at`); un conflicto de la misma orden se informa sin reintentar ni sobrescribir. Las altas conservan `solicitud_id` para reintentos idempotentes. Catálogos, clientes, equipos, importaciones y restauraciones mantienen el control de revisión global. El bloqueo y la validación completa de la base siguen vigentes; este ajuste reduce conflictos innecesarios, no sustituye la evolución de almacenamiento del issue #20.
+
 Fecha de revisión: 10 de octubre de 2026. Base: `8d58852`. Contratos, checklist diario, horas de técnicos y viáticos quedan fuera de esta entrega por alcance.
 
 ## Cambios por módulo
@@ -68,3 +72,13 @@ Las cuentas de prueba vencen. Administración puede revocarlas desde Roles y acc
 - Correcciones retroactivas y reemplazo de contador con segmentos de uso: pendientes de diseñar; no se inventan ni sobrescriben lecturas.
 - AppSheet se revisó como referencia de captura; no se modificó su aplicación ni se enlazó Drive.
 - Pruebas móviles realizadas con viewport en navegador; no representan pruebas en hardware de todos los modelos de teléfono.
+
+### Carga e indicadores de conexión
+
+Inicio, flota y administración se descargan al abrir su pantalla. Excel ya tenía carga diferida: se conserva y no se modifica su API. Las reglas compartidas de administración permanecen globales. El indicador muestra el resultado de la última sincronización (gris al comprobar, rojo al fallar, verde al confirmar); no garantiza disponibilidad futura. La ruta de muestra del operador solo existe en modo local. Los nombres del respaldo Excel usan la fecha de Guatemala.
+
+### Bitácora y eventos paginados
+
+La sincronización conserva una colección Bitacora vacía por compatibilidad. El historial real se consulta en /api/audit-log, solo para administración, con cursores por fecha e identificador y filtros por equipo, hallazgo, entidad, acción y fechas de Guatemala. Datos y respaldos permite cargar más; el historial específico se consulta al expandirlo. El índice em_audit_index se rellena en la migración 5 y se actualiza en la misma transacción que los registros. Los respaldos conservan toda la bitácora. La restauración sigue preservando la bitácora vigente.
+
+Roles y accesos incluye /api/admin/security-events, paginado e indexado; nunca devuelve hashes ni contraseñas. Esta mejora reduce las respuestas de sincronización, pero la validación de escrituras todavía lee el conjunto operativo (#20). Reversión: revertir el código; conservar los índices y tablas, que son auxiliares y no alteran los registros originales.

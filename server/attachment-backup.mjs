@@ -1,3 +1,5 @@
+import {attachmentBatches} from './attachment-batches.mjs';
+import { todayGT } from './generated/domain.mjs';
 import express from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { decodeAttachment } from './attachments.mjs';
@@ -8,7 +10,7 @@ const fields = 'id,order_id,request_id,category,name,mime,size,sha256,uploaded_b
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const identifier = value => typeof value === 'string' && value.length > 0 && value.length <= 128 && !/[\x00-\x1f\x7f]/.test(value);
 const metadataOf = row => ({ id: row.id, order_id: row.order_id, request_id: row.request_id, category: row.category, name: row.name, mime: row.mime, size: Number(row.size), sha256: row.sha256, uploaded_by: row.uploaded_by, created_at: Number(row.created_at) });
-function validateRestoreFile(input) {
+export function validateRestoreFile(input) {
   if (!input || typeof input !== 'object' || !input.metadata || typeof input.metadata !== 'object') throw fail(400, 'El respaldo no contiene un archivo válido.');
   const m = input.metadata;
   if (!uuid(m.id) || !uuid(m.request_id) || !identifier(m.order_id) || !identifier(m.uploaded_by)) throw fail(400, 'La identidad o autoría del archivo no es válida.');
@@ -18,7 +20,7 @@ function validateRestoreFile(input) {
   if (decoded.name !== m.name || decoded.mime !== m.mime || decoded.bytes.length !== m.size || decoded.sha256 !== m.sha256) throw fail(400, 'El contenido no coincide con el nombre, formato, tamaño o huella del respaldo.');
   return { metadata: metadataOf(m), ...decoded };
 }
-async function writeLine(res, value) {
+export async function writeLine(res, value) {
   if (res.destroyed) throw Object.assign(new Error('Download closed'), { code: 'DOWNLOAD_CLOSED' });
   const line = `${JSON.stringify(value)}\n`;
   if (!res.write(line)) await new Promise((resolve, reject) => {
@@ -41,17 +43,15 @@ export function registerAttachmentBackupRoutes(app, { pool, logger = console.err
       await conn.beginTransaction();
       const [totals] = await conn.query('SELECT COUNT(*) AS n FROM em_attachments');
       const total = Number(totals[0].n); const exportedAt = new Date().toISOString();
-      res.type('application/x-ndjson').set('Content-Disposition', `attachment; filename="portal-em-adjuntos-${exportedAt.slice(0, 10)}.jsonl"`);
+      res.type('application/x-ndjson').set('Content-Disposition', `attachment; filename="portal-em-adjuntos-${todayGT()}.jsonl"`);
       await writeLine(res, { type: 'portal-em.attachments', version: 1, exportedAt, count: total });
-      let cursor = ''; let count = 0; const checksum = createHash('sha256');
-      while (!res.destroyed) {
-        const [rows] = await conn.execute(`SELECT ${fields},content FROM em_attachments WHERE id>? ORDER BY id LIMIT 1`, [cursor]);
-        if (!rows.length) break;
-        const row = rows[0]; const metadata = metadataOf(row);
+      let count = 0; const checksum = createHash('sha256');
+      for await (const rows of attachmentBatches(conn)) for(const row of rows) {
+        const metadata = metadataOf(row);
         const file = { metadata, base64: row.content.toString('base64') };
         validateRestoreFile(file);
         checksum.update(await writeLine(res, { type: 'attachment', file }), 'utf8');
-        cursor = row.id; count++;
+        count++;
       }
       if (count !== total || res.destroyed) throw Object.assign(new Error('Incomplete download'), { code: 'DOWNLOAD_INCOMPLETE' });
       await conn.commit();
@@ -73,7 +73,7 @@ export function registerAttachmentBackupRoutes(app, { pool, logger = console.err
       // Same lock order as a record restore/upload: the linked order cannot vanish between check and insert.
       await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE');
       const [orders] = await conn.execute("SELECT id FROM em_records WHERE entity='OrdenServicio' AND id=?", [m.order_id]);
-      if (!orders.length) throw fail(409, 'La orden original no existe. Restaura primero el respaldo de registros del portal.');
+      if (!orders.length && req.body?.allowOrphan !== true) throw fail(409, 'La orden original no existe. Restaura primero el respaldo de registros del portal.');
       const [existing] = await conn.execute(`SELECT ${fields},content FROM em_attachments WHERE id=? OR request_id=? FOR UPDATE`, [m.id, m.request_id]);
       if (existing.length) {
         if (existing.length !== 1 || JSON.stringify(metadataOf(existing[0])) !== JSON.stringify(m) || !existing[0].content.equals(restored.bytes)) throw fail(409, 'Ya existe un archivo distinto con esa identidad. No se ha reemplazado ningún contenido.');

@@ -1,27 +1,46 @@
+import type { AuditPage, AuditQuery } from './audit-log';
 import type { Actor, Database, EntityName, EntityRecord, Scalar } from '../domain/model';
 import { assertAdmin } from '../domain/permissions';
 import { planClientImport, type ClientImportRow } from '../domain/client-import';
 import type { Repository } from './repository';
 import type { HistoricalReportsImport } from './historical-reports';
 import { isOperationalEntity } from '../domain/operations';
+import { equipmentImageFields } from '../domain/equipment-images';
 
 let csrf = '';
 let authEpoch = 0;
 type SyncedDatabase = Database & { syncToken?: string; access?: Actor };
 export function setCsrf(value: string) { csrf = value; authEpoch++; }
-export async function api<T>(path: string, body?: unknown): Promise<T> {
+async function uploadEquipmentFields(fields: Record<string, Scalar>) {
+  const values = { ...fields }; const uploads: Record<string, string> = {};
+  for (const field of equipmentImageFields) {
+    const value = values[field];
+    if (typeof value !== 'string' || !value.startsWith('data:')) continue;
+    const match = value.match(/^data:(image\/(?:png|jpeg|webp));base64,(.*)$/);
+    if (!match) throw new Error('La fotografía no es válida.');
+    const bytes = Uint8Array.from(atob(match[2]), char => char.charCodeAt(0));
+    const uploadId = crypto.randomUUID();
+    const response = await fetch('/api/equipment-media/upload', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': match[1], 'X-CSRF-Token': csrf, 'X-Upload-ID': uploadId, 'X-Equipment-Field': field }, body: bytes, signal: AbortSignal.timeout(30000) });
+    if (response.status === 401) window.dispatchEvent(new Event('portal-session-expired'));
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'No se pudo cargar la fotografía. Tus campos siguen en el formulario.');
+    values[field] = data.reference; uploads[field] = data.uploadId;
+  }
+  return { fields: values, mediaUploads: uploads };
+}
+export async function api<T>(path: string, body?: unknown, options: {poll?:boolean} = {}): Promise<T> {
   const epoch = authEpoch;
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(),30000);
   let response: Response; let data: unknown;
   try {
-    response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: body === undefined ? undefined : JSON.stringify(body),signal:controller.signal });
-    if (response.status === 401 && epoch === authEpoch && !['login','session'].includes(path)) window.dispatchEvent(new Event('portal-session-expired'));
+    response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? (options.poll ? {'X-Portal-Poll':'1'} : {}) : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: body === undefined ? undefined : JSON.stringify(body),signal:controller.signal });
     if (response.status === 204) {
       if (body === undefined && path.startsWith('database?since=')) return undefined as T;
       throw new Error('El servidor no confirmó el resultado de la operación. Revisa la información antes de repetirla.');
     }
     try { data = await response.json(); }
     catch {
+      if (response.status === 401 && epoch === authEpoch && !['login','session'].includes(path)) window.dispatchEvent(new Event('portal-session-expired'));
       throw new Error(response.status === 401 ? 'Tu sesión terminó. Vuelve a ingresar.' : `No recibimos una respuesta válida del servidor (HTTP ${response.status}). ${body === undefined ? 'Intenta actualizar la página.' : 'Tus campos siguen en el formulario. Comprueba la lista antes de volver a guardar para evitar duplicados.'}`);
     }
   } catch (error) {
@@ -30,11 +49,23 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   } finally { clearTimeout(timeout); }
   if (!data || typeof data !== 'object') throw new Error('La respuesta del servidor está incompleta. Actualiza la página antes de continuar.');
   if (!response.ok) {
-    throw Object.assign(new Error(('error' in data && typeof data.error === 'string' && data.error) || 'No se pudo completar la solicitud.'), { status: response.status });
+    if (response.status === 401 && epoch === authEpoch && !['login','session'].includes(path)) window.dispatchEvent(new CustomEvent('portal-session-expired', {detail:'code' in data ? data.code : undefined}));
+    if ('code' in data && data.code === 'PASSWORD_CHANGE_REQUIRED' && epoch === authEpoch) window.dispatchEvent(new Event('portal-password-required'));
+    throw Object.assign(new Error(('error' in data && typeof data.error === 'string' && data.error) || 'No se pudo completar la solicitud.'), { status: response.status, code: 'code' in data ? data.code : undefined });
   }
   return data as T;
 }
 export class RemoteDataSource {
+  private connection: 'ok' | 'error' | 'syncing' = 'syncing';
+  private connectionSequence = 0;
+  private connectionListeners = new Set<() => void>();
+  subscribeConnection = (listener: () => void) => { this.connectionListeners.add(listener); return () => { this.connectionListeners.delete(listener); }; };
+  getConnection = () => this.connection;
+  private reportConnection(value: 'ok' | 'error' | 'syncing', sequence: number, generation: number) {
+    if (generation !== this.generation || sequence < this.connectionSequence) return;
+    this.connectionSequence = sequence;
+    if (this.connection !== value) { this.connection = value; this.connectionListeners.forEach(listener => listener()); }
+  }
   private database?: SyncedDatabase;
   private sequence = 0;
   private lastAccepted = 0;
@@ -50,12 +81,16 @@ export class RemoteDataSource {
     if (accessChanged && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('portal-access-changed', {detail:db.access}));
     this.listeners.forEach(listener => listener());
   }
-  clear() { this.generation++; this.database = undefined; this.pendingCreates.clear(); setCsrf(''); this.listeners.forEach(listener => listener()); }
-  async refresh() {
+  clear() { this.generation++; this.database = undefined; this.pendingCreates.clear(); setCsrf(''); this.reportConnection('syncing', ++this.sequence, this.generation); this.listeners.forEach(listener => listener()); }
+  async refresh(poll = false) {
     const sequence = ++this.sequence; const generation = this.generation;
     const since = this.database?.syncToken;
-    const db = await api<SyncedDatabase | undefined>(since ? `database?since=${encodeURIComponent(since)}` : 'database');
-    if (db) this.accept(db, sequence, generation);
+    this.reportConnection('syncing', sequence, generation);
+    try {
+      const db = await api<SyncedDatabase | undefined>(since ? `database?since=${encodeURIComponent(since)}` : 'database',undefined,{poll});
+      if (db) this.accept(db, sequence, generation);
+      this.reportConnection('ok', sequence, generation);
+    } catch (error) { this.reportConnection('error', sequence, generation); throw error; }
   }
   private current() { if (!this.database) throw new Error('Espera a que termine la conexión al servidor.'); return this.database; }
   private async mutate<T>(body: Record<string, unknown>): Promise<T> {
@@ -69,7 +104,7 @@ export class RemoteDataSource {
       getAll, getById: async id => (await getAll()).find(row => row.id === id),
       export: async predicate => { assertAdmin(actor); const rows = (await getAll()).filter(predicate || (() => true)); return entity === 'Equipo' ? (await api<{rows:EntityRecord[]}>('equipment-export', {ids:rows.map(row => row.id)})).rows : rows; },
       create: async (fields: Record<string, Scalar>) => {
-        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'create', entity, fields }); }
+        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'create', entity, ...(entity === 'Equipo' ? await uploadEquipmentFields(fields) : {fields}) }); }
         const key = JSON.stringify([actor.id, entity, Object.entries(fields).sort(([a], [b]) => a.localeCompare(b))]);
         const requestId = fields.solicitud_id || this.pendingCreates.get(key) || crypto.randomUUID();
         if (this.pendingCreates.size >= 100) this.pendingCreates.delete(this.pendingCreates.keys().next().value!);
@@ -78,13 +113,14 @@ export class RemoteDataSource {
         this.pendingCreates.delete(key); return result;
       },
       update: async (id, fields) => {
-        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'update', entity, id, fields }); }
+        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'update', entity, id, ...(entity === 'Equipo' ? await uploadEquipmentFields(fields) : {fields}) }); }
         return this.mutate<EntityRecord>({ action: 'update', entity, id, fields: { expected_updated_at: this.current().entities[entity].find(row => row.id === id)?.fecha_actualizacion || '', ...fields } });
       },
       remove: async id => { assertAdmin(actor); await this.mutate({ action: 'remove', entity, id }); },
       import: async (rows, revision) => { assertAdmin(actor); await this.mutate({ action: 'import', entity, rows, revision }); },
     };
   }
+  async auditLog(actor: Actor, query: AuditQuery = {}): Promise<AuditPage> { assertAdmin(actor); const params=new URLSearchParams(Object.entries(query).filter(([,v])=>v!==undefined).map(([k,v])=>[k,String(v)]));return api<AuditPage>('audit-log?'+params); }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.current()); }
   async backup(actor: Actor) { assertAdmin(actor); return api<Database>('backup'); }
   previewClientImport(actor: Actor, rows: ClientImportRow[]) {

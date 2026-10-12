@@ -180,3 +180,7 @@ button.steps-item:hover:not(:disabled) { border-color: var(--color-border-strong
   .data-table th, .status, .app-footer { font-size: var(--text-xs); }
   .import-controls .button, .preview-summary { font-size: var(--text-xs); }
 }
+
+/* Last synchronization status, not a decorative badge. */
+.online-dot[data-connection="syncing"], .online-dot[data-connection="local"] { background: var(--color-text-muted); }
+.online-dot[data-connection="error"] { background: var(--color-danger-text); }

@@ -1,0 +1,17 @@
+import {randomBytes,createHmac,createCipheriv,createDecipheriv} from 'node:crypto';
+import {equal} from './security.mjs';
+const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+/** @param {Uint8Array} bytes */
+export function base32(bytes) { let bits=0,value=0,result='';for(const byte of bytes){value=(value<<8)|byte;bits+=8;while(bits>=5){result+=alphabet[(value>>>(bits-5))&31];bits-=5;}}if(bits)result+=alphabet[(value<<(5-bits))&31];return result; }
+/** @param {string} secret */
+export function decode32(secret) {let bits=0,value=0;const bytes=[];if(!/^[A-Z2-7]+$/.test(secret))throw Error('Invalid secret');for(const c of secret){value=(value<<5)|alphabet.indexOf(c);bits+=5;if(bits>=8){bytes.push((value>>>(bits-8))&255);bits-=8;}}return Buffer.from(bytes);}
+/** @param {string} secret */
+export function totp(secret, time=Date.now(), digits=6) {const counter=Buffer.alloc(8);counter.writeBigUInt64BE(BigInt(Math.floor(time/30000)));const hmac=createHmac('sha1',decode32(secret)).update(counter).digest(),offset=hmac[hmac.length-1]&15;return String((hmac.readUInt32BE(offset)&0x7fffffff)%10**digits).padStart(digits,'0');}
+/** @param {string} secret @param {unknown} code */
+export function totpStep(secret, code, previous=-1, now=Date.now()) {if(typeof code!=='string'||!/^\d{6}$/.test(code))return null;const step=Math.floor(now/30000);for(const candidate of [step,step-1,step+1])if(candidate>previous&&equal(totp(secret,candidate*30000),code))return candidate;return null;}
+/** @param {string | undefined} value */
+export function encryptionKey(value) {if(!value)return null;const key=Buffer.from(value,'base64');if(key.length!==32||key.toString('base64')!==value)throw Object.assign(new Error('Clave de segundo factor inválida.'),{code:'CONFIG_TOTP_ENCRYPTION_KEY'});return key;}
+/** @param {string} secret @param {Buffer} key @param {string} userId */
+export function seal(secret,key,userId) {const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);cipher.setAAD(Buffer.from(userId));const bytes=Buffer.concat([cipher.update(secret,'utf8'),cipher.final()]);return 'v1:'+Buffer.concat([iv,cipher.getAuthTag(),bytes]).toString('base64');}
+/** @param {string} encoded @param {Buffer | null} key @param {string} userId */
+export function unseal(encoded,key,userId) {if(!key||typeof encoded!=='string'||!encoded.startsWith('v1:'))throw Object.assign(new Error('No se puede abrir el segundo factor.'),{code:'CONFIG_TOTP_ENCRYPTION_KEY'});try{const bytes=Buffer.from(encoded.slice(3),'base64'),decipher=createDecipheriv('aes-256-gcm',key,bytes.subarray(0,12));decipher.setAAD(Buffer.from(userId));decipher.setAuthTag(bytes.subarray(12,28));return Buffer.concat([decipher.update(bytes.subarray(28)),decipher.final()]).toString('utf8');}catch{throw Object.assign(new Error('No se puede abrir el segundo factor.'),{code:'CONFIG_TOTP_ENCRYPTION_KEY'});}}

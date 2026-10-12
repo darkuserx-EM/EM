@@ -1,3 +1,7 @@
+import { encryptionKey } from './totp.mjs';
+import { mfaChallenge, registerMfaLogin, registerMfaRoutes } from './mfa.mjs';
+import { idleTimeout, clearSessionCookies } from './session-policy.mjs';
+import { registerAuditRoutes } from './audit-log.mjs';
 import express from 'express';
 import helmet from 'helmet';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
@@ -6,22 +10,25 @@ import { randomUUID } from 'node:crypto';
 import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames, ValidationError } from './generated/domain.mjs';
 import { readSnapshot, readDatabase, readEquipmentRecord, saveDatabase, consumeLoginAttempt } from './database.mjs';
 import { hashPassword, verifyPassword, digest, equal, token, cookieToken } from './security.mjs';
-import { presentDatabase, presentEquipment, resolveEquipmentImages, readEquipmentImage } from './equipment-images.mjs';
+import { presentDatabase, presentEquipment, readEquipmentImage } from './equipment-images.mjs';
 import { logFailure, parseTrustProxy } from './diagnostics.mjs';
 import { createSnapshotCache } from './snapshot-cache.mjs';
 import { registerAccountRoutes } from './account.mjs';
 import { registerAdminUserRoutes } from './admin-users.mjs';
 import { registerAttachmentRoutes } from './attachments.mjs';
 import { registerAttachmentBackupRoutes } from './attachment-backup.mjs';
+import { registerMediaUploadRoutes, persistEquipmentMedia, hydrateEquipment } from './media.mjs';
+import { registerFullBackupRoutes } from './full-backup.mjs';
 
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
 const syncToken = (revision, actor) => digest(JSON.stringify(['portal-sync-v1', revision, actor]));
-const visible = (db, actor) => ({ ...presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, filterVisible(actor, name, db.entities[name], db.entities)])) }), syncToken: syncToken(db.revision, actor), access: actor });
+const visible = (db, actor) => ({ ...presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, name === 'Bitacora' ? [] : filterVisible(actor, name, db.entities[name], db.entities)])) }), syncToken: syncToken(db.revision, actor), access: actor });
 const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, cliente_id: user.client_id || undefined, tecnico_id: user.technician_id || undefined });
-const cookieName = 'em_session';
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
-export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error }) {
+export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60', totpEncryptionKey } ) {
   const app = express();
+  const mfaKey=encryptionKey(totpEncryptionKey);
+  const idleMs=idleTimeout(sessionIdleMinutes), cookieName=production?'__Host-em_session':'em_session';
   app.set('portal production', production);
   app.disable('x-powered-by'); app.set('trust proxy', parseTrustProxy(String(trustProxy)));
   const snapshots = createSnapshotCache(pool);
@@ -34,7 +41,8 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   } });
   app.use('/api', rateLimit({ windowMs:60000, limit:240, standardHeaders:'draft-8', legacyHeaders:false, message:{error:'Demasiadas solicitudes. Intenta de nuevo en un minuto.'} }));
   app.use('/api', (req,_res,next) => {
-    if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || !req.is('application/json'))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
+    const imageUpload = req.method === 'POST' && req.path === '/equipment-media/upload' && ['image/png','image/jpeg','image/webp'].includes(req.get('content-type'));
+    if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || (!req.is('application/json') && !imageUpload))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
     next();
   });
   const smallJson = express.json({ limit:'100kb' });
@@ -70,32 +78,57 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      const [current] = await conn.execute('SELECT id,password_hash,active,expires_at FROM em_users WHERE id=? FOR UPDATE',[rows[0].id]);
+      const [current] = await conn.execute('SELECT id,password_hash,active,expires_at,totp_enabled FROM em_users WHERE id=? FOR UPDATE',[rows[0].id]);
       if (!current[0]?.active || (current[0].expires_at && Number(current[0].expires_at) <= Date.now()) || current[0].password_hash !== rows[0].password_hash) throw fail(401,'Correo o contraseña incorrectos.');
-      await conn.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at) VALUES (?,?,?,?)',[digest(session),rows[0].id,token(),Date.now()+8*3600000]);
+      if(current[0].totp_enabled) {
+        if(!mfaKey)throw fail(409,'El segundo factor requiere atención del administrador del alojamiento.');
+        const challenge=await mfaChallenge(conn,current[0]);await conn.execute('DELETE FROM em_login_limits WHERE bucket=?',[attemptKey]);await conn.commit();return res.json(challenge);
+      }
+      await conn.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at,last_seen_at) VALUES (?,?,?,?,?)',[digest(session),rows[0].id,token(),Date.now()+8*3600000,Date.now()]);
       await conn.execute('DELETE FROM em_login_limits WHERE bucket=?',[attemptKey]);
       await conn.commit();
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
     res.cookie(cookieName,session,{httpOnly:true,secure:production,sameSite:'strict',path:'/',maxAge:8*3600000});
     res.json({ok:true});
   });
+  registerMfaLogin(app,{pool,key:mfaKey,production,loginLimit,smallJson});
   app.use('/api', async (req,_res,next) => {
-    const session = cookieToken(req.headers.cookie,cookieName);
+    const modern = cookieToken(req.headers.cookie,cookieName);
+    const session = modern || (production ? cookieToken(req.headers.cookie,'em_session') : undefined);
     if (!session || session.length>128) throw fail(401,'Inicia sesión para continuar.');
-    const [rows] = await pool.execute('SELECT s.csrf, s.token_hash, u.* FROM em_sessions s JOIN em_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=TRUE AND (u.expires_at IS NULL OR u.expires_at>?)',[digest(session),Date.now(),Date.now()]);
+    const [rows] = await pool.execute('SELECT s.csrf, s.token_hash, s.last_seen_at, s.expires_at AS session_expires_at, u.* FROM em_sessions s JOIN em_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=TRUE AND (u.expires_at IS NULL OR u.expires_at>?)',[digest(session),Date.now(),Date.now()]);
     if (!rows[0]) throw fail(401,'Tu sesión terminó. Vuelve a ingresar.');
+    const now=Date.now(), lastSeen=Number(rows[0].last_seen_at ?? now);
+    if (now-lastSeen>=idleMs) {
+      await pool.execute('DELETE FROM em_sessions WHERE token_hash=? AND last_seen_at<=?',[digest(session),now-idleMs]);
+      clearSessionCookies(_res,production);
+      return _res.status(401).json({error:'Tu sesión se cerró por inactividad. Vuelve a ingresar.',code:'SESSION_IDLE'});
+    }
+    if (production && !modern) {
+      _res.cookie(cookieName,session,{httpOnly:true,secure:true,sameSite:'strict',path:'/',maxAge:Math.max(0,Number(rows[0].session_expires_at ?? now+8*3600000)-now)});
+      _res.clearCookie('em_session',{path:'/',secure:true,httpOnly:true,sameSite:'strict'});
+    }
     req.actor = actorOf(rows[0]); req.sessionHash = rows[0].token_hash; req.csrf = rows[0].csrf;
+    req.mustChangePassword = Boolean(rows[0].must_change_password);
     if (!['GET','HEAD'].includes(req.method) && !equal(req.get('x-csrf-token'),req.csrf)) throw fail(403,'La sesión de esta solicitud no es válida. Recarga el portal.');
+    if (req.mustChangePassword && !['/session','/password','/logout'].includes(req.path)) return _res.status(403).json({error:'Debes cambiar tu contraseña temporal antes de continuar.',code:'PASSWORD_CHANGE_REQUIRED'});
+    // Background reads never extend inactivity. User interaction sends a CSRF-protected heartbeat.
+    if (lastSeen<=now-60000 && req.get('x-portal-poll')!=='1' && (!['GET','HEAD'].includes(req.method) || req.path==='/session')) await pool.execute('UPDATE em_sessions SET last_seen_at=? WHERE token_hash=? AND last_seen_at<=? AND last_seen_at>?',[now,req.sessionHash,now-60000,now-idleMs]);
     next();
   });
-  app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf}));
+  app.post('/api/session/activity', (_req,res) => res.json({ok:true}));
+  app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf,mustChangePassword:req.mustChangePassword}));
   // Small authenticated requests are parsed only after session and CSRF checks.
-  app.use('/api', (req,res,next) => ['/mutate','/attachments','/admin/attachments/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
+  app.use('/api', (req,res,next) => ['/mutate','/attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
+  registerMfaRoutes(app,{pool,key:mfaKey});
   registerAccountRoutes(app, pool);
+  registerAuditRoutes(app, pool);
   registerAdminUserRoutes(app, {pool,smallJson,logger});
   registerAttachmentRoutes(app, {pool,smallJson,logger});
   registerAttachmentBackupRoutes(app, {pool,logger});
-  app.post('/api/logout', async (req,res) => { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); res.clearCookie(cookieName,{path:'/',secure:production,httpOnly:true,sameSite:'strict'}); res.json({ok:true}); });
+  registerMediaUploadRoutes(app, {pool});
+  registerFullBackupRoutes(app, {pool,logger});
+  app.post('/api/logout', async (req,res) => { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); clearSessionCookies(res,production); res.json({ok:true}); });
   app.get('/api/database', async (req,res) => {
     const [rows] = await pool.query('SELECT revision FROM em_meta WHERE id=1');
     const revision = Number(rows[0].revision);
@@ -108,24 +141,41 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   });
   app.get('/api/backup', async (req,res) => {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
-    res.json(await readSnapshot(pool));
+    const db = await readSnapshot(pool);
+    db.entities.Equipo = await hydrateEquipment(pool,db.entities.Equipo);
+    res.json(db);
   });
   app.post('/api/equipment-export', async (req,res) => {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
     if (!Array.isArray(req.body.ids) || req.body.ids.length > 2000 || req.body.ids.some(id => typeof id !== 'string')) throw fail(400,'Selección de equipos inválida.');
     const ids = new Set(req.body.ids); const db = await readSnapshot(pool);
-    res.json({ rows: db.entities.Equipo.filter(row => ids.has(row.id)) });
+    const imageFields = ['foto_equipo','placa_datos','foto_frontal','foto_trasera','foto_lateral_1','foto_lateral_2'];
+    res.json({ rows: db.entities.Equipo.filter(row => ids.has(row.id)).map(row => Object.fromEntries(Object.entries(row).filter(([key]) => !imageFields.includes(key)))), includesImages: false });
   });
   app.get('/api/equipment-images/:id/:field/:hash', async (req,res) => {
     const equipment = await readEquipmentRecord(pool,req.params.id);
-    const scope = req.actor.rol === 'Técnico' ? (await readSnapshot(pool)).entities : undefined;
+    let scope;
+    if (equipment && req.actor.rol === 'Técnico' && req.actor.tecnico_id) {
+      const [orders] = await pool.execute("SELECT payload FROM em_records WHERE entity='OrdenServicio' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.tecnico_id'))=?", [equipment.id,req.actor.tecnico_id]);
+      scope = { OrdenServicio: orders.map(order => JSON.parse(order.payload)) };
+    }
     const row = equipment && filterVisible(req.actor,'Equipo',[equipment],scope)[0];
-    const image = readEquipmentImage(row,req.params.field,req.params.hash);
+    let image = readEquipmentImage(row,req.params.field,req.params.hash);
+    if (row && row[req.params.field] === `media:${req.params.hash}` && ['foto_equipo','placa_datos','foto_frontal','foto_trasera','foto_lateral_1','foto_lateral_2'].includes(req.params.field)) {
+      const preview = req.query.preview === '1';
+      // Select just the requested representation; a thumbnail request does not read the original BLOB.
+      const [files] = await pool.execute(`SELECT mime,${preview ? 'COALESCE(thumbnail,content)' : 'content'} AS bytes,${preview ? 'thumbnail IS NOT NULL' : 'FALSE'} AS preview FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id,req.params.field,req.params.hash]);
+      if (files.length) image = { type: files[0].preview ? 'image/webp' : files[0].mime, bytes: files[0].bytes };
+    }
     if (!image) throw fail(404,'Imagen no disponible.');
+    // Revalidate authorization on every request, including conditional requests.
+    // An immutable browser cache would outlive account revocation or reassignment.
+    res.set('Cache-Control','private, no-cache').set('ETag',`"${req.params.hash}-${req.query.preview === '1' ? 'preview-v1' : 'original'}"`);
     res.type(image.type).send(image.bytes);
   });
   app.post('/api/mutate', (req,res,next) => express.json({ limit:req.actor.rol === 'Administrador' ? '32mb' : '128kb' })(req,res,next), async (req,res) => {
     const body = req.body;
+    if (body?.mediaUploads !== undefined && (!body.mediaUploads || typeof body.mediaUploads !== 'object' || Array.isArray(body.mediaUploads) || Object.entries(body.mediaUploads).some(([field,id]) => !['foto_equipo','placa_datos','foto_frontal','foto_trasera','foto_lateral_1','foto_lateral_2'].includes(field) || typeof id !== 'string' || !/^[a-f0-9-]{36}$/i.test(id)))) throw fail(400,'La carga de fotografías no es válida.');
     if (req.actor.rol !== 'Administrador') {
       const operational = ['Ticket','OrdenServicio','LecturaHorometro'].includes(body?.entity);
       const manager = req.actor.rol === 'Coordinador' && operational && ['create','update'].includes(body?.action);
@@ -142,7 +192,10 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     try {
       await conn.beginTransaction(); const db = await readDatabase(conn,true);
       const replay = body.action === 'create' && ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && body.fields?.solicitud_id && db.entities[body.entity].some(row => row.solicitud_id === body.fields.solicitud_id && row.creado_por === req.actor.id);
-      if (body.revision !== db.revision && !replay) throw fail(409,'Los datos cambiaron en otro dispositivo. Recarga y revisa antes de guardar.');
+      // Operational writes validate their own record version and all current links
+      // inside this lock. Unrelated changes must not reject a technician's work.
+      const recordConcurrency = ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && ['create','update'].includes(body.action);
+      if (body.revision !== db.revision && !replay && !recordConcurrency) throw fail(409,'Los datos cambiaron en otro dispositivo. Recarga y revisa antes de guardar.');
       // Existing images stay in MySQL while the shared domain edits compact references.
       // Resolve them against this locked snapshot before saving; never concatenate
       // every existing photo into the domain's intermediate JSON string.
@@ -162,13 +215,14 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
         }
       } catch (error) { if (error instanceof ValidationError) throw fail([403,409].includes(error.status) ? error.status : 400,error.message); throw error; }
       const next = JSON.parse(saved);
-      try { resolveEquipmentImages(next,db); } catch (error) { if (error instanceof ValidationError) throw fail(400,error.message); throw error; }
+      await persistEquipmentMedia(conn,next,db,{actor:req.actor,uploads:body.mediaUploads,targetId:body.entity==='Equipo' ? result?.id : undefined,restore:body.action==='restore'});
       await saveDatabase(conn,next,db); await conn.commit(); snapshots.publish(next);
       const publicResult = result && body.entity && req.actor.rol !== 'Administrador' ? filterVisible(req.actor,body.entity,[result],next.entities)[0] : result;
       res.json({result:body.entity === 'Equipo' && result ? presentEquipment(next.entities.Equipo.find(row => row.id === result.id)) : publicResult,database:visible(next,req.actor)});
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   });
   app.use('/api', (_req,_res,next)=>next(fail(404,'Ruta no encontrada.')));
+  if (production) app.get('/revision/TCL-001', (_req,res) => res.status(404).type('text/plain').send('Página no disponible.'));
   app.use(express.static(dist,{index:false,dotfiles:'deny',setHeaders:(res,path)=>res.set('Cache-Control',path.includes('/assets/')?'public,max-age=31536000,immutable':'no-cache')}));
   app.get('/{*path}', (_req,res)=>{res.set('Cache-Control','no-cache');res.sendFile(resolve(dist,'index.html'));});
   app.use((error,req,res,_next)=>{
