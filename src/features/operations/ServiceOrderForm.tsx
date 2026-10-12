@@ -90,6 +90,7 @@ export default function ServiceOrderForm({ row, ticket, onClose, onSaved }: { ro
         {text('pruebas_realizadas', 'Pruebas realizadas', completed)}{text('resultado_pruebas', 'Resultado de las pruebas', completed)}
         {manager && <label className="os-check os-span"><input type="checkbox" checked={values.visible_cliente === 'true'} onChange={event => set('visible_cliente', String(event.target.checked))} disabled={busy} /><span>Compartir este reporte con el cliente</span></label>}
         <p className="os-help os-span">Completar la orden documenta el servicio. La condición operativa y los hallazgos del equipo requieren su propia revisión.</p>
+        {values.ticket_id && <p className="os-help os-span">La solicitud vinculada se resolverá al completar todas sus órdenes. Si alguna sigue pendiente o fue cancelada, coordinación revisará el cierre de la solicitud.</p>}
       </section>
       <section hidden={step !== 4} data-order-step="4" aria-label={steps[4]} className="os-form-grid">
         {row ? <div className="os-span"><AttachmentPanel orderId={row.id} onBusy={setAttachmentBusy} editable={!saving && (actor.rol === 'Administrador' || actor.rol === 'Técnico' && row.tecnico_id === actor.tecnico_id)} /></div> : <div className="os-evidence-note os-span"><h3>Fotografías antes y después</h3><p>Guarda primero el reporte como borrador o programado. Así podrás adjuntar las evidencias a su orden y mantenerlas relacionadas con el equipo.</p><p>Al guardar se abrirá el detalle con las opciones de evidencia. Agrégalas antes de completar la orden.</p></div>}

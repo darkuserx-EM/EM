@@ -12,6 +12,22 @@ function fixture() {
 const ticket = { equipo_id: 'equipment-1', cliente_id: 'client-1', titulo: 'Revisión de frenos', descripcion: 'El recorrido aumentó.', prioridad: 'Alta' };
 const order = { equipo_id: 'equipment-1', cliente_id: 'client-1', sintoma: 'Inspeccionar frenos', tipo: 'Correctivo', prioridad: 'Alta', estado: 'Programada', fecha_programada: '2026-10-10', tecnico_id: 'tech-1', visible_cliente: true };
 describe('operación con permisos y trazabilidad', () => {
+  it('el técnico consulta sus solicitudes y equipo antes de tener orden, sin poder editarlas', async () => {
+    const source = fixture();
+    const own = await source.repository('Ticket', coordinator).create({ ...ticket, responsable_id: technician.tecnico_id! });
+    await source.repository('Ticket', coordinator).create({ ...ticket, responsable_id: otherTechnician.tecnico_id! });
+    const visible = await source.repository('Ticket', technician).getAll();
+    expect(visible.map(row => row.id)).toEqual([own.id]);
+    expect(visible[0].tiene_orden).toBe(false);
+    expect((await source.repository('Equipo', technician).getAll()).some(row => row.id === own.equipo_id)).toBe(true);
+    expect((await source.repository('Cliente', technician).getAll()).some(row => row.id === own.cliente_id)).toBe(true);
+    await expect(source.repository('Ticket', technician).update(own.id, { estado: 'Resuelto' })).rejects.toThrow('permiso');
+    expect(await source.repository('Ticket', { ...technician, tecnico_id: undefined }).getAll()).toEqual([]);
+    const linked = await source.repository('OrdenServicio', coordinator).create({ ...order, ticket_id: own.id, tecnico_id: otherTechnician.tecnico_id!, visible_cliente: false });
+    const requests = await source.repository('Ticket', client).getAll();
+    expect(requests.find(row => row.id === own.id)?.tiene_orden).toBe(true);
+    expect(await source.repository('OrdenServicio', client).getById(linked.id)).toBeUndefined();
+  });
   it('cliente crea solamente solicitudes propias y no controla programación', async () => {
     const source = fixture(); const repo = source.repository('Ticket', client);
     const row = await repo.create(ticket);

@@ -5,10 +5,12 @@ import { addDays } from '../../domain/maintenance-plan';
 
 const weekdays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 export function CalendarEvent({ event, compact = false }: { event: PlanningEvent; compact?: boolean }) {
-  return <Link className={`planning-event ${event.kind} ${compact ? 'compact' : ''}`} to={event.href} title={`${event.title} · ${event.detail} · ${event.state}`}>
+  const state = event.kind === 'plan' ? event.projected ? 'Proyección · pendiente de programar' : 'Vencimiento · pendiente de programar' : event.state;
+  const link = <Link className={`planning-event ${event.kind} ${compact ? 'compact' : ''}`} to={event.href} title={`${event.kind === 'ticket' ? 'Solicitud · ' : ''}${event.title} · ${event.detail} · ${state}${event.priority ? ` · Prioridad ${event.priority}` : ''}${event.ticketCode ? ` · Solicitud ${event.ticketCode}` : ''}`}>
     <span className="planning-event-title">{event.time && <time>{event.time}</time>}{event.title}</span>
-    {!compact && <><span>{event.detail}</span><small>{event.kind === 'service' ? event.state : event.projected ? 'Proyección · pendiente de programar' : 'Vencimiento · pendiente de programar'}<ArrowUpRight size={12} /></small></>}
+    {!compact && <><span>{event.detail}</span>{event.kind === 'ticket' && <span>Solicitud · {event.priority || 'Prioridad por revisar'}</span>}<small>{state}<ArrowUpRight size={12} /></small></>}
   </Link>;
+  return !compact && event.ticketHref ? <div className="planning-linked-event">{link}<Link className="planning-ticket-link" to={event.ticketHref}>Ver solicitud {event.ticketCode}<ArrowUpRight size={12} /></Link></div> : link;
 }
 
 export function CalendarViews({ view, focusDay, today, events, onSelectDay, onSelectMonth }: { view: CalendarView; focusDay: string; today: string; events: PlanningEvent[]; onSelectDay: (day: string) => void; onSelectMonth: (day: string) => void }) {
@@ -19,8 +21,8 @@ export function CalendarViews({ view, focusDay, today, events, onSelectDay, onSe
     const monthEvents = events.filter(event => event.day.slice(0, 7) === month.slice(0, 7));
     return <section className="planning-mini-month" key={month} aria-label={calendarLabel(month)}><button className="planning-month-heading" onClick={() => onSelectMonth(month)}><strong>{calendarLabel(month, { month: 'long' })}</strong><span>{monthEvents.length || '—'}</span></button><div className="planning-mini-grid">{weekdays.map(day => <span className="planning-weekday" key={day}>{day.slice(0, 1)}</span>)}{monthGrid(month).map(day => {
       const items = byDay.get(day) || []; const outside = day.slice(0, 7) !== month.slice(0, 7);
-      return <button disabled={outside} className={`${day === today ? 'today' : ''} ${outside ? 'outside' : ''}`} key={day} onClick={() => onSelectDay(day)} aria-label={`${calendarLabel(day, { day: 'numeric', month: 'long' })}: ${items.filter(event => event.kind === 'service').length} servicios y ${items.filter(event => event.kind === 'plan').length} vencimientos`}><span>{Number(day.slice(8))}</span><span className="planning-dots">{items.some(event => event.kind === 'service') && <i className="service" />}{items.some(event => event.kind === 'plan') && <i className="plan" />}</span></button>;
-    })}</div><small>{monthEvents.filter(event => event.kind === 'service').length} citas · {monthEvents.filter(event => event.kind === 'plan').length} planes</small></section>;
+      return <button disabled={outside} className={`${day === today ? 'today' : ''} ${outside ? 'outside' : ''}`} key={day} onClick={() => onSelectDay(day)} aria-label={`${calendarLabel(day, { day: 'numeric', month: 'long' })}: ${items.filter(event => event.kind === 'service').length} servicios, ${items.filter(event => event.kind === 'ticket').length} solicitudes y ${items.filter(event => event.kind === 'plan').length} vencimientos`}><span>{Number(day.slice(8))}</span><span className="planning-dots">{items.some(event => event.kind === 'service') && <i className="service" />}{items.some(event => event.kind === 'ticket') && <i className="ticket" />}{items.some(event => event.kind === 'plan') && <i className="plan" />}</span></button>;
+    })}</div><small>{monthEvents.filter(event => event.kind === 'service').length} citas · {monthEvents.filter(event => event.kind === 'ticket').length} solicitudes · {monthEvents.filter(event => event.kind === 'plan').length} planes</small></section>;
   })}</div>;
   if (view === 'week') return <div className="planning-week">{Array.from({ length: 7 }, (_, index) => addDays(weekStart(focusDay), index)).map(day => {
     const items = byDay.get(day) || [];
@@ -31,7 +33,7 @@ export function CalendarViews({ view, focusDay, today, events, onSelectDay, onSe
     return <section className={`planning-month-day ${day.slice(0, 7) !== focusDay.slice(0, 7) ? 'outside' : ''} ${day === today ? 'today' : ''}`} key={day}>
       <button className="planning-day-number" onClick={() => onSelectDay(day)} aria-label={`${calendarLabel(day, { day: 'numeric', month: 'long' })}: ${items.length} eventos`}><span>{Number(day.slice(8))}</span>{day === today && <small>Hoy</small>}</button>
       <div className="planning-month-events">{items.slice(0, 3).map(event => <CalendarEvent event={event} key={event.id} compact />)}{items.length > 3 && <button className="planning-more" onClick={() => onSelectDay(day)}>+{items.length - 3} más</button>}</div>
-      {!!items.length && <button className="planning-mobile-count" onClick={() => onSelectDay(day)} aria-label={`Ver ${items.length} eventos del ${day}`}><span className="planning-dots">{items.some(event => event.kind === 'service') && <i className="service" />}{items.some(event => event.kind === 'plan') && <i className="plan" />}</span><span>{items.length}</span></button>}
+      {!!items.length && <button className="planning-mobile-count" onClick={() => onSelectDay(day)} aria-label={`Ver ${items.length} eventos del ${day}`}><span className="planning-dots">{items.some(event => event.kind === 'service') && <i className="service" />}{items.some(event => event.kind === 'ticket') && <i className="ticket" />}{items.some(event => event.kind === 'plan') && <i className="plan" />}</span><span>{items.length}</span></button>}
     </section>;
   })}</div></div>;
 }

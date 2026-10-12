@@ -4,7 +4,7 @@ import { administrativeState } from './equipment-status';
 import { allowedOperationStates } from './operations';
 
 export type CalendarView = 'year' | 'month' | 'week';
-export type PlanningKind = 'service' | 'plan';
+export type PlanningKind = 'service' | 'ticket' | 'plan';
 export interface PlanningEvent {
   id: string;
   day: string;
@@ -19,6 +19,8 @@ export interface PlanningEvent {
   href: string;
   projected: boolean;
   priority: string;
+  ticketHref?: string;
+  ticketCode?: string;
 }
 
 const utcDay = (day: string) => new Date(`${day}T12:00:00Z`);
@@ -52,17 +54,39 @@ export function calendarLabel(day: string, options: Intl.DateTimeFormatOptions =
 export const operationalOrders = (rows: EntityRecord[]) => rows.filter(row => row.schema_operacion === 1 && row.importado !== true);
 export const planningEquipmentLabel = (equipment?: EntityRecord) => equipment ? `${equipment.id_interno_cliente || equipment.codigo} · ${equipment.marca || ''} ${equipment.modelo || ''}`.trim() : 'Equipo pendiente';
 
-/** Plan dates remain suggestions; only a scheduled operating order is an appointment. */
-export function planningEvents(orders: EntityRecord[], equipment: EntityRecord[], plans: EntityRecord[], readings: EntityRecord[], today = todayGT()): PlanningEvent[] {
+export const closedTicket = (row: EntityRecord) => ['Resuelto', 'Cancelado'].includes(String(row.estado));
+/** Resolve links before any date, state or user-facing filter, including private orders. */
+export function standaloneTickets(tickets: EntityRecord[], orders: EntityRecord[]) {
+  const linked = new Set(orders.map(row => row.ticket_id).filter(Boolean));
+  return operationalOrders(tickets).filter(row => !row.orden_id && row.tiene_orden !== true && !linked.has(row.id));
+}
+export function ticketsToSchedule(tickets: EntityRecord[], orders: EntityRecord[]) {
+  const priority: Record<string, number> = { Crítica: 0, Alta: 1, Media: 2, Baja: 3 };
+  return standaloneTickets(tickets, orders).filter(row => !validDay(row.fecha_programada) && !closedTicket(row))
+    .sort((a, b) => (priority[String(a.prioridad)] ?? 4) - (priority[String(b.prioridad)] ?? 4) || a.fecha_creacion.localeCompare(b.fecha_creacion) || a.id.localeCompare(b.id));
+}
+
+/** A linked order owns the appointment. Maintenance plans remain suggestions. */
+export function planningEvents(orders: EntityRecord[], equipment: EntityRecord[], plans: EntityRecord[], readings: EntityRecord[], today = todayGT(), tickets: EntityRecord[] = []): PlanningEvent[] {
   const equipmentMap = new Map(equipment.map(row => [row.id, row]));
   const events: PlanningEvent[] = operationalOrders(orders).filter(row => validDay(row.fecha_programada) && !['Borrador', 'Cancelada'].includes(String(row.estado))).map(row => {
     const machine = equipmentMap.get(String(row.equipo_id));
+    const ticket = tickets.find(ticket => ticket.id === row.ticket_id || ticket.orden_id === row.id);
     return {
       id: `order-${row.id}`, day: String(row.fecha_programada), time: /^\d{2}:\d{2}$/.test(String(row.hora_programada)) ? String(row.hora_programada) : '', kind: 'service',
       title: `${row.codigo} · ${row.tipo || 'Servicio'}`, equipmentId: String(row.equipo_id || ''), clientId: String(row.cliente_id || machine?.cliente_id || ''), technicianId: String(row.tecnico_id || ''),
       state: String(row.estado), detail: planningEquipmentLabel(machine), href: `/ordenes?orden=${encodeURIComponent(row.id)}`, projected: false, priority: String(row.prioridad || ''),
+      ...(ticket ? { ticketHref: `/tickets?ticket=${encodeURIComponent(ticket.id)}`, ticketCode: ticket.codigo } : {}),
     };
   });
+  for (const ticket of standaloneTickets(tickets, orders)) {
+    if (!validDay(ticket.fecha_programada)) continue;
+    events.push({
+      id: `ticket-${ticket.id}`, day: ticket.fecha_programada, time: '', kind: 'ticket',
+      title: `${ticket.codigo} · ${ticket.titulo || 'Solicitud'}`, equipmentId: String(ticket.equipo_id || ''), clientId: String(ticket.cliente_id || ''), technicianId: String(ticket.responsable_id || ''),
+      state: String(ticket.estado), detail: planningEquipmentLabel(equipmentMap.get(String(ticket.equipo_id))), href: `/tickets?ticket=${encodeURIComponent(ticket.id)}`, projected: false, priority: String(ticket.prioridad || ''),
+    });
+  }
   for (const machine of equipment) {
     if (['Vendido', 'Baja'].includes(administrativeState(machine))) continue;
     for (const type of planTypes) {
@@ -83,6 +107,9 @@ export function planningEvents(orders: EntityRecord[], equipment: EntityRecord[]
 }
 
 export function eventsInRange(events: PlanningEvent[], range: { from: string; to: string }) { return events.filter(event => event.day >= range.from && event.day <= range.to); }
+export function matchesPlanningState(event: PlanningEvent, state: string) {
+  return state ? event.state === state : event.kind !== 'ticket' || !['Resuelto', 'Cancelado'].includes(event.state);
+}
 
 export const boardStates = ['Borrador', 'Programada', 'En proceso', 'En espera', 'Completada'] as const;
 export type BoardState = typeof boardStates[number];
