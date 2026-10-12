@@ -1,4 +1,5 @@
 import { encryptionKey } from './totp.mjs';
+import {auditSequence} from './audit-storage.mjs';
 import { mfaChallenge, registerMfaLogin, registerMfaRoutes } from './mfa.mjs';
 import { idleTimeout, clearSessionCookies } from './session-policy.mjs';
 import { registerAuditRoutes } from './audit-log.mjs';
@@ -148,7 +149,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.post('/api/equipment-export', async (req,res) => {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
     if (!Array.isArray(req.body.ids) || req.body.ids.length > 2000 || req.body.ids.some(id => typeof id !== 'string')) throw fail(400,'Selección de equipos inválida.');
-    const ids = new Set(req.body.ids); const db = await readSnapshot(pool);
+    const ids = new Set(req.body.ids); const db = await readSnapshot(pool,{includeAudit:false});
     const imageFields = ['foto_equipo','placa_datos','foto_frontal','foto_trasera','foto_lateral_1','foto_lateral_2'];
     res.json({ rows: db.entities.Equipo.filter(row => ids.has(row.id)).map(row => Object.fromEntries(Object.entries(row).filter(([key]) => !imageFields.includes(key)))), includesImages: false });
   });
@@ -190,7 +191,8 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (['import','importClients'].includes(body.action) && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
     const conn = await pool.getConnection();
     try {
-      await conn.beginTransaction(); const db = await readDatabase(conn,true);
+      await conn.beginTransaction(); const db = await readDatabase(conn,true,{includeAudit:body.action==='restore'});
+      const sequence=await auditSequence(conn);
       const replay = body.action === 'create' && ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && body.fields?.solicitud_id && db.entities[body.entity].some(row => row.solicitud_id === body.fields.solicitud_id && row.creado_por === req.actor.id);
       // Operational writes validate their own record version and all current links
       // inside this lock. Unrelated changes must not reject a technician's work.
@@ -200,7 +202,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       // Resolve them against this locked snapshot before saving; never concatenate
       // every existing photo into the domain's intermediate JSON string.
       let saved = JSON.stringify(presentDatabase(db));
-      const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false,maxRows:Infinity});
+      const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false,maxRows:Infinity,auditSequence:sequence});
       let result;
       try {
         if (body.action==='importClients') result = source.importClients(req.actor,body.rows,db.revision);

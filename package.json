@@ -13,7 +13,7 @@
     "start": "node server/index.mjs",
     "check:design": "vitest run src/design/design-tokens.test.ts --configLoader native",
     "test:server": "node scripts/build-server.mjs && node --test server/app.test.mjs server/security.test.mjs server/attachments.test.mjs server/totp.test.mjs",
-    "test:integration": "node scripts/build-server.mjs && node --test server/database.integration.test.mjs server/operational.integration.test.mjs server/attachment-backup.integration.test.mjs server/media.integration.test.mjs server/accounts.integration.test.mjs server/sessions.integration.test.mjs server/mfa.integration.test.mjs server/sql.integration.test.mjs",
+    "test:integration": "node scripts/build-server.mjs && node --test server/database.integration.test.mjs server/operational.integration.test.mjs server/attachment-backup.integration.test.mjs server/media.integration.test.mjs server/accounts.integration.test.mjs server/sessions.integration.test.mjs server/mfa.integration.test.mjs server/sql.integration.test.mjs server/audit-storage.integration.test.mjs",
     "lint": "eslint src server scripts",
     "typecheck": "tsc -b && tsc -p tsconfig.server.json"
   },

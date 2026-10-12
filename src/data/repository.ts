@@ -28,7 +28,7 @@ export interface ImportRow { id?: string; fields: Record<string, Scalar> }
 export class LocalDataSource {
   private database: Database;
   private listeners = new Set<() => void>();
-  constructor(private storage: StorageAdapter, private options: { demoHistory: boolean; maxRows?: number } = { demoHistory: true }) {
+  constructor(private storage: StorageAdapter, private options: { demoHistory: boolean; maxRows?: number; auditSequence?: number } = { demoHistory: true }) {
     const saved = storage.getItem(STORAGE_KEY);
     try {
       const data: unknown = upgradeFindingCollection(saved ? JSON.parse(saved) : createSeed());
@@ -71,7 +71,7 @@ export class LocalDataSource {
   }
   private record(entity: EntityName, actor: Actor, fields: Record<string, Scalar>, rows: EntityRecord[]): EntityRecord {
     const prefix = entity === 'Equipo' && fields.propiedad === 'De cliente' ? 'TCE' : definitions[entity].prefix;
-    const max = rows.filter(row => row.codigo.startsWith(`${prefix}-`)).reduce((value, row) => Math.max(value, Number(row.codigo.match(/-(\d+)$/)?.[1] ?? 0)), 0);
+    const max = rows.filter(row => row.codigo.startsWith(`${prefix}-`)).reduce((value, row) => Math.max(value, Number(row.codigo.match(/-(\d+)$/)?.[1] ?? 0)), entity==='Bitacora' ? this.options.auditSequence ?? 0 : 0);
     const now = new Date().toISOString();
     return { id: crypto.randomUUID(), codigo: `${prefix}-${String(max + 1).padStart(3, '0')}`, creado_por: actor.id, fecha_creacion: now, actualizado_por: actor.id, fecha_actualizacion: now, ...cleanFields(entity, fields) };
   }

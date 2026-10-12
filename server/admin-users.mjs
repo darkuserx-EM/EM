@@ -38,7 +38,7 @@ export function registerAdminUserRoutes(app,{pool}) {
     const hash=await hashPassword(password),id=randomUUID(),expiresAt=days===null?null:Date.now()+days*86400000;
     const conn=await pool.getConnection();
     try {
-      await conn.beginTransaction();const previous=await readDatabase(conn,true),db=structuredClone(previous);
+      await conn.beginTransaction();const previous=await readDatabase(conn,true,{includeAudit:false}),db=structuredClone(previous);
       await authorize(conn,req,management(b.role));
       const [existing]=await conn.execute('SELECT * FROM em_users WHERE email=?',[email]);
       if (existing[0]?.active&&existing[0].must_change_password&&existing[0].creation_request===requestId&&existing[0].role===b.role&&existing[0].name===name&&(b.role!=='Cliente'||existing[0].client_id===b.clientId)&&await verifyPassword(password,existing[0].password_hash)) {

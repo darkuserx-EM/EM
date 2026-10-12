@@ -20,12 +20,17 @@ function poolFor(user, prepare = () => {}) {
   const fake = {
     async query(sql) {
       if(sql.includes('SELECT revision')) return [[{revision:db.revision}]];
-      if(sql.includes('SELECT entity')) return [Object.entries(db.entities).flatMap(([entity,rows])=>rows.map(row=>({entity,payload:JSON.stringify(row)})))];
+      if(sql.includes('SELECT last_sequence'))return [[{last_sequence:db.entities.Bitacora.reduce((n,row)=>Math.max(n,Number(/-(\d+)$/.exec(row.codigo)?.[1]||0)),0)}]];
+      if(sql.includes('FROM em_audit_log'))return [db.entities.Bitacora.map(row=>({payload:JSON.stringify(row)}))];
+      if(sql.includes('SELECT entity')) return [Object.entries(db.entities).filter(([entity])=>entity!=='Bitacora').flatMap(([entity,rows])=>rows.map(row=>({entity,payload:JSON.stringify(row)})))];
       if(sql.includes('COUNT(*)')) return [[{n:1}]];
       if(sql==='SELECT 1') return [[{1:1}]];
       throw new Error('Unexpected query');
     },
     async execute(sql, args) {
+      if(sql.startsWith('SELECT id,payload FROM em_audit_log'))return [db.entities.Bitacora.filter(row=>args.includes(row.id)).map(row=>({id:row.id,payload:JSON.stringify(row)}))];
+      if(sql.startsWith('INSERT INTO em_audit_log')) {for(let i=0;i<args.length;i+=7)db.entities.Bitacora.push(JSON.parse(args[i+6]));return [{}];}
+      if(sql.startsWith('UPDATE em_audit_state'))return [{}];
       if(sql.includes('FROM em_media WHERE equipment_id=?')) {
         const row = media.get(JSON.stringify(args.slice(0,3)));
         return [row ? [{...row, bytes: sql.includes('COALESCE') ? row.thumbnail || row.content : row.content, preview: sql.includes('COALESCE') && !!row.thumbnail}] : []];
