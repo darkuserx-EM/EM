@@ -78,9 +78,16 @@ Todos los colores y tamaños de las vistas anual, mensual y semanal, del tablero
 - El resalte naranja de las barras al pasar el cursor usa `--color-brand`, que es decorativo.
 - `base.css`: `small` sin tamaño propio mantiene su proporción (`.83em`) con mínimo de 12 px. Antes el navegador lo dejaba en 10–11 px; pasaba en los indicadores de Reportes y en «Planes de esta semana».
 
+## Paso 7 · Administración
+
+- `src/features/settings/admin.css` (nueva, importada en `Settings.tsx`, que va en el paquete principal) reemplaza con tokens las reglas de `styles.css` de Catálogos, Datos (incluida la importación del historial), Accesos, Plan de trabajo, módulos próximos y «Mi cuenta». No se edita `styles.css`.
+- `.text-green` y `.text-red` pasan a `--color-success-text` y `--color-danger-text`. En el Plan de trabajo, el estado «Disponible para validación» vuelve a verse en verde: antes `.roadmap-status` lo dejaba gris.
+- Los íconos grandes de Datos y del Plan (`.large-icon.green/blue/amber`) usan los pares semánticos de fondo y texto.
+- La ilustración de los módulos próximos (ícono y número de etapa) es `aria-hidden`: repite «Etapa N» y es decorativa.
+
 ## Siguientes pasos
 
 1. ~~Base global~~ (paso 1, `base.css`).
-2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → ~~ficha del equipo~~ (paso 5) → ~~Inicio~~ (paso 6) → administración → portal del cliente.
+2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → ~~ficha del equipo~~ (paso 5) → ~~Inicio~~ (paso 6) → ~~administración~~ (paso 7) → portal del cliente.
 3. **Componentes compartidos:** `Button`, `Field`, `Badge`, `Tabs`/`Steps`, `KpiCard`, `DataTable`.
 4. **Control en CI:** Stylelint contra colores y tamaños fuera de los tokens, y prueba de contraste.
