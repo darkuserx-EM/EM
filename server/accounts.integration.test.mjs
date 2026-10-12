@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {once} from 'node:events';
 import mysql from 'mysql2/promise';
-import {migrate,readSnapshot} from './database.mjs';
+import {migrate,readSnapshot,readDatabase,saveDatabase} from './database.mjs';
 import {createApp} from './app.mjs';
 import {token} from './security.mjs';
 
@@ -83,4 +83,19 @@ test('Ciclo de cuentas: recuperación, perfiles, contraseñas y último administ
   assert.equal((await call('session',undefined,admin)).status,401);
   assert.equal((await call('admin/users/'+account.id+'/revoke',{currentPassword:secondAdmin.password},secondAdmin)).status,400);
  });
+ await t.test('historial paginado, filtros, respaldo íntegro y eventos privados',async()=>{
+  const admin=secondAdmin;
+  const conn=await pool.getConnection();try{await conn.beginTransaction();const before=await readDatabase(conn,true),db=structuredClone(before);for(let i=0;i<250;i++){const id='audit-'+String(i).padStart(3,'0');db.entities.Bitacora.push({id,codigo:'LOG-QA-'+i,creado_por:adminId,actualizado_por:adminId,fecha_creacion:'2026-10-12T01:00:00.000Z',fecha_actualizacion:'2026-10-12T01:00:00.000Z',entidad:'Equipo',accion:'Cambio de estado',detalle:'Movimiento sintético',equipo_id:i<125?equipment.id:'other-equipment',hallazgo_id:i<20?'finding-qa':''});}db.revision++;await saveDatabase(conn,db,before);await conn.commit();}finally{conn.release();}
+  await migrate(pool);await migrate(pool);
+  assert.equal((await call('database',undefined,admin)).data.entities.Bitacora.length,0);
+  const seen=new Set();let cursor='';do{const r=await call('audit-log?limit=37&entity=Equipo'+(cursor?'&cursor='+encodeURIComponent(cursor):''),undefined,admin);assert.equal(r.status,200,JSON.stringify(r.data));for(const row of r.data.rows){assert.ok(!seen.has(row.id));seen.add(row.id);}cursor=r.data.nextCursor;}while(cursor);assert.ok([...seen].filter(x=>x.startsWith('audit-')).length===250);
+  const own=await call('audit-log?equipo_id='+equipment.id+'&limit=200',undefined,admin);assert.ok(own.data.rows.every(row=>row.equipo_id===equipment.id));assert.ok(own.data.rows.length>=125);
+  assert.equal((await call('audit-log?hallazgo_id=finding-qa',undefined,admin)).data.rows.length,20);
+  assert.equal((await call('audit-log?from=2026-10-12',undefined,admin)).data.rows.filter(row=>row.id.startsWith('audit-')).length,0);
+  assert.equal((await call('audit-log?limit=201',undefined,admin)).status,400);assert.equal((await call('audit-log?cursor=bad',undefined,admin)).status,400);
+  assert.equal((await call('audit-log',undefined,coord)).status,403);assert.equal((await call('admin/security-events',undefined,tech)).status,403);
+  const backup=await call('backup',undefined,admin);assert.equal(backup.data.entities.Bitacora.filter(row=>row.id.startsWith('audit-')).length,250);
+  const first=await call('admin/security-events?limit=2',undefined,admin);assert.equal(first.status,200);assert.equal(first.data.rows.length,2);assert.ok(first.data.nextCursor);const second=await call('admin/security-events?limit=2&cursor='+encodeURIComponent(first.data.nextCursor),undefined,admin);assert.ok(second.data.rows.every(row=>!first.data.rows.some(previous=>previous.id===row.id)));
+ });
+
 });

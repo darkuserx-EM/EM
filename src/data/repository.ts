@@ -1,3 +1,4 @@
+import {localAuditPage, type AuditQuery} from './audit-log';
 import { preparePlan, todayGT } from '../domain/maintenance-plan';
 import { findingClosed, upgradeFindingCollection } from '../domain/equipment-findings';
 import { definitions, type Actor, type Database, type EntityName, type EntityRecord, type Scalar } from '../domain/model';
@@ -50,6 +51,7 @@ export class LocalDataSource {
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getRevision = () => this.database.revision;
+  async auditLog(actor: Actor, query: AuditQuery = {}) { assertAdmin(actor); return localAuditPage(this.database.entities.Bitacora,query); }
   refresh() {
     const saved = this.storage.getItem(STORAGE_KEY);
     if (saved) { const current: unknown = upgradeFindingCollection(JSON.parse(saved)); this.validate(current); this.database = current; this.listeners.forEach(listener => listener()); }

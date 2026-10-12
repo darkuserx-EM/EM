@@ -8,6 +8,7 @@ export async function migrate(pool) {
   const sql = [
     `CREATE TABLE IF NOT EXISTS em_meta (id INT PRIMARY KEY, revision BIGINT NOT NULL, schema_version INT NOT NULL) ENGINE=InnoDB`,
     `CREATE TABLE IF NOT EXISTS em_records (entity VARCHAR(40) NOT NULL, id VARCHAR(128) NOT NULL, payload LONGTEXT NOT NULL, PRIMARY KEY(entity,id)) ENGINE=InnoDB`,
+    `CREATE TABLE IF NOT EXISTS em_audit_index (id VARCHAR(128) COLLATE utf8mb4_bin PRIMARY KEY, entity VARCHAR(40), equipment_id VARCHAR(128), finding_id VARCHAR(128), action VARCHAR(128), created_at VARCHAR(40) COLLATE utf8mb4_bin NOT NULL, INDEX(created_at,id), INDEX(equipment_id,created_at,id), INDEX(finding_id,created_at,id), INDEX(entity,created_at,id)) ENGINE=InnoDB`,
     `CREATE TABLE IF NOT EXISTS em_users (id VARCHAR(128) PRIMARY KEY, email VARCHAR(254) NOT NULL UNIQUE, name VARCHAR(160) NOT NULL, role VARCHAR(30) NOT NULL, password_hash VARCHAR(220) NOT NULL, client_id VARCHAR(128), technician_id VARCHAR(128), active BOOLEAN NOT NULL DEFAULT TRUE) ENGINE=InnoDB`,
     `CREATE TABLE IF NOT EXISTS em_sessions (token_hash CHAR(64) PRIMARY KEY, user_id VARCHAR(128) NOT NULL, csrf CHAR(43) NOT NULL, expires_at BIGINT NOT NULL, INDEX(user_id), FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB`,
     `CREATE TABLE IF NOT EXISTS em_login_limits (bucket CHAR(64) PRIMARY KEY, attempts INT NOT NULL, expires_at BIGINT NOT NULL) ENGINE=InnoDB`,
@@ -40,6 +41,8 @@ export async function migrate(pool) {
       catch (error) { if (error.code !== 'ER_DUP_KEYNAME') throw error; }
     }
   }
+  const [eventIndexes] = await pool.query("SHOW INDEX FROM em_security_events WHERE Key_name='idx_created_id'");
+  if (!eventIndexes.length) { try { await pool.query('ALTER TABLE em_security_events ADD INDEX idx_created_id (created_at,id)'); } catch(error) { if(error.code!=='ER_DUP_KEYNAME')throw error; } }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -58,7 +61,10 @@ export async function migrate(pool) {
       if (addClientSectors(next)) { next.revision++; await saveDatabase(conn,next,previous); }
       await conn.execute('UPDATE em_meta SET schema_version=2 WHERE id=1');
     }
-    await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,4) WHERE id=1');
+    if (Number(meta[0].schema_version) < 5) {
+      await conn.query("INSERT INTO em_audit_index (id,entity,equipment_id,finding_id,action,created_at) SELECT id,JSON_UNQUOTE(JSON_EXTRACT(payload,'$.entidad')),NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id')),'null'),NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.hallazgo_id')),'null'),JSON_UNQUOTE(JSON_EXTRACT(payload,'$.accion')),JSON_UNQUOTE(JSON_EXTRACT(payload,'$.fecha_creacion')) FROM em_records WHERE entity='Bitacora' ON DUPLICATE KEY UPDATE entity=VALUES(entity),equipment_id=VALUES(equipment_id),finding_id=VALUES(finding_id),action=VALUES(action),created_at=VALUES(created_at)");
+    }
+    await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,5) WHERE id=1');
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }
@@ -84,6 +90,7 @@ export async function saveDatabase(conn, db, previous) {
     for (const row of db.entities[entity]) {
       const payload = JSON.stringify(row);
       if (old.get(row.id) !== payload) {
+        if (entity === 'Bitacora') await conn.execute('INSERT INTO em_audit_index (id,entity,equipment_id,finding_id,action,created_at) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE entity=VALUES(entity),equipment_id=VALUES(equipment_id),finding_id=VALUES(finding_id),action=VALUES(action),created_at=VALUES(created_at)',[row.id,row.entidad||null,row.equipo_id||null,row.hallazgo_id||null,row.accion||null,row.fecha_creacion]);
         const size = Buffer.byteLength(payload) + Buffer.byteLength(row.id) + 80;
         if (batch.length && (batch.length >= 200 || bytes + size > 512 * 1024)) await flush();
         batch.push([entity, row.id, payload]); bytes += size;
@@ -94,6 +101,7 @@ export async function saveDatabase(conn, db, previous) {
     const removed = [...old.keys()];
     for (let i = 0; i < removed.length; i += 200) {
       const ids = removed.slice(i, i + 200);
+      if (entity === 'Bitacora') await conn.execute(`DELETE FROM em_audit_index WHERE id IN (${ids.map(() => '?').join(',')})`,ids);
       await conn.execute(`DELETE FROM em_records WHERE entity=? AND id IN (${ids.map(() => '?').join(',')})`, [entity, ...ids]);
     }
   }

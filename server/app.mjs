@@ -1,3 +1,4 @@
+import { registerAuditRoutes } from './audit-log.mjs';
 import express from 'express';
 import helmet from 'helmet';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
@@ -18,7 +19,7 @@ import { registerFullBackupRoutes } from './full-backup.mjs';
 
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
 const syncToken = (revision, actor) => digest(JSON.stringify(['portal-sync-v1', revision, actor]));
-const visible = (db, actor) => ({ ...presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, filterVisible(actor, name, db.entities[name], db.entities)])) }), syncToken: syncToken(db.revision, actor), access: actor });
+const visible = (db, actor) => ({ ...presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, name === 'Bitacora' ? [] : filterVisible(actor, name, db.entities[name], db.entities)])) }), syncToken: syncToken(db.revision, actor), access: actor });
 const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, cliente_id: user.client_id || undefined, tecnico_id: user.technician_id || undefined });
 const cookieName = 'em_session';
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -97,6 +98,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   // Small authenticated requests are parsed only after session and CSRF checks.
   app.use('/api', (req,res,next) => ['/mutate','/attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
   registerAccountRoutes(app, pool);
+  registerAuditRoutes(app, pool);
   registerAdminUserRoutes(app, {pool,smallJson,logger});
   registerAttachmentRoutes(app, {pool,smallJson,logger});
   registerAttachmentBackupRoutes(app, {pool,logger});

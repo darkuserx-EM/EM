@@ -1,0 +1,12 @@
+import { useEffect, useState } from 'react';
+import { api } from '../../data/remote';
+import { ErrorNotice } from '../../components/ui';
+import { formatDate, formatTime } from '../../domain/format';
+type EventRow = {id:string;action:string;actor_id:string;actor_name?:string;target_id:string;target_name?:string;created_at:number};
+const actions:Record<string,string> = {'account.created':'Cuenta creada','account.renewed':'Vigencia renovada','account.reactivated':'Cuenta reactivada','account.revoked':'Acceso revocado','account.password-reset':'Contraseña restablecida','account.password-changed':'Contraseña cambiada','attachment.restored':'Archivo restaurado','media.restored':'Fotografía recuperada','account.recovered':'Administrador recuperado'};
+export default function SecurityEvents() {
+  const [rows,setRows]=useState<EventRow[]>([]),[cursor,setCursor]=useState<string|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  async function load(more=false) { setBusy(true);setError('');try {const page=await api<{rows:EventRow[];nextCursor:string|null}>(`admin/security-events?limit=50${more&&cursor?'&cursor='+encodeURIComponent(cursor):''}`);setRows(old=>more?[...old,...page.rows.filter(row=>!old.some(item=>item.id===row.id))]:page.rows);setCursor(page.nextCursor);}catch(cause){setError((cause as Error).message);}finally{setBusy(false);} }
+  useEffect(()=>{void load();},[]);
+  return <section className="panel"><div className="panel-heading"><div><h2>Eventos de seguridad</h2><p>Acciones sobre cuentas y recuperación de archivos · Guatemala</p></div><button className="button" disabled={busy} onClick={()=>void load()}>Actualizar historial</button></div><ErrorNotice message={error}/><div className="table-scroll"><table className="data-table"><thead><tr><th>Fecha</th><th>Acción</th><th>Responsable</th><th>Cuenta o archivo</th></tr></thead><tbody>{rows.map(row=><tr key={row.id}><td>{formatDate(new Date(row.created_at).toISOString())}<small className="block muted">{formatTime(new Date(row.created_at).toISOString())}</small></td><td>{actions[row.action]||row.action}</td><td>{row.actor_name||row.actor_id}</td><td>{row.target_name||row.target_id}</td></tr>)}</tbody></table></div>{busy?<p role="status">Consultando eventos…</p>:!rows.length&&!error?<p className="table-note">Sin eventos registrados.</p>:null}{cursor&&<button className="button" disabled={busy} onClick={()=>void load(true)}>Ver más eventos</button>}</section>;
+}
