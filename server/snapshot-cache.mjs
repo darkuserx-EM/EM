@@ -23,6 +23,7 @@ export function createSnapshotCache(pool, { maxBytes = 32 * 1024 * 1024, load = 
   const publishing=new Map();
   let generation = 0;
   function publish(db) {
+    if(cached && cached.revision>db.revision)return;
     generation++;
     // Retaining a cache is best effort, including after a committed write.
     // Measure UTF-8 bytes one row at a time and stop once retention is ruled out.

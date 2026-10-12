@@ -135,3 +135,43 @@ offset: el costo de páginas muy profundas y búsquedas de texto crece; no se af
 costo constante. Los dashboards aún necesitan todos sus registros autorizados y
 el servidor conserva la instantánea de dominio para validar escrituras. `OTHoras`
 y `OTRepuesto`, sin flujo de captura activo en esta etapa, siguen en la instantánea.
+
+## Etapa 4: validación optimista y confirmación transaccional
+
+Esta etapa sustituye el bloqueo global mantenido durante la lectura y validación
+de `/api/mutate`. Cada solicitud lee una revisión consistente de InnoDB y prepara
+su operación sin `SELECT ... FOR UPDATE` en `em_meta`. Las altas y ediciones de
+solicitudes, órdenes y lecturas preparan también las diferencias y el siguiente
+índice de validación antes de tomar el control de confirmación.
+
+La escritura empieza con `UPDATE em_meta ... WHERE revision = revisión_leída`.
+Solo el candidato cuya base sigue vigente puede escribir registros, proyecciones
+y bitácora; todo se confirma o revierte en la misma transacción. Se mantiene una
+serialización breve de la confirmación, necesaria para códigos únicos y enlaces
+entre entidades JSON: no se afirma que cada registro sea una tabla relacional
+independiente ni que hayan desaparecido todos los bloqueos de InnoDB.
+
+Si otro escritor gana, las operaciones normales vuelven a leer y validar todos
+sus permisos, relaciones, códigos y restricciones del horómetro, hasta cinco
+intentos. La versión de la fila sigue evitando sobrescribir una edición real.
+Las operaciones administrativas/importaciones/restauraciones devuelven 409 para
+revisión manual en lugar de repetir acciones masivas. Solo se reintentan
+transacciones cuyo rollback está confirmado (cambio de revisión, deadlock o
+conflicto de lectura de MariaDB); nunca un commit de resultado incierto. Un envío
+idempotente ya confirmado devuelve el mismo registro sin nueva revisión/auditoría.
+
+Las operaciones excepcionales de cuentas, arranque y recuperación, y la subida
+de adjuntos, conservan sus controles SQL explícitos. Las fotografías se resuelven
+dentro de la transacción administrativa. Comparar diferencias y preparar ciertas
+respuestas aún es O(N); el bloqueo durante esa preparación ya no detiene a otros
+escritores operativos. No modificar payloads mediante SQL externo sin incrementar
+la revisión en la misma transacción. El contrato de revisiones es compartido por
+todos los escritores, incluidas versiones anteriores compatibles.
+
+Pruebas SQL: barrera de dos solicitudes antes de confirmar, cinco altas simultáneas,
+dos procesos, idempotencia sin códigos/eventos duplicados, edición obsoleta,
+reasignación del técnico durante una lectura, horómetro regresivo, rollback tras
+fallo de persistencia y commit aplicado cuya respuesta se pierde. La caché no
+publica cambios antes del commit ni sustituye una revisión más nueva por una
+confirmación tardía. `/api/health` anuncia `persistence: optimistic-v1` para
+verificar esta entrega del servidor aunque los assets del navegador no cambien.

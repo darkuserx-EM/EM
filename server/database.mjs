@@ -101,40 +101,46 @@ export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
   validateDatabase(db);
   return db;
 }
-export async function saveDatabase(conn, db, previous, {validate=validateDatabase}={}) {
+// Plan and validate differences before taking a commit lock. Serialized payloads
+// are captured so an asynchronous writer cannot observe later object mutations.
+export function prepareDatabaseWrite(db,previous,{validate=validateDatabase}={}) {
   validate(db);
-  let batch = []; let bytes = 0;
-  const flush = async () => {
-    if (!batch.length) return;
-    await conn.execute(`INSERT INTO em_records (entity,id,payload) VALUES ${batch.map(() => '(?,?,?)').join(',')} ON DUPLICATE KEY UPDATE payload=VALUES(payload)`, batch.flat());
-    await indexOperations(conn,batch.filter(([entity])=>operationalEntities.includes(entity)).map(([entity,,payload])=>({entity,row:JSON.parse(payload)})));
-    batch = []; bytes = 0;
-  };
-  for (const entity of entityNames) {
-    const old = new Map((previous?.entities[entity] || []).map(row => [row.id, JSON.stringify(row)]));
+  const commands=[];let batch=[],bytes=0;
+  const flush=()=>{if(batch.length)commands.push({kind:'upsert',rows:batch});batch=[];bytes=0;};
+  for(const entity of entityNames) {
+    const old=new Map((previous?.entities[entity]||[]).map(row=>[row.id,JSON.stringify(row)]));
     if(entity==='Bitacora') {
-      await appendAudit(conn,db.entities.Bitacora.filter(row=>old.get(row.id)!==JSON.stringify(row)).map(row=>({id:row.id,payload:JSON.stringify(row)})));
-      continue; // No business operation or restore can erase the live audit.
+      const entries=db.entities.Bitacora.filter(row=>old.get(row.id)!==JSON.stringify(row)).map(row=>({id:row.id,payload:JSON.stringify(row)}));
+      if(entries.length)commands.push({kind:'audit',entries});continue;
     }
-    for (const row of db.entities[entity]) {
-      const payload = JSON.stringify(row);
-      if (old.get(row.id) !== payload) {
-        const size = Buffer.byteLength(payload) + Buffer.byteLength(row.id) + 80;
-        if (batch.length && (batch.length >= 200 || bytes + size > 512 * 1024)) await flush();
-        batch.push([entity, row.id, payload]); bytes += size;
+    for(const row of db.entities[entity]) {
+      const payload=JSON.stringify(row);
+      if(old.get(row.id)!==payload) {
+        const size=Buffer.byteLength(payload)+Buffer.byteLength(row.id)+80;
+        if(batch.length&&(batch.length>=200||bytes+size>512*1024))flush();
+        batch.push([entity,row.id,payload]);bytes+=size;
       }
       old.delete(row.id);
     }
-    await flush();
-    const removed = [...old.keys()];
-    for (let i = 0; i < removed.length; i += 200) {
-      const ids = removed.slice(i, i + 200);
-      await conn.execute(`DELETE FROM em_records WHERE entity=? AND id IN (${ids.map(() => '?').join(',')})`, [entity, ...ids]);
-      if(operationalEntities.includes(entity))await conn.execute(`DELETE FROM em_operation_index WHERE entity=? AND id IN (${ids.map(()=>'?').join(',')})`,[entity,...ids]);
-    }
+    flush();const removed=[...old.keys()];for(let i=0;i<removed.length;i+=200)commands.push({kind:'remove',entity,ids:removed.slice(i,i+200)});
   }
-  await conn.execute('UPDATE em_meta SET revision=? WHERE id=1', [db.revision]);
+  const revision=db.revision;
+  return async conn=>{
+    for(const command of commands) {
+      if(command.kind==='audit')await appendAudit(conn,command.entries);
+      else if(command.kind==='upsert') {
+        await conn.execute('INSERT INTO em_records (entity,id,payload) VALUES '+command.rows.map(()=>'(?,?,?)').join(',')+' ON DUPLICATE KEY UPDATE payload=VALUES(payload)',command.rows.flat());
+        await indexOperations(conn,command.rows.filter(([entity])=>operationalEntities.includes(entity)).map(([entity,,payload])=>({entity,row:JSON.parse(payload)})));
+      } else {
+        const args=[command.entity,...command.ids],where='entity=? AND id IN ('+command.ids.map(()=>'?').join(',')+')';
+        await conn.execute('DELETE FROM em_records WHERE '+where,args);
+        if(operationalEntities.includes(command.entity))await conn.execute('DELETE FROM em_operation_index WHERE '+where,args);
+      }
+    }
+    await conn.execute('UPDATE em_meta SET revision=? WHERE id=1',[revision]);
+  };
 }
+export async function saveDatabase(conn,db,previous,options) {await prepareDatabaseWrite(db,previous,options)(conn);}
 export async function readSnapshot(pool, options) {
   const conn = await pool.getConnection();
   try { await conn.beginTransaction(); const db = await readDatabase(conn,false,options); await conn.commit(); return db; }
