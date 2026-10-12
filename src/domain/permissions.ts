@@ -31,7 +31,7 @@ export function projectOperation(actor:Actor,entity:EntityName,row:EntityRecord)
   const redacted=Object.fromEntries(Object.entries(row).filter(([key])=>!key.startsWith('costo_'))) as EntityRecord;
   return actor.rol==='Coordinador'?redacted:project(entity,redacted);
 }
-export function filterVisible(actor: Actor, entity: EntityName, rows: EntityRecord[], entities?: Database['entities']) {
+export function filterVisible(actor: Actor, entity: EntityName, rows: EntityRecord[], entities?: Pick<Database['entities'], 'Equipo' | 'OrdenServicio'>) {
   if (actor.rol === 'Administrador') return rows;
   // Findings remain internal to administration until client visibility is designed.
   if (['Hallazgo', 'PlanPM'].includes(entity)) return [];

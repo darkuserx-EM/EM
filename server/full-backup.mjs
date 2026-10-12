@@ -33,7 +33,7 @@ export async function* fullBackupEntries(conn) {
   // Same archive format as legacy backups; audit rows now have their own table.
   let auditId='';
   for(;;) {
-    /** @type {{entity:import("../src/domain/model.js").EntityName,id:string,payload:string}[]} */
+    /** @type {import("./contracts.js").StoredPayload[]} */
     const rows = await select(conn,'SELECT id,payload FROM em_audit_log WHERE id>? ORDER BY id LIMIT 200',[auditId]);
     if(!rows.length)break;
     for(const row of rows)yield {type:'record',entity:'Bitacora',record:JSON.parse(row.payload)};
@@ -42,7 +42,7 @@ export async function* fullBackupEntries(conn) {
   // Include retired files as well. Only the currently bound hash is accessible in the portal.
   let equipment = '', field = '', hash = ''; const included = new Set();
   for (;;) {
-    /** @type {import("./contracts.js").MediaFile[]} */
+    /** @type {Omit<import("./contracts.js").MediaFile,"thumbnail">[]} */
     const files = await select(conn,`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id>? OR (equipment_id=? AND field>?) OR (equipment_id=? AND field=? AND hash>?) ORDER BY equipment_id,field,hash LIMIT 1`, [equipment, equipment, field, equipment, field, hash]);
     if (!files.length) break;
     const file = files[0]; verifyStoredMedia(file);
@@ -52,7 +52,7 @@ export async function* fullBackupEntries(conn) {
   }
   id = '';
   for (;;) {
-    /** @type {{entity:import("../src/domain/model.js").EntityName,id:string,payload:string}[]} */
+    /** @type {import("./contracts.js").StoredPayload[]} */
     const rows = await select(conn,"SELECT id,payload FROM em_records WHERE entity='Equipo' AND id>? ORDER BY id LIMIT 1", [id]);
     if (!rows.length) break;
     /** @type {import("../src/domain/model.js").EntityRecord} */

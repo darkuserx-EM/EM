@@ -1,35 +1,49 @@
+import { select, selectQuery } from './sql.mjs';
+import { errorCode } from './errors.mjs';
+import { oneOf } from './guards.mjs';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { rateLimit } from 'express-rate-limit';
 import { hashPassword, verifyPassword } from './security.mjs';
 import { readDatabase, saveDatabase } from './database.mjs';
+/** @param {number} status @param {string} message */
 const fail = (status, message) => Object.assign(new Error(message), {status, expose:true});
-const management = role => ['Administrador','Coordinador'].includes(role);
+/** @param {unknown} role */
+const management = role => oneOf(['Administrador','Coordinador'],role);
+/** @param {import("./http-contracts.js").AdminUserBody} body @param {import("../src/domain/model.js").Role} role */
 function lifetime(body, role) {
   if (body.days === null && management(role)) return null;
   const days=Number(body.days ?? 90);
   if (!Number.isInteger(days) || days<1 || days>365) throw fail(400,'La vigencia debe ser de 1 a 365 días.');
   return days;
 }
+/** @param {import("mysql2/promise").PoolConnection} conn @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AdminUserBody>} req @param {boolean} reauthenticate */
 async function authorize(conn,req,reauthenticate) {
-  const [rows]=await conn.execute('SELECT * FROM em_users WHERE id=? FOR UPDATE',[req.actor.id]);
+
+/** @type {import("./contracts.js").UserRow[]} */
+    const rows = await select(conn,'SELECT * FROM em_users WHERE id=? FOR UPDATE',[req.actor.id]);
   const actor=rows[0];
   if (!actor?.active || actor.role!=='Administrador' || (actor.expires_at && Number(actor.expires_at)<=Date.now())) throw fail(403,'La cuenta ya no puede administrar accesos.');
   if (reauthenticate && (typeof req.body?.currentPassword!=='string' || req.body.currentPassword.length>128 || !await verifyPassword(req.body.currentPassword,actor.password_hash))) throw fail(400,'Confirma tu contraseña actual de administrador.');
 }
+/** @param {import("mysql2/promise").PoolConnection} conn @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AdminUserBody>} req @param {string} target @param {string} action */
 async function event(conn,req,target,action) {
   await conn.execute('INSERT INTO em_security_events (id,actor_id,target_id,action,created_at) VALUES (?,?,?,?,?)',[randomUUID(),req.actor.id,target,action,Date.now()]);
 }
+/** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool}} options */
 export function registerAdminUserRoutes(app,{pool}) {
-  const admin=(req,_res,next)=>req.actor.rol==='Administrador'?next():next(fail(403,'Solo administración puede gestionar cuentas.'));
+  /** @type {import("./http-contracts.js").PortalMiddleware} */
+  const admin =(req,_res,next)=>req.actor.rol==='Administrador'?next():next(fail(403,'Solo administración puede gestionar cuentas.'));
   const limit=rateLimit({windowMs:900000,limit:60,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Demasiadas gestiones de cuentas. Espera 15 minutos.'}});
-  app.get('/api/admin/users',admin,async(_req,res)=>{
-    const [users]=await pool.query('SELECT id,email,name,role,client_id,technician_id,active,expires_at,must_change_password FROM em_users ORDER BY name');
+  app.get('/api/admin/users',admin,/** @param {import('./http-contracts.js').PortalRequest} _req @param {import('./http-contracts.js').PortalResponse<import('./http-contracts.js').AdminUserReply>} res */ async(_req,res)=>{
+
+/** @type {Omit<import("./contracts.js").UserRow,"password_hash"|"creation_request"|"totp_secret"|"totp_pending"|"totp_pending_expires"|"totp_last_step"|"totp_enabled">[]} */
+    const users = await selectQuery(pool,'SELECT id,email,name,role,client_id,technician_id,active,expires_at,must_change_password FROM em_users ORDER BY name');
     res.json({users});
   });
-  app.post('/api/admin/users',admin,limit,async(req,res)=>{
+  app.post('/api/admin/users',admin,limit,/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AdminUserBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AdminUserReply>} res */ async (req,res)=>{
     const b=req.body||{},email=String(b.email||'').trim().toLowerCase(),name=String(b.name||'').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254||!name||name.length>160) throw fail(400,'Indica nombre y correo válidos.');
-    if (!['Técnico','Cliente','Coordinador','Administrador'].includes(b.role)) throw fail(400,'Selecciona un perfil válido.');
+    if (!oneOf(['Técnico','Cliente','Coordinador','Administrador'],b.role)) throw fail(400,'Selecciona un perfil válido.');
     const days=lifetime(b,b.role),password=b.password??randomBytes(24).toString('base64url'),requestId=b.requestId||randomUUID();
     if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(requestId)) throw fail(400,'Identificador de alta inválido.');
     if (typeof password!=='string'||password.length<14||password.length>128) throw fail(400,'Usa una contraseña entre 14 y 128 caracteres.');
@@ -40,12 +54,17 @@ export function registerAdminUserRoutes(app,{pool}) {
     try {
       await conn.beginTransaction();const previous=await readDatabase(conn,true,{includeAudit:false}),db=structuredClone(previous);
       await authorize(conn,req,management(b.role));
-      const [existing]=await conn.execute('SELECT * FROM em_users WHERE email=?',[email]);
+
+/** @type {import("./contracts.js").UserRow[]} */
+    const existing = await select(conn,'SELECT * FROM em_users WHERE email=?',[email]);
       if (existing[0]?.active&&existing[0].must_change_password&&existing[0].creation_request===requestId&&existing[0].role===b.role&&existing[0].name===name&&(b.role!=='Cliente'||existing[0].client_id===b.clientId)&&await verifyPassword(password,existing[0].password_hash)) {
         await conn.commit();return res.json({id:existing[0].id,email,password,expiresAt:existing[0].expires_at===null?null:Number(existing[0].expires_at),technicianId:existing[0].technician_id,clientId:existing[0].client_id});
       }
       if (existing.length) throw fail(409,'Ya existe una cuenta con ese correo. Revisa la lista antes de repetir.');
-      let technicianId=null,clientId=null;
+      /** @type {string|null} */
+      let technicianId=null;
+      /** @type {string|null} */
+      let clientId=null;
       if (b.role==='Cliente') {
         clientId=String(b.clientId||'');if (!db.entities.Cliente.some(row=>row.id===clientId)) throw fail(400,'Selecciona el cliente al que tendrá acceso.');
       } else if (b.role==='Técnico') {
@@ -59,21 +78,25 @@ export function registerAdminUserRoutes(app,{pool}) {
       }
       await conn.execute('INSERT INTO em_users (id,email,name,role,password_hash,client_id,technician_id,expires_at,creation_request,must_change_password) VALUES (?,?,?,?,?,?,?,?,?,TRUE)',[id,email,name,b.role,hash,clientId,technicianId,expiresAt,requestId]);
       await event(conn,req,id,'account.created');await conn.commit();res.status(201).json({id,email,password,expiresAt,technicianId,clientId});
-    } catch(error) {await conn.rollback();if(error.code==='ER_DUP_ENTRY')throw fail(409,'La cuenta ya existe.');throw error;}finally{conn.release();}
+    } catch(error) {await conn.rollback();if(errorCode(error)==='ER_DUP_ENTRY')throw fail(409,'La cuenta ya existe.');throw error;}finally{conn.release();}
   });
-  for(const action of ['renew','reactivate','reset-password','revoke']) app.post('/api/admin/users/:id/'+action,admin,limit,async(req,res)=>{
+  for(const action of ['renew','reactivate','reset-password','revoke']) app.post('/api/admin/users/:id/'+action,admin,limit,/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AdminUserBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AdminUserReply>} res */ async (req,res)=>{
     const conn=await pool.getConnection();
     try {
       await conn.beginTransaction();
       // Serialize administration before locking users, as in account creation.
       await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE');
-      const [targets]=await conn.execute('SELECT * FROM em_users WHERE id=?',[req.params.id]);
+
+/** @type {import("./contracts.js").UserRow[]} */
+    const targets = await select(conn,'SELECT * FROM em_users WHERE id=?',[req.params.id]);
       const target=targets[0];if(!target)throw fail(404,'Cuenta no encontrada.');
       await authorize(conn,req,management(target.role)||action==='reset-password');
       await conn.execute('SELECT id FROM em_users WHERE id=? FOR UPDATE',[target.id]);
       if(action==='revoke'&&target.id===req.actor.id)throw fail(400,'No puedes revocar tu propia cuenta.');
       async function preserveAdmin() {
-        const [others]=await conn.execute("SELECT id FROM em_users WHERE role='Administrador' AND active=TRUE AND expires_at IS NULL AND id<>? FOR UPDATE",[target.id]);
+
+/** @type {{id:string}[]} */
+    const others = await select(conn,"SELECT id FROM em_users WHERE role='Administrador' AND active=TRUE AND expires_at IS NULL AND id<>? FOR UPDATE",[target.id]);
         if(!others.length)throw fail(400,'Debe permanecer un administrador activo sin vencimiento.');
       }
       if(target.role==='Administrador'&&action==='revoke')await preserveAdmin();
