@@ -22,7 +22,7 @@ Los fallos inesperados responden 500 con referencia. El chequeo de salud conserv
 
 Las validaciones esperadas se distinguen mediante `ValidationError`; los fallos de programación del dominio llegan al registro del servidor.
 
-## Proxy: comprobación pendiente en Hostinger
+## Proxy: comprobación completada en Hostinger
 
 `TRUST_PROXY` conserva por defecto `1`. Acepta de 0 a 5 saltos o una lista explícita de IP/subredes, incluyendo los alias de Express. Rechaza `true`, valores vacíos y rutas universales `/0`.
 
@@ -30,7 +30,9 @@ Las validaciones esperadas se distinguen mediante `ValidationError`; los fallos 
 
 Procedimiento: activar temporalmente, comprobar desde dos redes independientes, contrastar la dirección del socket y la cadena reenviada con la configuración confirmada del proveedor, verificar que cabeceras añadidas por el cliente no sustituyen la dirección efectiva, documentar el resultado y desactivar el diagnóstico.
 
-Una dirección privada NO demuestra que toda la subred sea confiable. La ausencia de `X-Forwarded-For` NO demuestra que no exista proxy. No modificar los saltos ni confiar en subredes completas únicamente por esos indicios. #4 permanece pendiente hasta completar la comprobación del alojamiento.
+Una dirección privada NO demuestra que toda la subred sea confiable. La ausencia de `X-Forwarded-For` NO demuestra que no exista proxy. No modificar los saltos ni confiar en subredes completas únicamente por esos indicios.
+
+El 12/10/2026 se completó la comparación desde la conexión de trabajo y el teléfono del titular con datos móviles: direcciones efectivas distintas y coincidentes con la última entrada reenviada. Las cabeceras falsas no sustituyeron la dirección efectiva. El comportamiento se contrastó con la documentación oficial de Hostinger CDN y Express. Se conserva el valor `1`; el diagnóstico volvió a quedar deshabilitado (404 con sesión administrativa) y la salud respondió 200 con MySQL conectado. Ver [HOSTINGER.md](HOSTINGER.md) para la evidencia sin IP privadas y las condiciones que requieren repetirla.
 
 ## Publicación y recuperación
 
