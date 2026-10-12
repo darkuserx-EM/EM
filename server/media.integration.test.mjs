@@ -8,6 +8,7 @@ import { migrate, readDatabase, readSnapshot, saveDatabase } from './database.mj
 import { createApp } from './app.mjs';
 import { token } from './security.mjs';
 import { migrateLegacyMedia, hydrateEquipment, cleanupMediaUploads } from './media.mjs';
+import { startMaintenance } from './maintenance.mjs';
 
 test('Fotografías separadas: permisos, migración, integridad y recuperación completa', { skip: process.env.MYSQL_INTEGRATION !== '1', timeout: 180000 }, async t => {
   const host = process.env.TEST_DB_HOST || '127.0.0.1'; assert.ok(['127.0.0.1','localhost','::1'].includes(host));
@@ -144,6 +145,24 @@ test('Fotografías separadas: permisos, migración, integridad y recuperación c
   await t.test('limpia recibos vencidos sin borrar originales ni fotos retiradas',async()=>{
     await pool.query('UPDATE em_media_uploads SET expires_at=1');assert.equal(await cleanupMediaUploads(pool),1);
     const [[count]]=await pool.query('SELECT COUNT(*) AS n FROM em_media');assert.equal(Number(count.n),5);
+  });
+  await t.test('el mantenimiento automático limpia al arrancar y en el siguiente ciclo, conservando cargas vigentes',async()=>{
+    const [originals]=await pool.query('SELECT equipment_id,field,hash,content,sha256 FROM em_media ORDER BY equipment_id,field,hash');
+    const expired=await upload(),live=await upload();assert.equal(expired.status,201);assert.equal(live.status,201);
+    await pool.execute('UPDATE em_media_uploads SET expires_at=1 WHERE id=?',[expired.data.uploadId]);
+    const maintenanceErrors=[],stop=startMaintenance(pool,{intervalMs:30,logger:error=>maintenanceErrors.push(error)});
+    async function waitRemoved(id) {
+      const deadline=Date.now()+5000;
+      for(;;){const [rows]=await pool.execute('SELECT id FROM em_media_uploads WHERE id=?',[id]);if(!rows.length)return;assert.ok(Date.now()<deadline,'la limpieza programada debe retirar el recibo');await new Promise(resolve=>setTimeout(resolve,15));}
+    }
+    try {
+      await waitRemoved(expired.data.uploadId);
+      const [stillLive]=await pool.execute('SELECT id FROM em_media_uploads WHERE id=?',[live.data.uploadId]);assert.equal(stillLive.length,1);
+      await pool.execute('UPDATE em_media_uploads SET expires_at=1 WHERE id=?',[live.data.uploadId]);
+      await waitRemoved(live.data.uploadId);
+    }finally{await stop();}
+    assert.deepEqual(maintenanceErrors,[]);
+    const [after]=await pool.query('SELECT equipment_id,field,hash,content,sha256 FROM em_media ORDER BY equipment_id,field,hash');assert.deepEqual(after,originals);
   });
   await t.test('un respaldo con referencia faltante o binario corrupto no emite cierre válido',async()=>{
     const active=(await readSnapshot(pool)).entities.Equipo[0];const hash=active.foto_equipo.slice(6);

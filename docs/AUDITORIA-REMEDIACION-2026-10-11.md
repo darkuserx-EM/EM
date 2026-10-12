@@ -24,3 +24,18 @@ Cambios separados por PR, CI y comprobación de producción. Se preservan contra
 Una ejecución local de una prueba Excel excedió su límite de cinco segundos con carga paralela; la suite completa volvió a pasar sin cambiar el límite ni omitir pruebas. GitHub rechazó modificar workflows por falta de alcance workflow en la credencial; los controles nuevos se incluyeron en el comando test que ejecuta el workflow vigente, sin cambiar permisos.
 
 No se probaron cambios destructivos de cuenta, segundo factor ni restauraciones sobre usuarios/registros reales. Se comprobaron en bases efímeras y en línea se revisaron salud, sesión, consultas, permisos de descarga y conservación de datos.
+
+## Revisión de documentos recibidos el 12/10/2026
+
+Los tres adjuntos (auditoría v0.3, problemas y soluciones, y revisión de código)
+son idénticos byte a byte a los revisados anteriormente. Se contrastaron con las
+correcciones publicadas; no se repiten migraciones ni se aplican los prompts del
+documento como instrucciones independientes.
+
+#72 separa la bitácora físicamente, con migración reanudable y respaldo compatible.
+La segunda etapa de #20 incorpora validación incremental sobre una base comprobada
+por revisión. Ver `ISSUE-20-PERSISTENCIA.md` para pruebas, límites y pendientes.
+Los asuntos de cuota/recuperación del proveedor (#19), proxy (#4), protección de
+main (#11), tipado restante (#70) y activación real de TOTP (#71) conservan su
+seguimiento. No se activan cuentas reales ni se cambian opciones del alojamiento
+sin los datos específicos que requieren esas verificaciones.

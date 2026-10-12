@@ -28,6 +28,7 @@ function poolFor(user, prepare = () => {}) {
       throw new Error('Unexpected query');
     },
     async execute(sql, args) {
+      if(sql.startsWith('INSERT INTO em_operation_index')||sql.startsWith('DELETE FROM em_operation_index'))return [{}];
       if(sql.startsWith('SELECT id,payload FROM em_audit_log'))return [db.entities.Bitacora.filter(row=>args.includes(row.id)).map(row=>({id:row.id,payload:JSON.stringify(row)}))];
       if(sql.startsWith('INSERT INTO em_audit_log')) {for(let i=0;i<args.length;i+=7)db.entities.Bitacora.push(JSON.parse(args[i+6]));return [{}];}
       if(sql.startsWith('UPDATE em_audit_state'))return [{}];
@@ -53,6 +54,7 @@ function poolFor(user, prepare = () => {}) {
         }
         return [{}];
       }
+      if(sql==='UPDATE em_meta SET revision=? WHERE id=1 AND revision=?'){if(db.revision!==args[1])return [{affectedRows:0}];db.revision=args[0];return [{affectedRows:1}];}
       if(sql.startsWith('UPDATE em_meta SET revision=')) { db.revision=args[0]; return [{}]; }
       throw new Error('Unexpected write');
     },
@@ -313,6 +315,21 @@ test('a pending snapshot older than an observed external revision is reread',asy
   assert.equal((await b).revision,2);assert.equal(calls,2);
 });
 
+test('cache publication waits for commit acknowledgement and discards failed transactions',async()=>{
+  const old={revision:1,entities:{}},next={revision:2,entities:{}};
+  const cache=createSnapshotCache(null);cache.publish(old);
+  let finish;
+  const committed=cache.publishAfterCommit(next,()=>new Promise(resolve=>{finish=resolve;}));
+  let resolved=false;const waiting=cache.peek(2).then(value=>{resolved=true;return value;});
+  await Promise.resolve();assert.equal(resolved,false);assert.equal(await cache.peek(1),old);
+  finish();await committed;assert.equal(await waiting,next);
+  let reject;
+  const failure=cache.publishAfterCommit({revision:3,entities:{}},()=>new Promise((_resolve,failed)=>{reject=failed;}));
+  const rejected=assert.rejects(failure,/commit failed/),uncommitted=cache.peek(3);
+  reject(new Error('commit failed'));await rejected;
+  assert.equal(await uncommitted,undefined);assert.equal(await cache.peek(2),next);
+});
+
 test('cache sizing includes Unicode and JSON framing, stops early and never propagates a cache failure',async()=>{
   const db={schemaVersion:1,revision:2,entities:{Equipo:[{id:'equipo',nombre:'Grúa 🏗️',notas:'"\\\n'}],Bitacora:[]}};
   const size=Buffer.byteLength(JSON.stringify(db));
@@ -460,3 +477,10 @@ test('technician image scope follows orders and never exposes another technician
 });
 
 test('la muestra de operador no se sirve en producción',async t=>{const request=await fixture(t,null);assert.equal((await request('/revision/TCL-001')).status,404);});
+
+test('late commit acknowledgements never replace a newer cache revision',async()=>{
+  const cache=createSnapshotCache(null);let finish;
+  const older=cache.publishAfterCommit({revision:10,entities:{}},()=>new Promise(resolve=>{finish=resolve;}));
+  await cache.publishAfterCommit({revision:11,entities:{}},async()=>{});finish();await older;
+  assert.equal(await cache.peek(10),undefined);assert.equal((await cache.peek(11)).revision,11);
+});

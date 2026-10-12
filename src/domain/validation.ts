@@ -53,7 +53,7 @@ export function cleanFields(entity: EntityName, input: Record<string, unknown>):
   const fields = Object.fromEntries(definitions[entity].columns.filter(column => input[column.key] !== undefined && !(entity === 'PlanPM' && planMetadata.some(key => key === column.key)) && !(entity === 'Hallazgo' && ['actualizado_nombre', 'cerrado_el'].includes(column.key)) && !(entity === 'Equipo' && statusMetadataFields.some(key => key === column.key))).map(column => [column.key, typeof input[column.key] === 'string' ? String(input[column.key]).trim() : input[column.key] as Scalar]));
   return entity === 'Equipo' ? synchronizeEquipmentUnits(fields) : fields;
 }
-function uniqueKeys(entity: EntityName, row: Record<string, unknown>): [string, string][] {
+export function uniqueKeys(entity: EntityName, row: Record<string, unknown>): [string, string][] {
   const keys: [string, string][] = [];
   if (row.codigo) keys.push([JSON.stringify(['codigo', normalize(row.codigo)]), 'El código ya existe.']);
   if (isOperationalEntity(entity) && row.schema_operacion === 1 && row.solicitud_id) keys.push([JSON.stringify(['solicitud', row.creado_por, row.solicitud_id]), 'La solicitud de alta ya existe.']);
@@ -65,12 +65,16 @@ function uniqueKeys(entity: EntityName, row: Record<string, unknown>): [string, 
   if (entity === 'Catalogos') keys.push([JSON.stringify(['catalogo', normalize(row.categoria), normalize(row.nombre)]), 'El nombre ya existe en esta categoría.']);
   return keys;
 }
-export function validateDatabase(value: unknown, { maxRows = Infinity }: { maxRows?: number } = {}): asserts value is Database {
+export function validateDatabaseStructure(value: unknown): asserts value is Database {
   if (!value || typeof value !== 'object') throw new ValidationError('El respaldo no contiene una estructura válida.');
   const data = value as Database;
   if (data.schemaVersion !== 1) throw new ValidationError('La versión de este respaldo no es compatible.');
   if (!Number.isInteger(data.revision) || data.revision < 0) throw new ValidationError('La revisión del respaldo no es válida.');
   if (!data.entities || entityNames.some(name => !Array.isArray(data.entities[name]))) throw new ValidationError('Faltan entidades en el respaldo.');
+}
+export function validateDatabase(value: unknown, { maxRows = Infinity }: { maxRows?: number } = {}): asserts value is Database {
+  validateDatabaseStructure(value);
+  const data = value;
   for (const name of entityNames) {
     const rows = data.entities[name]; const ids = new Set<string>(); const seen = new Set<string>();
     if (rows.length > maxRows) throw new ValidationError(`${name}: demasiados registros para esta versión local.`);

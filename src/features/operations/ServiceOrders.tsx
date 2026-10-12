@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowUpRight, ClipboardList, Eye, EyeOff, Pencil, Plus, Printer, Search, Wrench } from 'lucide-react';
-import { useActor, useRows, useToast } from '../../app/state';
+import { useActor, useRows, useToast, useOperationPage } from '../../app/state';
 import { EmptyState, ErrorNotice, Modal, SectionTitle } from '../../components/ui';
 import { clientDisplayName } from '../../domain/client-profile';
 import { formatNumber } from '../../domain/format';
@@ -11,7 +11,7 @@ import { ImportedReportDetails } from '../fleet/ImportedReportDetails';
 import ServiceOrderForm from './ServiceOrderForm';
 import AttachmentPanel from '../attachments/AttachmentPanel';
 import { OperationStatus } from './OperationStatus';
-import { operationFiltersFromParams, operationFilterParams, emptyOperationFilters, equipmentLabel, filterOperations, isOperationalOrder, operationDateLabel, serviceLabel, serviceStates } from './operations-ui';
+import { operationFiltersFromParams, operationFilterParams, emptyOperationFilters, equipmentLabel, isOperationalOrder, operationDateLabel, serviceLabel, serviceStates } from './operations-ui';
 import './operations.css';
 
 function ReportSection({ title, value }: { title: string; value: unknown }) {
@@ -21,16 +21,17 @@ function ReportSection({ title, value }: { title: string; value: unknown }) {
 export default function ServiceOrders() {
   const actor = useActor(); const manager = ['Administrador', 'Coordinador'].includes(actor.rol);
   const notify = useToast(state => state.notify); const [sharing, setSharing] = useState(false); const [shareError, setShareError] = useState('');
-  const orders = useRows('OrdenServicio', true); const equipment = useRows('Equipo', true); const clients = useRows('Cliente', true); const technicians = useRows('Tecnico', true); const tickets = useRows('Ticket', true);
+  const equipment = useRows('Equipo', true); const clients = useRows('Cliente', true); const technicians = useRows('Tecnico', true);
   const [params, setParams] = useSearchParams(); const filters = operationFiltersFromParams(params);
   const setFilters = (next: typeof filters) => { setParams(operationFilterParams(next, params), { replace: true }); }; const [page, setPage] = useState(1);
   const [editor, setEditor] = useState<EntityRecord | 'new' | null>(null); const [dismissedTicket, setDismissedTicket] = useState(''); const [attachmentBusy, setAttachmentBusy] = useState(false);
-  const queries = [orders, equipment, clients, technicians, tickets]; const loading = queries.some(query => !query.ready); const error = queries.find(query => query.error)?.error || '';
-  const rows = orders.rows.filter(row => actor.rol === 'Técnico' ? row.tecnico_id === actor.tecnico_id : actor.rol !== 'Cliente' || (row.cliente_id === actor.cliente_id && row.visible_cliente === true));
-  const current = rows.filter(isOperationalOrder);
-  const filtered = filterOperations(rows, filters, equipment.rows, clients.rows);
-  const pageCount = Math.max(1, Math.ceil(filtered.length / 25)); const safePage = Math.min(page, pageCount); const visible = filtered.slice((safePage - 1) * 25, safePage * 25);
-  const selected = rows.find(row => row.id === params.get('orden'));
+  const orders=useOperationPage('OrdenServicio',{...filters,page});
+  const detail=useOperationPage('OrdenServicio',{id:params.get('orden')||'',pageSize:1},params.has('orden'));
+  const tickets=useOperationPage('Ticket',{id:params.get('ticket')||'',pageSize:1},manager&&params.has('ticket')&&params.get('ticket')!==dismissedTicket);
+  const queries = [orders, equipment, clients, technicians, tickets, detail]; const loading = queries.some(query => !query.ready); const error = queries.find(query => query.error)?.error || '';
+  const visible=orders.rows,total=orders.data?.total||0;
+  const pageCount=Math.max(1,Math.ceil(total/25)),safePage=orders.data?.page||page;
+  const selected=detail.rows[0];
   const selectedEquipment = equipment.rows.find(row => row.id === selected?.equipo_id);
   const selectedClient = clients.rows.find(row => row.id === selected?.cliente_id);
   const ticket = manager && params.get('ticket') !== dismissedTicket ? tickets.rows.find(row => row.id === params.get('ticket')) : undefined;
@@ -47,19 +48,19 @@ export default function ServiceOrders() {
   }
   return <div className="operations-page">
     <SectionTitle eyebrow={actor.rol === 'Técnico' ? 'MI TRABAJO' : 'SERVICIO Y OPERACIÓN'} title={actor.rol === 'Técnico' ? 'Mis órdenes de servicio' : 'Órdenes y reportes'} description={actor.rol === 'Técnico' ? 'Tus visitas asignadas, diagnóstico, trabajo realizado y pruebas de cierre.' : 'Consulta cada servicio por cliente y equipo. El historial importado conserva su información de origen.'}>{manager && <button className="button button-dark" onClick={() => setEditor('new')}><Plus size={16} />Nueva orden</button>}</SectionTitle>
-    <div className="os-counters" aria-label="Filtrar órdenes"><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'actual' }); setPage(1); }}><ClipboardList size={18} /><strong>{current.length}</strong><span>Órdenes actuales</span></button><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'actual', state: 'Programada' }); setPage(1); }}><strong>{current.filter(row => row.estado === 'Programada').length}</strong><span>Programadas</span></button><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'actual', state: 'En proceso' }); setPage(1); }}><Wrench size={18} /><strong>{current.filter(row => row.estado === 'En proceso').length}</strong><span>En proceso</span></button><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'historico' }); setPage(1); }}><strong>{rows.length - current.length}</strong><span>Reportes históricos</span></button></div>
+    <div className="os-counters" aria-label="Filtrar órdenes"><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'actual' }); setPage(1); }}><ClipboardList size={18} /><strong>{orders.data?.counts.actual ?? '—'}</strong><span>Órdenes actuales</span></button><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'actual', state: 'Programada' }); setPage(1); }}><strong>{orders.data ? orders.data.counts.actualStates.Programada||0 : '—'}</strong><span>Programadas</span></button><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'actual', state: 'En proceso' }); setPage(1); }}><Wrench size={18} /><strong>{orders.data ? orders.data.counts.actualStates['En proceso']||0 : '—'}</strong><span>En proceso</span></button><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'historico' }); setPage(1); }}><strong>{orders.data?.counts.historico ?? '—'}</strong><span>Reportes históricos</span></button></div>
     <section className="panel os-list-panel">
       <div className="os-filters">
         <label className="os-filter-search"><span><Search size={14} />Buscar reporte o equipo</span><input type="search" placeholder="Código, serie, ID del cliente o diagnóstico" value={filters.search} onChange={event => change('search', event.target.value)} /></label>
         {actor.rol !== 'Cliente' && <label>Cliente<select value={filters.client} onChange={event => { change('client', event.target.value); }}><option value="">Todos</option>{clients.rows.map(client => <option value={client.id} key={client.id}>{clientDisplayName(client)}</option>)}</select></label>}
         <label>Equipo<select value={filters.equipment} onChange={event => change('equipment', event.target.value)}><option value="">Todos</option>{equipment.rows.filter(row => !filters.client || row.cliente_id === filters.client).map(row => <option value={row.id} key={row.id}>{row.codigo} · {row.id_interno_cliente || row.modelo}</option>)}</select></label>
         {actor.rol !== 'Técnico' && actor.rol !== 'Cliente' && <label>Técnico<select value={filters.technician} onChange={event => change('technician', event.target.value)}><option value="">Todos</option>{technicians.rows.map(row => <option value={row.id} key={row.id}>{row.nombre}</option>)}</select></label>}
-        <label>Estado<select value={filters.state} onChange={event => change('state', event.target.value)}><option value="">Todos</option><option value="abiertas">Abiertas</option>{Array.from(new Set([...serviceStates, ...rows.map(row => String(row.estado || ''))])).filter(Boolean).map(value => <option key={value}>{value}</option>)}</select></label>
+        <label>Estado<select value={filters.state} onChange={event => change('state', event.target.value)}><option value="">Todos</option><option value="abiertas">Abiertas</option>{Array.from(new Set([...serviceStates, ...(orders.data?.states||[])])).filter(Boolean).map(value => <option key={value}>{value}</option>)}</select></label>
         <label>Origen<select value={filters.origin} onChange={event => change('origin', event.target.value)}><option value="">Todos</option><option value="actual">Órdenes actuales</option><option value="historico">Historial</option></select></label>
         <label>Desde<input type="date" value={filters.from} onChange={event => change('from', event.target.value)} /></label><label>Hasta<input type="date" value={filters.to} min={filters.from || undefined} onChange={event => change('to', event.target.value)} /></label>
       </div>
-      <div className="os-result-bar"><span>{filtered.length} reportes · fecha del servicio; si está pendiente, fecha programada</span><button onClick={() => { setFilters({ ...emptyOperationFilters }); setPage(1); }}>Limpiar filtros</button></div>
-      <ErrorNotice message={error} />{loading ? <p className="os-loading" role="status">Cargando reportes…</p> : !filtered.length ? <EmptyState title="No hay reportes en esta selección" description={manager ? 'Crea una orden o ajusta los filtros para consultar el historial.' : 'Los reportes disponibles para tu perfil aparecerán aquí.'} /> : <>
+      <div className="os-result-bar"><span>{orders.ready ? total : '…'} reportes · fecha del servicio; si está pendiente, fecha programada</span><button onClick={() => { setFilters({ ...emptyOperationFilters }); setPage(1); }}>Limpiar filtros</button></div>
+      <ErrorNotice message={error} />{loading ? <p className="os-loading" role="status">Cargando reportes…</p> : !visible.length ? <EmptyState title="No hay reportes en esta selección" description={manager ? 'Crea una orden o ajusta los filtros para consultar el historial.' : 'Los reportes disponibles para tu perfil aparecerán aquí.'} /> : <>
         <div className="table-scroll"><table className="data-table os-table"><thead><tr><th>Reporte / fecha</th><th>Equipo / cliente</th><th>Servicio / técnico</th><th>Estado</th><th><span className="sr-only">Acciones</span></th></tr></thead><tbody>{visible.map(row => { const machine = equipment.rows.find(item => item.id === row.equipo_id); const client = clients.rows.find(item => item.id === row.cliente_id); const tech = technicians.rows.find(item => item.id === row.tecnico_id); return <tr key={row.id}><td><button className="os-row-link" onClick={() => open(row.id)}>{serviceLabel(row)}</button><small>{operationDateLabel(row.fecha || row.fecha_programada || row.fecha_creacion)}{!isOperationalOrder(row) ? ' · Histórico' : ''}</small></td><td><strong>{machine?.id_interno_cliente || machine?.codigo || 'Equipo'}</strong><small>{machine ? `${machine.marca} ${machine.modelo} · ${machine.serie}` : String(row.equipo_id)}</small><small>{clientDisplayName(client)}</small></td><td><strong>{String(row.tipo || 'Servicio')}</strong><small>{String(tech?.nombre || row.tecnico || 'Sin técnico asignado')}</small></td><td><OperationStatus value={row.estado} /></td><td><button className="button button-small" onClick={() => open(row.id)}>Ver reporte<ArrowUpRight size={14} /></button></td></tr>; })}</tbody></table></div>
         <div className="os-pagination"><span>Página {safePage} de {pageCount}</span><button className="button button-small" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>Anterior</button><button className="button button-small" disabled={safePage === pageCount} onClick={() => setPage(safePage + 1)}>Siguiente</button></div>
       </>}

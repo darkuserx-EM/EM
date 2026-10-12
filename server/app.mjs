@@ -1,4 +1,6 @@
 import { encryptionKey } from './totp.mjs';
+import {registerOperationPages} from './operation-pages.mjs';
+import {operationalEntities} from './operation-index.mjs';
 import {auditSequence} from './audit-storage.mjs';
 import { mfaChallenge, registerMfaLogin, registerMfaRoutes } from './mfa.mjs';
 import { idleTimeout, clearSessionCookies } from './session-policy.mjs';
@@ -8,8 +10,8 @@ import helmet from 'helmet';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames, ValidationError } from './generated/domain.mjs';
-import { readSnapshot, readDatabase, readEquipmentRecord, saveDatabase, consumeLoginAttempt } from './database.mjs';
+import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames, ValidationError, IncrementalValidation } from './generated/domain.mjs';
+import { readSnapshot, readDatabase, readEquipmentRecord, saveDatabase, prepareDatabaseWrite, consumeLoginAttempt } from './database.mjs';
 import { hashPassword, verifyPassword, digest, equal, token, cookieToken } from './security.mjs';
 import { presentDatabase, presentEquipment, readEquipmentImage } from './equipment-images.mjs';
 import { logFailure, parseTrustProxy } from './diagnostics.mjs';
@@ -23,7 +25,12 @@ import { registerFullBackupRoutes } from './full-backup.mjs';
 
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
 const syncToken = (revision, actor) => digest(JSON.stringify(['portal-sync-v1', revision, actor]));
-const visible = (db, actor) => ({ ...presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, name === 'Bitacora' ? [] : filterVisible(actor, name, db.entities[name], db.entities)])) }), syncToken: syncToken(db.revision, actor), access: actor });
+const visible = (db, actor, paged=false) => {
+  const entities=Object.fromEntries(entityNames.map(name=>[name,name==='Bitacora'?[]:filterVisible(actor,name,db.entities[name],db.entities)]));
+  const counts=Object.fromEntries(entityNames.map(name=>[name,entities[name].length]));
+  if(paged)for(const name of operationalEntities)entities[name]=[];
+  return {...presentDatabase({...db,entities}),syncToken:syncToken(db.revision,actor),access:actor,...(paged?{pagedEntities:operationalEntities,counts}:{})};
+};
 const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, cliente_id: user.client_id || undefined, tecnico_id: user.technician_id || undefined });
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
 export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60', totpEncryptionKey } ) {
@@ -33,10 +40,11 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.set('portal production', production);
   app.disable('x-powered-by'); app.set('trust proxy', parseTrustProxy(String(trustProxy)));
   const snapshots = createSnapshotCache(pool);
+  const validationIndexes=new WeakMap();
   app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null } } }));
   app.use((_req, res, next) => { res.set('X-Robots-Tag', 'noindex, nofollow'); next(); });
   app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
-  app.get('/api/health', async (_req,res) => { try { await pool.query('SELECT 1'); res.json({ status:'ok', database:'connected', release:'0.3.0' }); } catch (error) {
+  app.get('/api/health', async (_req,res) => { try { await pool.query('SELECT 1'); res.json({ status:'ok', database:'connected', release:'0.3.0', persistence:'optimistic-v1' }); } catch (error) {
     const reference = logFailure(error, { event:'health', status:503 }, logger);
     res.status(503).json({ status:'unavailable', reference });
   } });
@@ -124,6 +132,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   registerMfaRoutes(app,{pool,key:mfaKey});
   registerAccountRoutes(app, pool);
   registerAuditRoutes(app, pool);
+  registerOperationPages(app,{pool,syncToken});
   registerAdminUserRoutes(app, {pool,smallJson,logger});
   registerAttachmentRoutes(app, {pool,smallJson,logger});
   registerAttachmentBackupRoutes(app, {pool,logger});
@@ -134,7 +143,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     const [rows] = await pool.query('SELECT revision FROM em_meta WHERE id=1');
     const revision = Number(rows[0].revision);
     if (req.query.since === syncToken(revision, req.actor)) return res.status(204).end();
-    res.json(visible(await snapshots.read(revision),req.actor));
+    res.json(visible(await snapshots.read(revision),req.actor,req.query.paged==='1'));
   });
   if (networkDiagnostics) app.get('/api/diagnostico/red', (req,res) => {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
@@ -189,20 +198,34 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (['create','update'].includes(body.action) && (!body.fields || typeof body.fields !== 'object' || Array.isArray(body.fields) || Object.entries(body.fields).some(([key,value]) => ['__proto__','constructor','prototype'].includes(key) || (value !== null && !['string','number','boolean'].includes(typeof value))))) throw fail(400,'Los campos del registro no son válidos.');
     if (body.action === 'update' && ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && typeof body.fields.expected_updated_at !== 'string') throw fail(400,'Recarga el registro antes de editarlo.');
     if (['import','importClients'].includes(body.action) && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
-    const conn = await pool.getConnection();
+    const recordConcurrency = ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && ['create','update'].includes(body.action);
+    // Retry only a transaction known to have rolled back, never an uncertain commit.
+    for(let attempt=0;attempt<5;attempt++) {
+    const conn = await pool.getConnection();let committing=false;
     try {
-      await conn.beginTransaction(); const db = await readDatabase(conn,true,{includeAudit:body.action==='restore'});
+      await conn.beginTransaction();
+      const incremental=['create','update','remove'].includes(body.action);
+      const [baseline]=await conn.query('SELECT revision FROM em_meta WHERE id=1');
+      // A cache hit is usable only for this exact committed revision. A cold or
+      // externally changed baseline is fully validated on this same connection;
+      // taking another pool connection here can deadlock concurrent writers.
+      const db=(incremental && await snapshots.peek(Number(baseline[0].revision))) || await readDatabase(conn,false,{includeAudit:body.action==='restore'});
+      let checker;
+      if(incremental) {
+        checker=validationIndexes.get(db)||IncrementalValidation.create(db);
+        validationIndexes.set(db,checker);
+      }
+      const validate=checker ? value=>checker.validate(value) : undefined;
       const sequence=await auditSequence(conn);
       const replay = body.action === 'create' && ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && body.fields?.solicitud_id && db.entities[body.entity].some(row => row.solicitud_id === body.fields.solicitud_id && row.creado_por === req.actor.id);
       // Operational writes validate their own record version and all current links
-      // inside this lock. Unrelated changes must not reject a technician's work.
-      const recordConcurrency = ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && ['create','update'].includes(body.action);
+      // again on each fresh baseline. Unrelated writes can retry without losing work.
       if (body.revision !== db.revision && !replay && !recordConcurrency) throw fail(409,'Los datos cambiaron en otro dispositivo. Recarga y revisa antes de guardar.');
       // Existing images stay in MySQL while the shared domain edits compact references.
-      // Resolve them against this locked snapshot before saving; never concatenate
+      // Resolve them against this snapshot before saving; never concatenate
       // every existing photo into the domain's intermediate JSON string.
       let saved = JSON.stringify(presentDatabase(db));
-      const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false,maxRows:Infinity,auditSequence:sequence});
+      const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false,maxRows:Infinity,auditSequence:sequence,validate});
       let result;
       try {
         if (body.action==='importClients') result = source.importClients(req.actor,body.rows,db.revision);
@@ -217,11 +240,43 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
         }
       } catch (error) { if (error instanceof ValidationError) throw fail([403,409].includes(error.status) ? error.status : 400,error.message); throw error; }
       const next = JSON.parse(saved);
-      await persistEquipmentMedia(conn,next,db,{actor:req.actor,uploads:body.mediaUploads,targetId:body.entity==='Equipo' ? result?.id : undefined,restore:body.action==='restore'});
-      await saveDatabase(conn,next,db); await conn.commit(); snapshots.publish(next);
+      if(next.revision===db.revision) {
+        await conn.rollback();
+        const row=result&&body.entity&&req.actor.rol!=='Administrador'?filterVisible(req.actor,body.entity,[result],db.entities)[0]:result;
+        return res.json({result:row,database:visible(db,req.actor,body.paged===true)});
+      }
+      // All domain decisions happen before the short commit gate. The conditional
+      // revision update fails if any parent, meter, uniqueness key or row changed.
+      // Nothing from a stale candidate may reach the database.
+      let nextChecker;
+      const write=recordConcurrency?prepareDatabaseWrite(next,db,{validate:checker?value=>{nextChecker=checker.check(value);}:undefined}):undefined;
+      let published;
+      if(write) {
+        published={...next,entities:{...next.entities,Bitacora:[]}};
+        if(nextChecker)nextChecker=nextChecker.check(published);
+      }
+      const [guard]=await conn.execute('UPDATE em_meta SET revision=? WHERE id=1 AND revision=?',[next.revision,db.revision]);
+      if(guard.affectedRows!==1)throw Object.assign(new Error('Stale write baseline'),{code:'REVISION_CHANGED'});
+      if(!recordConcurrency)await persistEquipmentMedia(conn,next,db,{actor:req.actor,uploads:body.mediaUploads,targetId:body.entity==='Equipo' ? result?.id : undefined,restore:body.action==='restore'});
+      if(write)await write(conn);else await saveDatabase(conn,next,db,{validate:checker ? value=>{nextChecker=checker.check(value);} : undefined});
+      // Do not retain newly emitted audit rows in the operational baseline.
+      if(!published) {
+        published={...next,entities:{...next.entities,Bitacora:[]}};
+        if(nextChecker)nextChecker=nextChecker.check(published);
+      }
+      if(nextChecker)validationIndexes.set(published,nextChecker);
+      committing=true;await snapshots.publishAfterCommit(published,()=>conn.commit());
       const publicResult = result && body.entity && req.actor.rol !== 'Administrador' ? filterVisible(req.actor,body.entity,[result],next.entities)[0] : result;
-      res.json({result:body.entity === 'Equipo' && result ? presentEquipment(next.entities.Equipo.find(row => row.id === result.id)) : publicResult,database:visible(next,req.actor)});
-    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+      return res.json({result:body.entity === 'Equipo' && result ? presentEquipment(next.entities.Equipo.find(row => row.id === result.id)) : publicResult,database:visible(next,req.actor,body.paged===true)});
+    } catch (error) {
+      await conn.rollback();
+      if(!committing&&['REVISION_CHANGED','ER_LOCK_DEADLOCK','ER_CHECKREAD'].includes(error.code)) {
+        if(recordConcurrency&&attempt<4)continue;
+        throw fail(409,'Los datos cambiaron durante el guardado. Recarga el registro y revisa antes de guardar.');
+      }
+      throw error;
+    } finally { conn.release(); }
+    }
   });
   app.use('/api', (_req,_res,next)=>next(fail(404,'Ruta no encontrada.')));
   if (production) app.get('/revision/TCL-001', (_req,res) => res.status(404).type('text/plain').send('Página no disponible.'));

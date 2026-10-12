@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import {ensureOperationIndex,migrateOperationIndex,indexOperations,operationalEntities} from './operation-index.mjs';
 import {ensureAuditStorage, migrateAuditStorage, appendAudit} from './audit-storage.mjs';
 import { createSeed, entityNames, validateDatabase, addClientSectors } from './generated/domain.mjs';
 export function connectDatabase(env) {
@@ -21,6 +22,7 @@ export async function migrate(pool) {
   ];
   for (const statement of sql) await pool.query(statement);
   await ensureAuditStorage(pool);
+  await ensureOperationIndex(pool);
   await pool.query('CREATE TABLE IF NOT EXISTS em_mfa_challenges (token_hash CHAR(64) PRIMARY KEY,user_id VARCHAR(128) NOT NULL,password_version CHAR(64) NOT NULL,expires_at BIGINT NOT NULL,attempts INT NOT NULL,INDEX(user_id),INDEX(expires_at),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
   await pool.query('CREATE TABLE IF NOT EXISTS em_recovery_codes (user_id VARCHAR(128) NOT NULL,code_hash CHAR(64) NOT NULL,used_at BIGINT NULL,PRIMARY KEY(user_id,code_hash),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
   for(const [name,type] of Object.entries({totp_enabled:'BOOLEAN NOT NULL DEFAULT FALSE',totp_secret:'VARCHAR(220) NULL',totp_pending:'VARCHAR(220) NULL',totp_pending_expires:'BIGINT NULL',totp_last_step:'BIGINT NULL'})) {
@@ -83,6 +85,7 @@ export async function migrate(pool) {
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   await migrateAuditStorage(pool);
+  await migrateOperationIndex(pool);
 }
 export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
   const [meta] = await conn.query(`SELECT revision FROM em_meta WHERE id=1${lock ? ' FOR UPDATE' : ''}`);
@@ -98,38 +101,46 @@ export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
   validateDatabase(db);
   return db;
 }
-export async function saveDatabase(conn, db, previous) {
-  validateDatabase(db);
-  let batch = []; let bytes = 0;
-  const flush = async () => {
-    if (!batch.length) return;
-    await conn.execute(`INSERT INTO em_records (entity,id,payload) VALUES ${batch.map(() => '(?,?,?)').join(',')} ON DUPLICATE KEY UPDATE payload=VALUES(payload)`, batch.flat());
-    batch = []; bytes = 0;
-  };
-  for (const entity of entityNames) {
-    const old = new Map((previous?.entities[entity] || []).map(row => [row.id, JSON.stringify(row)]));
+// Plan and validate differences before taking a commit lock. Serialized payloads
+// are captured so an asynchronous writer cannot observe later object mutations.
+export function prepareDatabaseWrite(db,previous,{validate=validateDatabase}={}) {
+  validate(db);
+  const commands=[];let batch=[],bytes=0;
+  const flush=()=>{if(batch.length)commands.push({kind:'upsert',rows:batch});batch=[];bytes=0;};
+  for(const entity of entityNames) {
+    const old=new Map((previous?.entities[entity]||[]).map(row=>[row.id,JSON.stringify(row)]));
     if(entity==='Bitacora') {
-      await appendAudit(conn,db.entities.Bitacora.filter(row=>old.get(row.id)!==JSON.stringify(row)).map(row=>({id:row.id,payload:JSON.stringify(row)})));
-      continue; // No business operation or restore can erase the live audit.
+      const entries=db.entities.Bitacora.filter(row=>old.get(row.id)!==JSON.stringify(row)).map(row=>({id:row.id,payload:JSON.stringify(row)}));
+      if(entries.length)commands.push({kind:'audit',entries});continue;
     }
-    for (const row of db.entities[entity]) {
-      const payload = JSON.stringify(row);
-      if (old.get(row.id) !== payload) {
-        const size = Buffer.byteLength(payload) + Buffer.byteLength(row.id) + 80;
-        if (batch.length && (batch.length >= 200 || bytes + size > 512 * 1024)) await flush();
-        batch.push([entity, row.id, payload]); bytes += size;
+    for(const row of db.entities[entity]) {
+      const payload=JSON.stringify(row);
+      if(old.get(row.id)!==payload) {
+        const size=Buffer.byteLength(payload)+Buffer.byteLength(row.id)+80;
+        if(batch.length&&(batch.length>=200||bytes+size>512*1024))flush();
+        batch.push([entity,row.id,payload]);bytes+=size;
       }
       old.delete(row.id);
     }
-    await flush();
-    const removed = [...old.keys()];
-    for (let i = 0; i < removed.length; i += 200) {
-      const ids = removed.slice(i, i + 200);
-      await conn.execute(`DELETE FROM em_records WHERE entity=? AND id IN (${ids.map(() => '?').join(',')})`, [entity, ...ids]);
-    }
+    flush();const removed=[...old.keys()];for(let i=0;i<removed.length;i+=200)commands.push({kind:'remove',entity,ids:removed.slice(i,i+200)});
   }
-  await conn.execute('UPDATE em_meta SET revision=? WHERE id=1', [db.revision]);
+  const revision=db.revision;
+  return async conn=>{
+    for(const command of commands) {
+      if(command.kind==='audit')await appendAudit(conn,command.entries);
+      else if(command.kind==='upsert') {
+        await conn.execute('INSERT INTO em_records (entity,id,payload) VALUES '+command.rows.map(()=>'(?,?,?)').join(',')+' ON DUPLICATE KEY UPDATE payload=VALUES(payload)',command.rows.flat());
+        await indexOperations(conn,command.rows.filter(([entity])=>operationalEntities.includes(entity)).map(([entity,,payload])=>({entity,row:JSON.parse(payload)})));
+      } else {
+        const args=[command.entity,...command.ids],where='entity=? AND id IN ('+command.ids.map(()=>'?').join(',')+')';
+        await conn.execute('DELETE FROM em_records WHERE '+where,args);
+        if(operationalEntities.includes(command.entity))await conn.execute('DELETE FROM em_operation_index WHERE '+where,args);
+      }
+    }
+    await conn.execute('UPDATE em_meta SET revision=? WHERE id=1',[revision]);
+  };
 }
+export async function saveDatabase(conn,db,previous,options) {await prepareDatabaseWrite(db,previous,options)(conn);}
 export async function readSnapshot(pool, options) {
   const conn = await pool.getConnection();
   try { await conn.beginTransaction(); const db = await readDatabase(conn,false,options); await conn.commit(); return db; }

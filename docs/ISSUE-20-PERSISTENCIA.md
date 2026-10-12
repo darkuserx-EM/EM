@@ -50,15 +50,49 @@ Las pruebas de medios ejercitan recuperación en una base realmente vacía,
 incluida la tabla nueva. Las pruebas existentes cubren filtros, roles, códigos,
 concurrencia de operaciones y autoría.
 
-## Etapas siguientes
+## Etapa 2: validación incremental y base por revisión
 
-- Sustituir la validación repetida de todo el conjunto por validaciones de filas
-  modificadas y de sus dependencias, con equivalencia frente al validador completo.
-- Mantener validación completa al importar/restaurar y verificar unicidad,
-  relaciones, autoría, versiones y horómetros antes de relajar bloqueos.
-- Medir carga, permisos y recuperación; cerrar #20 únicamente cuando se completen
-  sus criterios. Separar la bitácora no significa que todas las entidades se lean
-  por páginas ni que hayan desaparecido las escrituras serializadas.
+Las altas, ediciones y bajas normales reutilizan una base validada únicamente
+si coincide con la revisión leída bajo el bloqueo SQL. Un arranque en frío o una
+escritura de otro proceso exige leer y validar de nuevo la base completa. Las
+importaciones y restauraciones siempre mantienen la validación completa. No se
+acepta una marca de validación del navegador.
+
+`IncrementalValidation` compara identidades y contenido, comprueba unicidad en
+todo el conjunto y vuelve a validar las filas cambiadas, sus dependientes y el
+contexto relacionado. Reutiliza el mismo validador de campos, autoría y enlaces;
+no hay una segunda implementación simplificada de las reglas de negocio. Al
+añadir una relación al dominio se debe ampliar su grafo de dependencias y las
+pruebas de equivalencia. Los valores que JSON omitiría y los números no finitos
+no pueden confundirse con contenido ya validado.
+
+La publicación en caché espera la confirmación del commit. Si MySQL entrega el
+bloqueo al siguiente escritor antes de responder al proceso anterior, éste
+espera la publicación pendiente sin tomar otra conexión del pool. Un commit
+fallido no publica datos. La caché conserva su límite de 32 MiB; si no cabe,
+se vuelve al recorrido completo, sin omitir validaciones.
+
+Las pruebas comparan ambos validadores ante cambios de campos y relaciones,
+bajas y duplicados; con 5,000 catálogos, una edición aislada valida una sola fila.
+La prueba de integración ejecuta cinco altas simultáneas con cinco conexiones:
+no repite la lectura completa de registros con la base caliente, mantiene códigos
+distintos y detecta cambios de otro proceso. Una base externa inválida bloquea
+la escritura. Se conservan las pruebas de permisos, autoría, conflictos sobre la
+misma fila y monotonicidad del horómetro.
+
+### Límites conservados
+
+El bloqueo SQL global sigue protegiendo unicidad y relaciones. Comparar/indexar
+el conjunto, generar la respuesta y calcular las diferencias sigue siendo O(N);
+esto no convierte el sistema en una base relacional ni elimina la serialización
+de escrituras. El índice de validación ocupa memoria adicional a la instantánea
+y se libera cuando deja de usarse esa base. No se aumenta el pool del alojamiento.
+Toda escritura externa debe incrementar `em_meta.revision` en su transacción;
+editar directamente payloads sin revisar esta versión no es un flujo soportado.
+
+La paginación de entidades operativas y la sustitución del bloqueo global siguen
+requiriendo otra etapa con índices/controles transaccionales equivalentes. #20
+permanece abierto mientras esos pendientes declarados no estén resueltos.
 
 ## Auditoría comparativa recibida
 
@@ -69,3 +103,75 @@ historial paginado en #63 e índices/lotes por bytes en #67–68. No se duplican
 No se aumenta el pool de cinco conexiones sin medir la carga y el límite real
 del alojamiento. Cambiar el nombre de `/api/mutate` o añadir un ejecutor `tsx`
 no reduce por sí mismo el trabajo de SQL ni sustituye pruebas de integridad.
+
+## Etapa 3: páginas operativas por permisos y revisión
+
+`/api/database?paged=1` mantiene catálogos y conteos autorizados, pero no incluye
+los payloads de solicitudes, órdenes ni lecturas. Las pestañas antiguas conservan
+el contrato completo hasta recargarse. `/api/operations/:entity` filtra y pagina
+estas colecciones en SQL (25 filas por defecto, máximo 200); los contadores se
+calculan sobre todo el ámbito autorizado, no sobre la página visible.
+
+La migración 10 construye `em_operation_index` en lotes de 100, sin modificar ni
+eliminar originales de `em_records`. Cada guardado actualiza registros y proyección
+en la misma transacción. Se conserva el respaldo original completo y la validación
+del dominio. No ejecutar versiones de servidor anteriores en paralelo: no mantienen
+la proyección. Para revertir servidor y volver a publicar esta versión, reconstruir
+la proyección con las escrituras detenidas (marcar esquema 9, arrancar y verificar).
+No hay que restaurar ni eliminar los datos originales para volver al código anterior.
+
+Solicitudes y reportes consultan directamente una página y sus detalles por ID;
+la ficha solicita solo el historial del equipo. Los consumidores que calculan un
+historial completo recorren páginas de 200, cacheadas por revisión. Si cambia la
+revisión o el perfil durante el recorrido, descartan el conjunto incompleto y
+actualizan; no muestran un subtotal como si fuera el total. El orden por fecha e ID
+es determinista. Las búsquedas no permiten inferir campos privados del cliente/técnico.
+
+Las pruebas SQL recorren 10,001 reportes con fechas empatadas, verifican identidad,
+conteos, permisos de cuatro perfiles, búsqueda, detalles inaccesibles, rechazo de
+revisiones antiguas y reanudación de migración sin alterar el hash de los originales.
+El índice por equipo evita filesort en el caso medido. La paginación numérica usa
+offset: el costo de páginas muy profundas y búsquedas de texto crece; no se afirma
+costo constante. Los dashboards aún necesitan todos sus registros autorizados y
+el servidor conserva la instantánea de dominio para validar escrituras. `OTHoras`
+y `OTRepuesto`, sin flujo de captura activo en esta etapa, siguen en la instantánea.
+
+## Etapa 4: validación optimista y confirmación transaccional
+
+Esta etapa sustituye el bloqueo global mantenido durante la lectura y validación
+de `/api/mutate`. Cada solicitud lee una revisión consistente de InnoDB y prepara
+su operación sin `SELECT ... FOR UPDATE` en `em_meta`. Las altas y ediciones de
+solicitudes, órdenes y lecturas preparan también las diferencias y el siguiente
+índice de validación antes de tomar el control de confirmación.
+
+La escritura empieza con `UPDATE em_meta ... WHERE revision = revisión_leída`.
+Solo el candidato cuya base sigue vigente puede escribir registros, proyecciones
+y bitácora; todo se confirma o revierte en la misma transacción. Se mantiene una
+serialización breve de la confirmación, necesaria para códigos únicos y enlaces
+entre entidades JSON: no se afirma que cada registro sea una tabla relacional
+independiente ni que hayan desaparecido todos los bloqueos de InnoDB.
+
+Si otro escritor gana, las operaciones normales vuelven a leer y validar todos
+sus permisos, relaciones, códigos y restricciones del horómetro, hasta cinco
+intentos. La versión de la fila sigue evitando sobrescribir una edición real.
+Las operaciones administrativas/importaciones/restauraciones devuelven 409 para
+revisión manual en lugar de repetir acciones masivas. Solo se reintentan
+transacciones cuyo rollback está confirmado (cambio de revisión, deadlock o
+conflicto de lectura de MariaDB); nunca un commit de resultado incierto. Un envío
+idempotente ya confirmado devuelve el mismo registro sin nueva revisión/auditoría.
+
+Las operaciones excepcionales de cuentas, arranque y recuperación, y la subida
+de adjuntos, conservan sus controles SQL explícitos. Las fotografías se resuelven
+dentro de la transacción administrativa. Comparar diferencias y preparar ciertas
+respuestas aún es O(N); el bloqueo durante esa preparación ya no detiene a otros
+escritores operativos. No modificar payloads mediante SQL externo sin incrementar
+la revisión en la misma transacción. El contrato de revisiones es compartido por
+todos los escritores, incluidas versiones anteriores compatibles.
+
+Pruebas SQL: barrera de dos solicitudes antes de confirmar, cinco altas simultáneas,
+dos procesos, idempotencia sin códigos/eventos duplicados, edición obsoleta,
+reasignación del técnico durante una lectura, horómetro regresivo, rollback tras
+fallo de persistencia y commit aplicado cuya respuesta se pierde. La caché no
+publica cambios antes del commit ni sustituye una revisión más nueva por una
+confirmación tardía. `/api/health` anuncia `persistence: optimistic-v1` para
+verificar esta entrega del servidor aunque los assets del navegador no cambien.

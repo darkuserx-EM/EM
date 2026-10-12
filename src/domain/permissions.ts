@@ -25,6 +25,12 @@ function project(entity: EntityName, row: EntityRecord) {
   const keys = ['id', 'codigo', 'fecha_creacion', 'fecha_actualizacion', ...allowed];
   return Object.fromEntries(Object.entries(row).filter(([key]) => keys.includes(key))) as EntityRecord;
 }
+/** Projection after the server has authorized an operational row's SQL scope. */
+export function projectOperation(actor:Actor,entity:EntityName,row:EntityRecord) {
+  if(actor.rol==='Administrador')return row;
+  const redacted=Object.fromEntries(Object.entries(row).filter(([key])=>!key.startsWith('costo_'))) as EntityRecord;
+  return actor.rol==='Coordinador'?redacted:project(entity,redacted);
+}
 export function filterVisible(actor: Actor, entity: EntityName, rows: EntityRecord[], entities?: Database['entities']) {
   if (actor.rol === 'Administrador') return rows;
   // Findings remain internal to administration until client visibility is designed.

@@ -20,16 +20,32 @@ export function snapshotByteSize(db, maxBytes = Infinity) {
 export function createSnapshotCache(pool, { maxBytes = 32 * 1024 * 1024, load = () => readSnapshot(pool,{includeAudit:false}), sizeOf = snapshotByteSize } = {}) {
   let cached;
   let pending;
+  const publishing=new Map();
   let generation = 0;
   function publish(db) {
+    if(cached && cached.revision>db.revision)return;
     generation++;
     // Retaining a cache is best effort, including after a committed write.
     // Measure UTF-8 bytes one row at a time and stop once retention is ruled out.
     try { cached = sizeOf(db, maxBytes) <= maxBytes ? db : undefined; }
     catch { cached = undefined; }
   }
+  async function publishAfterCommit(db,commit) {
+    let finish;
+    const ready=new Promise(resolve=>{finish=resolve;});
+    publishing.set(db.revision,ready);
+    try {await commit();publish(db);}
+    finally {finish();if(publishing.get(db.revision)===ready)publishing.delete(db.revision);}
+  }
+  async function peek(revision) {
+    // MySQL may grant the next writer's lock before delivering COMMIT's reply
+    // here. Wait for that publication, never expose an uncommitted snapshot.
+    await publishing.get(revision);
+    return cached?.revision===revision ? cached : undefined;
+  }
   async function read(revision) {
-    if (cached?.revision === revision) return cached;
+    if(publishing.has(revision))await publishing.get(revision);
+    if(cached?.revision===revision)return cached;
     if (!pending) {
       const started = generation;
       pending = load().then(db => {
@@ -43,5 +59,5 @@ export function createSnapshotCache(pool, { maxBytes = 32 * 1024 * 1024, load = 
     if (db.revision < revision) return read(revision);
     return db;
   }
-  return { read, publish };
+  return { read, publish, peek, publishAfterCommit };
 }
