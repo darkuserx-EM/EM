@@ -121,7 +121,7 @@
   body:has(.os-print-report) .modal-backdrop { position: static; display: block; padding: 0; background: none; overflow: visible; }
   body:has(.os-print-report) .modal { position: static; max-height: none; overflow: visible; border: 0; box-shadow: none; padding: 0; max-width: none; }
   body:has(.os-print-report) .os-print-report, body:has(.os-print-report) .os-print-report * { visibility: visible; }
-  .os-print-report { position: absolute; left: 0; top: 0; right: 0; background: white; padding: 18px; color: #172014; }
+  .os-print-report { position: absolute; left: 0; top: 0; right: 0; background: var(--color-surface); padding: 18px; color: var(--color-text); }
   .os-print-report .os-report-section { break-inside: avoid; }
   .os-print-report details:not([open]) { display: none; }
   .os-print-report .os-report-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); }

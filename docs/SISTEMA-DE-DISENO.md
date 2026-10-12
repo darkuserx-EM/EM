@@ -98,4 +98,17 @@ Con este paso todas las pantallas usan tokens. Lo único que queda bajo 12 px es
 1. ~~Base global~~ (paso 1, `base.css`).
 2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → ~~ficha del equipo~~ (paso 5) → ~~Inicio~~ (paso 6) → ~~administración~~ (paso 7) → ~~portal del cliente~~ (paso 8).
 3. **Componentes compartidos:** `Button`, `Field`, `Badge`, `Tabs`/`Steps`, `KpiCard`, `DataTable`.
-4. **Control en CI:** Stylelint contra colores y tamaños fuera de los tokens, y prueba de contraste.
+4. ~~**Control en CI**~~: revisión automática en `src/design/design-tokens.test.ts` (ver abajo).
+
+## Revisión automática
+
+`src/design/design-tokens.test.ts` corre con `pnpm test`, y por lo tanto en «Portal EM checks» de GitHub. También se puede correr sola con `pnpm check:design`. Falla si:
+
+- una hoja `.css` en `src/` usa un color fijo (`#hex`, `rgb()`, `hsl()`) fuera de `src/design/tokens.css`;
+- una hoja usa un tamaño de letra menor de 12 px, en `font-size` o en el atajo `font`, con `px` o `rem`;
+- un componente `.tsx` usa clases de Tailwind con valores fijos (`bg-[#…]`, `text-[10px]`) o estilos en línea con color o tamaño fijo;
+- `src/styles.css`, la hoja antigua, suma colores fijos o textos pequeños. Hoy tiene 428 y 259: sus reglas ya están reemplazadas por las hojas de cada pantalla. Si se limpia, hay que bajar esos números en la prueba.
+
+El mensaje de error indica archivo, línea y valor. Las ilustraciones SVG con atributos de color, como el montacargas de `ui.tsx`, no se revisan.
+
+Para agregar estilos: usar la hoja de la pantalla y los tokens. Si hace falta un color nuevo, se agrega como token en `tokens.css`, con su contraste documentado.
