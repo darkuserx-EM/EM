@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import {ensureAuditStorage, migrateAuditStorage, appendAudit} from './audit-storage.mjs';
 import { createSeed, entityNames, validateDatabase, addClientSectors } from './generated/domain.mjs';
 export function connectDatabase(env) {
   for (const key of ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']) if (!env[key]) throw Object.assign(new Error(`Falta ${key}.`), {code:`CONFIG_${key}`});
@@ -19,6 +20,7 @@ export async function migrate(pool) {
     `CREATE TABLE IF NOT EXISTS em_media_migration (equipment_id VARCHAR(128) PRIMARY KEY, payload LONGTEXT NOT NULL, created_at BIGINT NOT NULL) ENGINE=InnoDB`,
   ];
   for (const statement of sql) await pool.query(statement);
+  await ensureAuditStorage(pool);
   await pool.query('CREATE TABLE IF NOT EXISTS em_mfa_challenges (token_hash CHAR(64) PRIMARY KEY,user_id VARCHAR(128) NOT NULL,password_version CHAR(64) NOT NULL,expires_at BIGINT NOT NULL,attempts INT NOT NULL,INDEX(user_id),INDEX(expires_at),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
   await pool.query('CREATE TABLE IF NOT EXISTS em_recovery_codes (user_id VARCHAR(128) NOT NULL,code_hash CHAR(64) NOT NULL,used_at BIGINT NULL,PRIMARY KEY(user_id,code_hash),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
   for(const [name,type] of Object.entries({totp_enabled:'BOOLEAN NOT NULL DEFAULT FALSE',totp_secret:'VARCHAR(220) NULL',totp_pending:'VARCHAR(220) NULL',totp_pending_expires:'BIGINT NULL',totp_last_step:'BIGINT NULL'})) {
@@ -80,12 +82,18 @@ export async function migrate(pool) {
     await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,8) WHERE id=1');
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+  await migrateAuditStorage(pool);
 }
-export async function readDatabase(conn, lock = false) {
+export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
   const [meta] = await conn.query(`SELECT revision FROM em_meta WHERE id=1${lock ? ' FOR UPDATE' : ''}`);
-  const [rows] = await conn.query('SELECT entity, payload FROM em_records ORDER BY entity,id');
+  const [rows] = await conn.query(`SELECT entity, payload FROM em_records${includeAudit?'':" WHERE entity<>'Bitacora'"} ORDER BY entity,id`);
   const entities = Object.fromEntries(entityNames.map(name => [name, []]));
   for (const row of rows) entities[row.entity]?.push(JSON.parse(row.payload));
+  if(includeAudit) {
+    const [audit]=await conn.query('SELECT payload FROM em_audit_log ORDER BY id');
+    for(const row of audit)entities.Bitacora.push(JSON.parse(row.payload));
+    entities.Bitacora.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
+  }
   const db = { schemaVersion: 1, revision: Number(meta[0].revision), entities };
   validateDatabase(db);
   return db;
@@ -100,10 +108,13 @@ export async function saveDatabase(conn, db, previous) {
   };
   for (const entity of entityNames) {
     const old = new Map((previous?.entities[entity] || []).map(row => [row.id, JSON.stringify(row)]));
+    if(entity==='Bitacora') {
+      await appendAudit(conn,db.entities.Bitacora.filter(row=>old.get(row.id)!==JSON.stringify(row)).map(row=>({id:row.id,payload:JSON.stringify(row)})));
+      continue; // No business operation or restore can erase the live audit.
+    }
     for (const row of db.entities[entity]) {
       const payload = JSON.stringify(row);
       if (old.get(row.id) !== payload) {
-        if (entity === 'Bitacora') await conn.execute('INSERT INTO em_audit_index (id,entity,equipment_id,finding_id,action,created_at) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE entity=VALUES(entity),equipment_id=VALUES(equipment_id),finding_id=VALUES(finding_id),action=VALUES(action),created_at=VALUES(created_at)',[row.id,row.entidad||null,row.equipo_id||null,row.hallazgo_id||null,row.accion||null,row.fecha_creacion]);
         const size = Buffer.byteLength(payload) + Buffer.byteLength(row.id) + 80;
         if (batch.length && (batch.length >= 200 || bytes + size > 512 * 1024)) await flush();
         batch.push([entity, row.id, payload]); bytes += size;
@@ -114,15 +125,14 @@ export async function saveDatabase(conn, db, previous) {
     const removed = [...old.keys()];
     for (let i = 0; i < removed.length; i += 200) {
       const ids = removed.slice(i, i + 200);
-      if (entity === 'Bitacora') await conn.execute(`DELETE FROM em_audit_index WHERE id IN (${ids.map(() => '?').join(',')})`,ids);
       await conn.execute(`DELETE FROM em_records WHERE entity=? AND id IN (${ids.map(() => '?').join(',')})`, [entity, ...ids]);
     }
   }
   await conn.execute('UPDATE em_meta SET revision=? WHERE id=1', [db.revision]);
 }
-export async function readSnapshot(pool) {
+export async function readSnapshot(pool, options) {
   const conn = await pool.getConnection();
-  try { await conn.beginTransaction(); const db = await readDatabase(conn); await conn.commit(); return db; }
+  try { await conn.beginTransaction(); const db = await readDatabase(conn,false,options); await conn.commit(); return db; }
   catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }
 export async function readEquipmentRecord(pool, id) {

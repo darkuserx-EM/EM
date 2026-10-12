@@ -120,7 +120,7 @@ test('Fotografías separadas: permisos, migración, integridad y recuperación c
   await t.test('recupera en base operativa vacía, rechaza corrupción, reanuda y no pierde auditoría',async()=>{
     const old=await readSnapshot(pool),beforeAudit=old.entities.Bitacora;
     // Destructive operations are confined to this test's generated database.
-    await pool.query("DELETE FROM em_records WHERE entity<>'Catalogos'");await pool.query('DELETE FROM em_media');await pool.query('DELETE FROM em_attachments');
+    await pool.query("DELETE FROM em_records WHERE entity<>'Catalogos'");await pool.query('DELETE FROM em_audit_log');await pool.query('DELETE FROM em_media');await pool.query('DELETE FROM em_attachments');
     const db={schemaVersion:1,revision:1,entities:Object.fromEntries(Object.keys(old.entities).map(k=>[k,[]]))};
     for(const entry of backupEntries)if(entry.type==='record')db.entities[entry.entity].push(entry.record);
     let revision=(await call('database',undefined,admin)).data.revision;

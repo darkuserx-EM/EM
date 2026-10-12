@@ -17,7 +17,7 @@ export function snapshotByteSize(db, maxBytes = Infinity) {
   }
   return bytes;
 }
-export function createSnapshotCache(pool, { maxBytes = 32 * 1024 * 1024, load = () => readSnapshot(pool), sizeOf = snapshotByteSize } = {}) {
+export function createSnapshotCache(pool, { maxBytes = 32 * 1024 * 1024, load = () => readSnapshot(pool,{includeAudit:false}), sizeOf = snapshotByteSize } = {}) {
   let cached;
   let pending;
   let generation = 0;

@@ -23,6 +23,14 @@ export async function* fullBackupEntries(conn) {
     yield { type: 'record', entity: row.entity, record };
     entity = row.entity; id = row.id;
   }
+  // Same archive format as legacy backups; audit rows now have their own table.
+  let auditId='';
+  for(;;) {
+    const [rows]=await conn.execute('SELECT id,payload FROM em_audit_log WHERE id>? ORDER BY id LIMIT 200',[auditId]);
+    if(!rows.length)break;
+    for(const row of rows)yield {type:'record',entity:'Bitacora',record:JSON.parse(row.payload)};
+    auditId=rows.at(-1).id;
+  }
   // Include retired files as well. Only the currently bound hash is accessible in the portal.
   let equipment = '', field = '', hash = ''; const included = new Set();
   for (;;) {

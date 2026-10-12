@@ -25,7 +25,7 @@ export function registerAuditRoutes(app, pool) {
       args.push(new Date(Date.parse(day+'T06:00:00Z')+(key==='to'?86400000:0)).toISOString());
     }
     if (cursor) { where.push('(a.created_at<? OR (a.created_at=? AND a.id<?))'); args.push(cursor[0],cursor[0],cursor[1]); }
-    const [rows] = await pool.execute(`SELECT a.id,a.created_at,r.payload FROM em_audit_index a JOIN em_records r ON r.entity='Bitacora' AND r.id=a.id ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY a.created_at DESC,a.id DESC LIMIT ${limit+1}`,args);
+    const [rows] = await pool.execute(`SELECT a.id,a.created_at,a.payload FROM em_audit_log a ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY a.created_at DESC,a.id DESC LIMIT ${limit+1}`,args);
     const selected=rows.slice(0,limit);
     res.json({rows:selected.map(row=>JSON.parse(row.payload)),nextCursor:rows.length>limit?encode(selected.at(-1)):null});
   });
