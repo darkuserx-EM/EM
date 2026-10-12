@@ -45,9 +45,20 @@ small { font-size: max(var(--text-xs), .83em); }
 .panel-heading h2 { font-size: var(--text-lg); }
 .panel-heading p, .panel-heading .text-link { font-size: var(--text-xs); color: var(--color-text-muted); }
 
-/* ── Botones ──────────────────────────────────────────────────── */
-.button { font-size: var(--text-sm); }
+/* ── Botones (componentes Button, ButtonLink e IconButton) ────── */
+/* Colores con tokens. Las variantes de styles.css se repiten aquí porque .button:hover las anularía por orden de carga. */
+.button { font-size: var(--text-sm); border-color: var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.button:hover { border-color: var(--color-border-strong); background: var(--color-surface-subtle); }
 .button-small { font-size: var(--text-xs); }
+.button-dark { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-text-inverse); }
+.button-dark:hover { border-color: var(--color-primary-hover); background: var(--color-primary-hover); }
+.button-danger { border-color: var(--color-danger-text); background: var(--color-danger-text); color: var(--color-text-inverse); }
+.button-danger:hover { border-color: color-mix(in srgb, var(--color-danger-text) 85%, black); background: color-mix(in srgb, var(--color-danger-text) 85%, black); }
+.button-orange { border-color: var(--color-brand); border-radius: var(--radius-full); background: var(--color-brand); color: var(--color-text); }
+.button-orange:hover { border-color: color-mix(in srgb, var(--color-brand) 80%, white); background: color-mix(in srgb, var(--color-brand) 80%, white); }
+.icon-button { border-radius: var(--radius-sm); }
+.icon-button:hover { background: var(--color-surface-muted); }
+button:focus-visible, a:focus-visible { outline-color: var(--color-focus); }
 .button:focus-visible, .icon-button:focus-visible, .text-link:focus-visible, .nav-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 @media (pointer: coarse) {
   .button, .icon-button { min-height: var(--target-min); }
@@ -97,6 +108,39 @@ input:focus, select:focus, textarea:focus, .search-box:focus-within { outline: 2
 .error-notice { font-size: var(--text-sm); color: var(--color-danger-text); background: var(--color-danger-bg); }
 .toast { font-size: var(--text-md); }
 .empty-state p, .empty-inline { font-size: var(--text-md); color: var(--color-text-muted); }
+/* Aviso de cambios sin guardar (useUnsavedChanges en components/ui.tsx) */
+.discard-prompt { border-color: var(--color-warning-solid); background: var(--color-warning-bg); color: var(--color-warning-text); }
+
+/* ── Campos (componente Field) ────────────────────────────────── */
+.record-field small.field-error { color: var(--color-danger-text); }
+.record-field [aria-invalid=true] { border-color: var(--color-danger-text); }
+
+/* ── Pestañas (componente Tabs) ───────────────────────────────── */
+.tabs { display: flex; flex-wrap: wrap; align-items: center; }
+.tabs [role=tab] { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); cursor: pointer; }
+.tabs [role=tab]:hover { color: var(--color-text); }
+.tabs [role=tab][aria-selected=true] { color: var(--color-text); font-weight: var(--weight-semibold); }
+.tabs-line { gap: var(--space-5); border-bottom: 1px solid var(--color-border); }
+.tabs-line [role=tab] { min-height: 38px; margin-bottom: -1px; padding: 0 0 var(--space-3); border-bottom: 2px solid transparent; }
+.tabs-line [role=tab][aria-selected=true] { border-bottom-color: var(--color-accent); }
+.tabs-segmented { gap: 3px; padding: var(--space-1); border-radius: var(--radius-md); background: var(--color-surface-muted); }
+.tabs-segmented [role=tab] { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
+.tabs-segmented [role=tab][aria-selected=true] { background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.tabs-count { min-width: 18px; padding: 1px 5px; border-radius: 4px; background: var(--color-surface-muted); font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; font-variant-numeric: tabular-nums; }
+@media (pointer: coarse) {
+  .tabs [role=tab] { min-height: var(--target-min); }
+}
+
+/* ── Tarjeta de indicador (componente KpiCard) ────────────────── */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
+.kpi-card { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-3); min-width: 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-text); text-align: left; }
+button.kpi-card { cursor: pointer; }
+button.kpi-card:hover { border-color: var(--color-border-strong); background: var(--color-surface-subtle); }
+.kpi-card[aria-pressed=true] { border-color: var(--color-accent); background: var(--color-accent-soft); }
+.kpi-card-icon { grid-column: 2; grid-row: 1; color: var(--color-accent); }
+.kpi-card-label { grid-column: 1; grid-row: 1; font-size: var(--text-sm); color: var(--color-text-muted); }
+.kpi-card-value { grid-column: 1 / -1; font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height: var(--leading-tight); font-variant-numeric: tabular-nums; }
+.kpi-card-hint { grid-column: 1 / -1; font-size: var(--text-xs); color: var(--color-text-muted); }
 
 /* ── Móvil: estos valores reemplazan las reducciones a 8–11 px de styles.css ── */
 @media (max-width: 600px) {

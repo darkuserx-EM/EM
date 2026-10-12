@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, X, AlertCircle, ArrowUpRight, Forklift } from 'lucide-react';
 import { useToast } from '../app/state';
+import { Badge, statusTone } from './design-system';
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return <div className={`brand ${compact ? 'brand-compact' : ''}`}><div className="brand-mark">EM<span /></div><div><strong>Portal EM</strong><small>EXPERTOS EN MONTACARGAS</small></div></div>;
 }
 export function Status({ value }: { value: string }) {
-  const tone = ['Operativo', 'En renta', 'Activo'].includes(value) ? 'green' : ['Disponible', 'En mantenimiento'].includes(value) ? 'blue' : ['En reparación', 'Mantenimiento pendiente', 'Prospecto', 'En tránsito'].includes(value) ? 'amber' : ['No operativo', 'En taller'].includes(value) ? 'red' : 'neutral';
-  return <span className={`status ${tone}`}><i />{value}</span>;
+  return <Badge tone={statusTone(value)}>{value}</Badge>;
 }
 export function Modal({ title, children, onClose, wide = false, className = '' }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; className?: string }) {
   const ref = useRef<HTMLDivElement>(null); const closer = useRef(onClose); closer.current = onClose;

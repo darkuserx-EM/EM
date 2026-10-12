@@ -97,8 +97,25 @@ Con este paso todas las pantallas usan tokens. Lo único que queda bajo 12 px es
 
 1. ~~Base global~~ (paso 1, `base.css`).
 2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → ~~ficha del equipo~~ (paso 5) → ~~Inicio~~ (paso 6) → ~~administración~~ (paso 7) → ~~portal del cliente~~ (paso 8).
-3. **Componentes compartidos:** `Button`, `Field`, `Badge`, `Tabs`/`Steps`, `KpiCard`, `DataTable`.
+3. ~~**Componentes compartidos**~~: `src/components/design-system.tsx` (ver «Componentes»). Pendiente: `Steps` y `DataTable`.
 4. ~~**Control en CI**~~: revisión automática en `src/design/design-tokens.test.ts` (ver abajo).
+
+## Componentes
+
+`src/components/design-system.tsx` reúne los componentes compartidos. Reutilizan las clases existentes (`.button`, `.status`, `.panel`, `.record-field`) con tokens en `base.css`, así que migrar una pantalla no cambia su aspecto. **Pantallas nuevas: usar estos componentes, no clases sueltas.** Al editar una pantalla existente, migrar lo que se toque.
+
+| Componente | Uso | Notas |
+|---|---|---|
+| `Button` | `<Button variant="primary" icon={<Plus size={16} />}>Nueva orden</Button>` | Variantes `secondary` (por defecto), `primary` y `danger`; `size="sm"`. Es `type="button"` por defecto: para enviar un formulario, `type="submit"` explícito. |
+| `ButtonLink` | `<ButtonLink to="/plan">Ver plan</ButtonLink>` | Enlace interno (react-router) con aspecto de botón. Mismas variantes. |
+| `IconButton` | `<IconButton label="Editar TCL-001" icon={<Pencil size={15} />} onClick={…} />` | `label` es obligatoria: se usa como `aria-label` y texto emergente. |
+| `Badge` | `<Badge tone="warning">Por vencer</Badge>` | Tonos `success`, `info`, `warning`, `danger` y `neutral`. `Status` lo usa con `statusTone(valor)`. |
+| `Panel` | `<Panel title="Servicios" description="Por mes" actions={…}>…</Panel>` | El encabezado aparece solo si hay título o acciones. |
+| `Field` | `<Field label="Marca" required help="…" error={error}>{control => <input {...control} value={marca} onChange={…} />}</Field>` | Vincula etiqueta, ayuda y error con el control (`id`, `aria-describedby`, `aria-invalid`). Con error, el campo toma borde rojo. |
+| `Tabs` | `<Tabs label="Secciones" value={vista} onChange={setVista} items={[{ value: 'resumen', label: 'Resumen' }, { value: 'equipos', label: 'Equipos', count: 4 }]} />` | `role="tablist"`. Una sola pestaña enfocable; se cambia con las flechas, Inicio y Fin. Variantes `line` (por defecto) y `segmented`. |
+| `KpiCard` | `<div className="kpi-grid"><KpiCard label="En espera" value={3} pressed={filtro === 'espera'} onClick={…} /></div>` | Sin `onClick` solo informa; con `onClick` es un botón; con `pressed` además actúa como filtro (`aria-pressed`). |
+
+En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-danger` y `button-orange`), `.icon-button` y el aviso de cambios sin guardar pasan a tokens. Visualmente cambia poco: borde del botón `#dddfd5` → `--color-border`, radio 7 → 8 px, y botón oscuro `#3a3a3a` → `--color-primary`. El foco de enlaces y botones usa `--color-focus`.
 
 ## Revisión automática
 
