@@ -4,12 +4,13 @@
     "checkJs": true,
     "noEmit": true,
     "strict": true,
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "target": "ES2023",
     "skipLibCheck": true,
     "types": [
-      "node"
+      "node",
+      "vite/client"
     ]
   },
   "include": [
@@ -19,6 +20,10 @@
     "server/sql.mjs",
     "server/audit-storage.mjs",
     "server/attachment-batches.mjs",
-    "server/type-tests/**/*.mts"
+    "server/type-tests/**/*.mts",
+    "server/database.mjs",
+    "server/snapshot-cache.mjs",
+    "server/equipment-images.mjs",
+    "server/diagnostics.mjs"
   ]
 }

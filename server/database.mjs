@@ -1,11 +1,15 @@
+import { select, selectQuery, change } from './sql.mjs';
+import { errorCode } from './errors.mjs';
 import mysql from 'mysql2/promise';
 import {ensureOperationIndex,migrateOperationIndex,indexOperations,operationalEntities} from './operation-index.mjs';
 import {ensureAuditStorage, migrateAuditStorage, appendAudit} from './audit-storage.mjs';
 import { createSeed, entityNames, validateDatabase, addClientSectors } from './generated/domain.mjs';
+/** @param {NodeJS.ProcessEnv} env */
 export function connectDatabase(env) {
   for (const key of ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']) if (!env[key]) throw Object.assign(new Error(`Falta ${key}.`), {code:`CONFIG_${key}`});
   return mysql.createPool({ host: env.DB_HOST, port: Number(env.DB_PORT || 3306), database: env.DB_NAME, user: env.DB_USER, password: env.DB_PASSWORD, connectionLimit: 5, charset: 'utf8mb4', timezone: 'Z', multipleStatements: false });
 }
+/** @param {import("mysql2/promise").Pool} pool */
 export async function migrate(pool) {
   const sql = [
     `CREATE TABLE IF NOT EXISTS em_meta (id INT PRIMARY KEY, revision BIGINT NOT NULL, schema_version INT NOT NULL) ENGINE=InnoDB`,
@@ -26,46 +30,56 @@ export async function migrate(pool) {
   await pool.query('CREATE TABLE IF NOT EXISTS em_mfa_challenges (token_hash CHAR(64) PRIMARY KEY,user_id VARCHAR(128) NOT NULL,password_version CHAR(64) NOT NULL,expires_at BIGINT NOT NULL,attempts INT NOT NULL,INDEX(user_id),INDEX(expires_at),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
   await pool.query('CREATE TABLE IF NOT EXISTS em_recovery_codes (user_id VARCHAR(128) NOT NULL,code_hash CHAR(64) NOT NULL,used_at BIGINT NULL,PRIMARY KEY(user_id,code_hash),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
   for(const [name,type] of Object.entries({totp_enabled:'BOOLEAN NOT NULL DEFAULT FALSE',totp_secret:'VARCHAR(220) NULL',totp_pending:'VARCHAR(220) NULL',totp_pending_expires:'BIGINT NULL',totp_last_step:'BIGINT NULL'})) {
-    const [columns]=await pool.query('SHOW COLUMNS FROM em_users LIKE ?',[name]);
-    if(!columns.length)try{await pool.query('ALTER TABLE em_users ADD COLUMN '+name+' '+type);}catch(error){if(error.code!=='ER_DUP_FIELDNAME')throw error;}
+    /** @type {{Field:string}[]} */
+  const columns = await selectQuery(pool,'SHOW COLUMNS FROM em_users LIKE ?',[name]);
+    if(!columns.length)try{await pool.query('ALTER TABLE em_users ADD COLUMN '+name+' '+type);}catch(error){if(errorCode(error)!=='ER_DUP_FIELDNAME')throw error;}
   }
-  const [sessionColumns] = await pool.query("SHOW COLUMNS FROM em_sessions LIKE 'last_seen_at'");
-  if (!sessionColumns.length) { try { await pool.query('ALTER TABLE em_sessions ADD COLUMN last_seen_at BIGINT NULL'); } catch(error) { if(error.code!=='ER_DUP_FIELDNAME')throw error; } }
+  /** @type {{Field:string}[]} */
+  const sessionColumns = await selectQuery(pool,"SHOW COLUMNS FROM em_sessions LIKE 'last_seen_at'");
+  if (!sessionColumns.length) { try { await pool.query('ALTER TABLE em_sessions ADD COLUMN last_seen_at BIGINT NULL'); } catch(error) { if(errorCode(error)!=='ER_DUP_FIELDNAME')throw error; } }
   await pool.execute('UPDATE em_sessions SET last_seen_at=? WHERE last_seen_at IS NULL',[Date.now()]);
-  const [passwordColumns] = await pool.query("SHOW COLUMNS FROM em_users LIKE 'must_change_password'");
+  /** @type {{Field:string}[]} */
+  const passwordColumns = await selectQuery(pool,"SHOW COLUMNS FROM em_users LIKE 'must_change_password'");
   if (!passwordColumns.length) {
     try { await pool.query('ALTER TABLE em_users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE'); }
-    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+    catch (error) { if (errorCode(error) !== 'ER_DUP_FIELDNAME') throw error; }
   }
-  const [userColumns] = await pool.query("SHOW COLUMNS FROM em_users LIKE 'expires_at'");
+  /** @type {{Field:string}[]} */
+  const userColumns = await selectQuery(pool,"SHOW COLUMNS FROM em_users LIKE 'expires_at'");
   if (!userColumns.length) {
     try { await pool.query('ALTER TABLE em_users ADD COLUMN expires_at BIGINT NULL'); }
-    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+    catch (error) { if (errorCode(error) !== 'ER_DUP_FIELDNAME') throw error; }
   }
-  const [requestColumns] = await pool.query("SHOW COLUMNS FROM em_users LIKE 'creation_request'");
+  /** @type {{Field:string}[]} */
+  const requestColumns = await selectQuery(pool,"SHOW COLUMNS FROM em_users LIKE 'creation_request'");
   if (!requestColumns.length) {
     try { await pool.query('ALTER TABLE em_users ADD COLUMN creation_request CHAR(36) NULL UNIQUE'); }
-    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+    catch (error) { if (errorCode(error) !== 'ER_DUP_FIELDNAME') throw error; }
   }
   for (const table of ['em_sessions', 'em_login_limits']) {
-    const [indexes] = await pool.query(`SHOW INDEX FROM ${table} WHERE Column_name='expires_at' AND Seq_in_index=1`);
+    /** @type {{Key_name:string}[]} */
+  const indexes = await selectQuery(pool,`SHOW INDEX FROM ${table} WHERE Column_name='expires_at' AND Seq_in_index=1`);
     if (!indexes.length) {
       try { await pool.query(`ALTER TABLE ${table} ADD INDEX idx_expires_at (expires_at)`); }
-      catch (error) { if (error.code !== 'ER_DUP_KEYNAME') throw error; }
+      catch (error) { if (errorCode(error) !== 'ER_DUP_KEYNAME') throw error; }
     }
   }
-  const [eventIndexes] = await pool.query("SHOW INDEX FROM em_security_events WHERE Key_name='idx_created_id'");
-  if (!eventIndexes.length) { try { await pool.query('ALTER TABLE em_security_events ADD INDEX idx_created_id (created_at,id)'); } catch(error) { if(error.code!=='ER_DUP_KEYNAME')throw error; } }
+  /** @type {{Key_name:string}[]} */
+  const eventIndexes = await selectQuery(pool,"SHOW INDEX FROM em_security_events WHERE Key_name='idx_created_id'");
+  if (!eventIndexes.length) { try { await pool.query('ALTER TABLE em_security_events ADD INDEX idx_created_id (created_at,id)'); } catch(error) { if(errorCode(error)!=='ER_DUP_KEYNAME')throw error; } }
   for(const [name,columns] of [['idx_attachment_order_created','order_id,created_at,id'],['idx_attachment_created','created_at,id']]) {
-    const [indexes]=await pool.query('SHOW INDEX FROM em_attachments WHERE Key_name=?',[name]);
-    if(!indexes.length)try{await pool.query('ALTER TABLE em_attachments ADD INDEX '+name+' ('+columns+')');}catch(error){if(error.code!=='ER_DUP_KEYNAME')throw error;}
+    /** @type {{Key_name:string}[]} */
+  const indexes = await selectQuery(pool,'SHOW INDEX FROM em_attachments WHERE Key_name=?',[name]);
+    if(!indexes.length)try{await pool.query('ALTER TABLE em_attachments ADD INDEX '+name+' ('+columns+')');}catch(error){if(errorCode(error)!=='ER_DUP_KEYNAME')throw error;}
   }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     await conn.query('INSERT IGNORE INTO em_meta (id, revision, schema_version) VALUES (1,0,1)');
-    const [meta] = await conn.query('SELECT * FROM em_meta WHERE id=1 FOR UPDATE');
-    const [count] = await conn.query('SELECT COUNT(*) AS n FROM em_records');
+    /** @type {{revision:number,schema_version:number}[]} */
+  const meta = await selectQuery(conn,'SELECT * FROM em_meta WHERE id=1 FOR UPDATE');
+    /** @type {{n:number}[]} */
+  const count = await selectQuery(conn,'SELECT COUNT(*) AS n FROM em_records');
     if (Number(count[0].n) === 0 && Number(meta[0].revision) === 0) {
       const db = createSeed();
       for (const name of entityNames) if (name !== 'Catalogos') db.entities[name] = [];
@@ -87,13 +101,18 @@ export async function migrate(pool) {
   await migrateAuditStorage(pool);
   await migrateOperationIndex(pool);
 }
+/** @param {import("./contracts.js").SqlConnection} conn @param {boolean} [lock] @param {{includeAudit?:boolean}} [options] */
 export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
-  const [meta] = await conn.query(`SELECT revision FROM em_meta WHERE id=1${lock ? ' FOR UPDATE' : ''}`);
-  const [rows] = await conn.query(`SELECT entity, payload FROM em_records${includeAudit?'':" WHERE entity<>'Bitacora'"} ORDER BY entity,id`);
-  const entities = Object.fromEntries(entityNames.map(name => [name, []]));
+  /** @type {{revision:number,schema_version:number}[]} */
+  const meta = await selectQuery(conn,`SELECT revision FROM em_meta WHERE id=1${lock ? ' FOR UPDATE' : ''}`);
+  /** @type {{entity:import("../src/domain/model.js").EntityName,payload:string}[]} */
+  const rows = await selectQuery(conn,`SELECT entity, payload FROM em_records${includeAudit?'':" WHERE entity<>'Bitacora'"} ORDER BY entity,id`);
+  /** @type {import("../src/domain/model.js").Database["entities"]} */
+  const entities = {Cliente:[],Contacto:[],Sede:[],Contrato:[],ContratoEquipo:[],Equipo:[],LecturaHorometro:[],PlanPM:[],Hallazgo:[],Ticket:[],OrdenServicio:[],OTRepuesto:[],OTHoras:[],CheckList:[],CheckListItem:[],Tecnico:[],Gasto:[],Liquidacion:[],Usuario:[],Catalogos:[],Bitacora:[]};
   for (const row of rows) entities[row.entity]?.push(JSON.parse(row.payload));
   if(includeAudit) {
-    const [audit]=await conn.query('SELECT payload FROM em_audit_log ORDER BY id');
+    /** @type {{payload:string}[]} */
+  const audit = await selectQuery(conn,'SELECT payload FROM em_audit_log ORDER BY id');
     for(const row of audit)entities.Bitacora.push(JSON.parse(row.payload));
     entities.Bitacora.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
   }
@@ -103,9 +122,13 @@ export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
 }
 // Plan and validate differences before taking a commit lock. Serialized payloads
 // are captured so an asynchronous writer cannot observe later object mutations.
+/** @param {import("../src/domain/model.js").Database} db @param {import("../src/domain/model.js").Database} [previous] @param {{validate?:(value:unknown)=>void}} [options] */
 export function prepareDatabaseWrite(db,previous,{validate=validateDatabase}={}) {
   validate(db);
-  const commands=[];let batch=[],bytes=0;
+  /** @type {import("./contracts.js").WriteCommand[]} */
+  const commands=[];
+  /** @type {[import("../src/domain/model.js").EntityName,string,string][]} */
+  let batch=[];let bytes=0;
   const flush=()=>{if(batch.length)commands.push({kind:'upsert',rows:batch});batch=[];bytes=0;};
   for(const entity of entityNames) {
     const old=new Map((previous?.entities[entity]||[]).map(row=>[row.id,JSON.stringify(row)]));
@@ -125,6 +148,7 @@ export function prepareDatabaseWrite(db,previous,{validate=validateDatabase}={})
     flush();const removed=[...old.keys()];for(let i=0;i<removed.length;i+=200)commands.push({kind:'remove',entity,ids:removed.slice(i,i+200)});
   }
   const revision=db.revision;
+  /** @param {import("mysql2/promise").PoolConnection} conn */
   return async conn=>{
     for(const command of commands) {
       if(command.kind==='audit')await appendAudit(conn,command.entries);
@@ -140,32 +164,41 @@ export function prepareDatabaseWrite(db,previous,{validate=validateDatabase}={})
     await conn.execute('UPDATE em_meta SET revision=? WHERE id=1',[revision]);
   };
 }
+/** @param {import("mysql2/promise").PoolConnection} conn @param {import("../src/domain/model.js").Database} db @param {import("../src/domain/model.js").Database} [previous] @param {{validate?:(value:unknown)=>void}} [options] */
 export async function saveDatabase(conn,db,previous,options) {await prepareDatabaseWrite(db,previous,options)(conn);}
+/** @param {import("mysql2/promise").Pool} pool @param {{includeAudit?:boolean}} [options] */
 export async function readSnapshot(pool, options) {
   const conn = await pool.getConnection();
   try { await conn.beginTransaction(); const db = await readDatabase(conn,false,options); await conn.commit(); return db; }
   catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }
+/** @param {import("./contracts.js").SqlConnection} pool @param {string} id */
 export async function readEquipmentRecord(pool, id) {
-  const [rows] = await pool.execute("SELECT payload FROM em_records WHERE entity='Equipo' AND id=?", [id]);
+  /** @type {{payload:string}[]} */
+  const rows = await select(pool,"SELECT payload FROM em_records WHERE entity='Equipo' AND id=?", [id]);
   if (!rows.length) return undefined;
+  /** @type {import("../src/domain/model.js").EntityRecord} */
   const row = JSON.parse(rows[0].payload);
   return row.id === id ? row : undefined;
 }
+/** @param {import("./contracts.js").SqlConnection} pool @param {string} key */
 export async function consumeLoginAttempt(pool, key, now = Date.now()) {
   await pool.execute('INSERT INTO em_login_limits (bucket,attempts,expires_at) VALUES (?,1,?) ON DUPLICATE KEY UPDATE attempts=IF(expires_at<?,1,attempts+1), expires_at=IF(expires_at<?,VALUES(expires_at),expires_at)', [key,now+900000,now,now]);
-  const [rows] = await pool.execute('SELECT attempts FROM em_login_limits WHERE bucket=?', [key]);
+  /** @type {{attempts:number}[]} */
+  const rows = await select(pool,'SELECT attempts FROM em_login_limits WHERE bucket=?', [key]);
   return rows[0].attempts <= 8;
 }
 
+/** @param {import("mysql2/promise").Pool} pool @param {number} [now] @param {{maxPasses?:number}} [options] */
 export async function cleanupExpired(pool, now = Date.now(), { maxPasses = 20 } = {}) {
   if (!Number.isInteger(maxPasses) || maxPasses < 1 || maxPasses > 20) throw new RangeError('Invalid cleanup pass limit');
   // At most 10,000 expired rows per table per run; every batch releases its lock.
+  /** @type {Record<string,number>} */
   const removed = {};
   for (const table of ['em_sessions', 'em_login_limits']) {
     removed[table] = 0;
     for (let pass = 0; pass < maxPasses; pass++) {
-      const [result] = await pool.execute(`DELETE FROM ${table} WHERE expires_at<=? LIMIT 500`, [now]);
+      const result = await change(pool,`DELETE FROM ${table} WHERE expires_at<=? LIMIT 500`, [now]);
       removed[table] += result.affectedRows;
       if (result.affectedRows < 500) break;
     }

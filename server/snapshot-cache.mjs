@@ -2,6 +2,7 @@ import { readSnapshot } from './database.mjs';
 
 // A single unfiltered snapshot per process. Every response is filtered separately.
 // MySQL remains authoritative; even an unchanged poll checks its revision.
+/** @param {import("../src/domain/model.js").Database} db @param {number} [maxBytes] */
 export function snapshotByteSize(db, maxBytes = Infinity) {
   const { entities = {}, ...metadata } = db;
   let bytes = Buffer.byteLength(JSON.stringify({ ...metadata, entities: {} }));
@@ -17,11 +18,15 @@ export function snapshotByteSize(db, maxBytes = Infinity) {
   }
   return bytes;
 }
+/** @param {import("mysql2/promise").Pool} pool @param {{maxBytes?:number,load?:()=>Promise<import("../src/domain/model.js").Database>,sizeOf?:typeof snapshotByteSize}} [options] */
 export function createSnapshotCache(pool, { maxBytes = 32 * 1024 * 1024, load = () => readSnapshot(pool,{includeAudit:false}), sizeOf = snapshotByteSize } = {}) {
+  /** @type {import("../src/domain/model.js").Database|undefined} */
   let cached;
+  /** @type {Promise<import("../src/domain/model.js").Database>|undefined} */
   let pending;
   const publishing=new Map();
   let generation = 0;
+  /** @param {import("../src/domain/model.js").Database} db */
   function publish(db) {
     if(cached && cached.revision>db.revision)return;
     generation++;
@@ -30,19 +35,24 @@ export function createSnapshotCache(pool, { maxBytes = 32 * 1024 * 1024, load = 
     try { cached = sizeOf(db, maxBytes) <= maxBytes ? db : undefined; }
     catch { cached = undefined; }
   }
+  /** @param {import("../src/domain/model.js").Database} db @param {()=>Promise<void>} commit */
   async function publishAfterCommit(db,commit) {
-    let finish;
+    /** @type {()=>void} */
+    let finish=()=>{};
+    /** @type {Promise<void>} */
     const ready=new Promise(resolve=>{finish=resolve;});
     publishing.set(db.revision,ready);
     try {await commit();publish(db);}
     finally {finish();if(publishing.get(db.revision)===ready)publishing.delete(db.revision);}
   }
+  /** @param {number} revision */
   async function peek(revision) {
     // MySQL may grant the next writer's lock before delivering COMMIT's reply
     // here. Wait for that publication, never expose an uncommitted snapshot.
     await publishing.get(revision);
     return cached?.revision===revision ? cached : undefined;
   }
+  /** @param {number} revision @returns {Promise<import("../src/domain/model.js").Database>} */
   async function read(revision) {
     if(publishing.has(revision))await publishing.get(revision);
     if(cached?.revision===revision)return cached;
