@@ -64,3 +64,10 @@ it('una conexión anterior no cambia el estado de una nueva sesión',async()=>{
   const source=new RemoteDataSource();const pending=source.refresh();source.clear();await expect(source.refresh()).rejects.toThrow();
   finish(Response.json(createSeed()));await pending;expect(source.getConnection()).toBe('error');
 });
+it('marca las consultas automáticas y comunica el cierre por inactividad',async()=>{
+  const dispatchEvent=vi.fn();vi.stubGlobal('window',{dispatchEvent});
+  const fetch=vi.fn().mockResolvedValueOnce(Response.json(createSeed())).mockResolvedValueOnce(Response.json({error:'Tu sesión se cerró por inactividad.',code:'SESSION_IDLE'},{status:401}));vi.stubGlobal('fetch',fetch);
+  const source=new RemoteDataSource();await source.refresh(true);expect(fetch.mock.calls[0][1].headers['X-Portal-Poll']).toBe('1');
+  await expect(source.refresh(true)).rejects.toMatchObject({status:401,code:'SESSION_IDLE'});
+  expect(dispatchEvent).toHaveBeenCalledTimes(1);expect(dispatchEvent.mock.calls[0][0].detail).toBe('SESSION_IDLE');
+});

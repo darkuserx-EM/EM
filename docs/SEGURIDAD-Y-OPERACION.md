@@ -24,3 +24,7 @@
 Conservar respaldo privado antes de publicar y comparar los registros después. La única modificación de esquema es añadir índices si faltan: no transforma ni elimina datos de negocio. La limpieza afecta exclusivamente a sesiones/límites ya vencidos. Para revertir código no restaurar un respaldo de datos antiguo; los índices añadidos son compatibles con la versión anterior.
 
 Las pruebas de contraseñas, restauración y revocación se ejecutan con cuentas sintéticas en CI. No cambiar la contraseña real del administrador ni cerrar sus otras sesiones como prueba de publicación. Verificar en línea salud, sesión, sincronización, rechazo anónimo y apertura de Mi cuenta sin enviar el formulario.
+
+## Sesiones e inactividad
+
+Máximo absoluto: 8 horas. Se cierra tras 60 minutos sin interacción (SESSION_IDLE_MINUTES, 15–240). El sondeo y las lecturas automáticas no renuevan la sesión. La interacción de teclado, clic o desplazamiento envía una confirmación con CSRF, como máximo una vez por minuto. En producción la cookie es __Host-em_session (Secure, HttpOnly, SameSite=Strict, Path=/, sin Domain). Las sesiones antiguas se migran al siguiente uso conservando su vencimiento; salir borra ambas cookies. La migración 6 inicializa la actividad de sesiones anteriores una sola vez; no amplía las 8 horas. Reversión: cerrar las sesiones y volver a ingresar con la versión anterior; la columna añadida es compatible.

@@ -1,3 +1,4 @@
+import { idleTimeout, clearSessionCookies } from './session-policy.mjs';
 import { registerAuditRoutes } from './audit-log.mjs';
 import express from 'express';
 import helmet from 'helmet';
@@ -21,10 +22,10 @@ const fail = (status, message) => Object.assign(new Error(message), { status, ex
 const syncToken = (revision, actor) => digest(JSON.stringify(['portal-sync-v1', revision, actor]));
 const visible = (db, actor) => ({ ...presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, name === 'Bitacora' ? [] : filterVisible(actor, name, db.entities[name], db.entities)])) }), syncToken: syncToken(db.revision, actor), access: actor });
 const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, cliente_id: user.client_id || undefined, tecnico_id: user.technician_id || undefined });
-const cookieName = 'em_session';
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
-export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error }) {
+export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60' }) {
   const app = express();
+  const idleMs=idleTimeout(sessionIdleMinutes), cookieName=production?'__Host-em_session':'em_session';
   app.set('portal production', production);
   app.disable('x-powered-by'); app.set('trust proxy', parseTrustProxy(String(trustProxy)));
   const snapshots = createSnapshotCache(pool);
@@ -76,7 +77,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       await conn.beginTransaction();
       const [current] = await conn.execute('SELECT id,password_hash,active,expires_at FROM em_users WHERE id=? FOR UPDATE',[rows[0].id]);
       if (!current[0]?.active || (current[0].expires_at && Number(current[0].expires_at) <= Date.now()) || current[0].password_hash !== rows[0].password_hash) throw fail(401,'Correo o contraseña incorrectos.');
-      await conn.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at) VALUES (?,?,?,?)',[digest(session),rows[0].id,token(),Date.now()+8*3600000]);
+      await conn.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at,last_seen_at) VALUES (?,?,?,?,?)',[digest(session),rows[0].id,token(),Date.now()+8*3600000,Date.now()]);
       await conn.execute('DELETE FROM em_login_limits WHERE bucket=?',[attemptKey]);
       await conn.commit();
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
@@ -84,16 +85,30 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     res.json({ok:true});
   });
   app.use('/api', async (req,_res,next) => {
-    const session = cookieToken(req.headers.cookie,cookieName);
+    const modern = cookieToken(req.headers.cookie,cookieName);
+    const session = modern || (production ? cookieToken(req.headers.cookie,'em_session') : undefined);
     if (!session || session.length>128) throw fail(401,'Inicia sesión para continuar.');
-    const [rows] = await pool.execute('SELECT s.csrf, s.token_hash, u.* FROM em_sessions s JOIN em_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=TRUE AND (u.expires_at IS NULL OR u.expires_at>?)',[digest(session),Date.now(),Date.now()]);
+    const [rows] = await pool.execute('SELECT s.csrf, s.token_hash, s.last_seen_at, s.expires_at AS session_expires_at, u.* FROM em_sessions s JOIN em_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=TRUE AND (u.expires_at IS NULL OR u.expires_at>?)',[digest(session),Date.now(),Date.now()]);
     if (!rows[0]) throw fail(401,'Tu sesión terminó. Vuelve a ingresar.');
+    const now=Date.now(), lastSeen=Number(rows[0].last_seen_at ?? now);
+    if (now-lastSeen>=idleMs) {
+      await pool.execute('DELETE FROM em_sessions WHERE token_hash=? AND last_seen_at<=?',[digest(session),now-idleMs]);
+      clearSessionCookies(_res,production);
+      return _res.status(401).json({error:'Tu sesión se cerró por inactividad. Vuelve a ingresar.',code:'SESSION_IDLE'});
+    }
+    if (production && !modern) {
+      _res.cookie(cookieName,session,{httpOnly:true,secure:true,sameSite:'strict',path:'/',maxAge:Math.max(0,Number(rows[0].session_expires_at ?? now+8*3600000)-now)});
+      _res.clearCookie('em_session',{path:'/',secure:true,httpOnly:true,sameSite:'strict'});
+    }
     req.actor = actorOf(rows[0]); req.sessionHash = rows[0].token_hash; req.csrf = rows[0].csrf;
     req.mustChangePassword = Boolean(rows[0].must_change_password);
     if (!['GET','HEAD'].includes(req.method) && !equal(req.get('x-csrf-token'),req.csrf)) throw fail(403,'La sesión de esta solicitud no es válida. Recarga el portal.');
     if (req.mustChangePassword && !['/session','/password','/logout'].includes(req.path)) return _res.status(403).json({error:'Debes cambiar tu contraseña temporal antes de continuar.',code:'PASSWORD_CHANGE_REQUIRED'});
+    // Background reads never extend inactivity. User interaction sends a CSRF-protected heartbeat.
+    if (lastSeen<=now-60000 && req.get('x-portal-poll')!=='1' && (!['GET','HEAD'].includes(req.method) || req.path==='/session')) await pool.execute('UPDATE em_sessions SET last_seen_at=? WHERE token_hash=? AND last_seen_at<=? AND last_seen_at>?',[now,req.sessionHash,now-60000,now-idleMs]);
     next();
   });
+  app.post('/api/session/activity', (_req,res) => res.json({ok:true}));
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf,mustChangePassword:req.mustChangePassword}));
   // Small authenticated requests are parsed only after session and CSRF checks.
   app.use('/api', (req,res,next) => ['/mutate','/attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
@@ -104,7 +119,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   registerAttachmentBackupRoutes(app, {pool,logger});
   registerMediaUploadRoutes(app, {pool});
   registerFullBackupRoutes(app, {pool,logger});
-  app.post('/api/logout', async (req,res) => { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); res.clearCookie(cookieName,{path:'/',secure:production,httpOnly:true,sameSite:'strict'}); res.json({ok:true}); });
+  app.post('/api/logout', async (req,res) => { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); clearSessionCookies(res,production); res.json({ok:true}); });
   app.get('/api/database', async (req,res) => {
     const [rows] = await pool.query('SELECT revision FROM em_meta WHERE id=1');
     const revision = Number(rows[0].revision);

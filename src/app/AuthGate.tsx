@@ -19,8 +19,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!serverMode) return;
     let active = true;
-    (async () => { try { const status = await api<{ needsSetup: boolean }>('setup-status'); if (active) setSetup(status.needsSetup); if (!status.needsSetup) await session(); } catch (cause) { if (active && (cause as { status?: number }).status !== 401) setError((cause as Error).message); } finally { if (active) setLoading(false); } })();
-    const expire = () => { remoteSource.clear(); setActor(undefined); setMustChange(false); setNotice('Tu sesión terminó. Vuelve a ingresar.'); };
+    (async () => { try { const status = await api<{ needsSetup: boolean }>('setup-status'); if (active) setSetup(status.needsSetup); if (!status.needsSetup) await session(); } catch (cause) { if (active && (cause as {code?:string}).code === 'SESSION_IDLE') setNotice('Tu sesión se cerró por inactividad. Vuelve a ingresar.'); else if (active && (cause as { status?: number }).status !== 401) setError((cause as Error).message); } finally { if (active) setLoading(false); } })();
+    const expire = (event: Event) => { remoteSource.clear(); setActor(undefined); setMustChange(false); setNotice((event as CustomEvent<string>).detail === 'SESSION_IDLE' ? 'Tu sesión se cerró por inactividad. Vuelve a ingresar.' : 'Tu sesión terminó. Vuelve a ingresar.'); };
     const requirePassword = () => { session().catch(cause => setError((cause as Error).message)); };
     const accessChanged = (event: Event) => { setActor((event as CustomEvent<Actor>).detail); };
     window.addEventListener('portal-session-expired', expire);
@@ -31,9 +31,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!serverMode || !actor) return;
     let running = false;
-    const refresh = async () => { if (running || document.hidden) return; running = true; try { await remoteSource.refresh(); setError(''); } catch (cause) { setError((cause as Error).message); } finally { running = false; } };
+    const refresh = async () => { if (running || document.hidden) return; running = true; try { await remoteSource.refresh(true); setError(''); } catch (cause) { setError((cause as Error).message); } finally { running = false; } };
+    let lastActivity=0;
+    const activity = (event: Event) => { if (!event.isTrusted || document.hidden || Date.now()-lastActivity<60000) return; lastActivity=Date.now(); api('session/activity',{}).catch(cause=>setError((cause as Error).message)); };
+    for (const name of ['pointerdown','keydown','scroll']) window.addEventListener(name,activity,{passive:true});
     const timer = window.setInterval(refresh, 15000); window.addEventListener('focus', refresh);
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); for(const name of ['pointerdown','keydown','scroll']) window.removeEventListener(name,activity); };
   }, [actor]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(''); const form = event.currentTarget; const values = Object.fromEntries(new FormData(form));
