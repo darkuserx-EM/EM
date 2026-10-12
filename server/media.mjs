@@ -176,7 +176,7 @@ export async function cleanupMediaUploads(pool, now = Date.now()) {
 export function registerMediaUploadRoutes(app, { pool }) {
   /** @type {import("./http-contracts.js").PortalMiddleware} */
   const admin = (req, _res, next) => req.actor.rol === 'Administrador' ? next() : next(fail(403, 'Solo administración puede cargar fotografías de equipos.'));
-  app.post('/api/equipment-media/upload', admin, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: 2624970 }), /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").MediaRestoreBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").MediaReply>} res */ async (req,res)=> {
+  app.post('/api/equipment-media/upload', admin, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: 2624970 }), /** @param {import("./http-contracts.js").PortalRequest<unknown>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").MediaReply>} res */ async (req,res)=> {
     const id = req.get('x-upload-id'), field = req.get('x-equipment-field');
     if (!uuid(id) || (typeof field!=='string' || !equipmentImageFields.some(value=>value===field))) throw fail(400, 'La identidad o el campo de la carga no es válido.');
     const file = await prepareMedia(req.body, req.get('content-type'));

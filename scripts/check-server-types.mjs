@@ -1,6 +1,6 @@
 import ts from 'typescript';
 import { readdirSync, readFileSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
+import { resolve, sep } from 'node:path';
 
 const configPath=resolve('tsconfig.server.json');
 const config=ts.readConfigFile(configPath,ts.sys.readFile);
@@ -18,9 +18,12 @@ for(const file of files) {
 // Verify request bodies as actually resolved by TypeScript, not just a text scan
 // for annotations. Express's default any must not reach a body-reading handler.
 const program=ts.createProgram(parsed.fileNames,parsed.options),checker=program.getTypeChecker();
+const serverRoot=resolve('server')+sep;
 for(const source of program.getSourceFiles()) {
-  const local=relative(resolve('server'),source.fileName);
-  if(local.startsWith('..')||local.startsWith('generated')||source.isDeclarationFile)continue;
+  const path=resolve(source.fileName);
+  if(!path.startsWith(serverRoot))continue;
+  const local=path.slice(serverRoot.length);
+  if(local.startsWith('generated')||source.isDeclarationFile)continue;
   const visit=node=>{
     if(node.kind===ts.SyntaxKind.AnyKeyword)throw Error(`Explicit any in ${local}`);
     if(ts.isPropertyAccessExpression(node)&&node.name.text==='body'&&(checker.getTypeAtLocation(node).flags&ts.TypeFlags.Any))throw Error(`Untyped request body in ${local}:${source.getLineAndCharacterOfPosition(node.getStart()).line+1}`);
