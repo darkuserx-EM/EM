@@ -46,6 +46,21 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
  });
  async function mutate(action,entity,fields,id){const revision=(await call('database',undefined,admin)).data.revision;return call('mutate',{revision,action,entity,fields,id},admin);}
  const created=await mutate('create','OrdenServicio',{equipo_id:'eq-a',tipo:'Preventivo',sintoma:'Prueba sintética',estado:'Programada',prioridad:'Media',tecnico_id:tech.data.technicianId,fecha_programada:'2026-10-10',visible_cliente:true,solicitud_id:randomUUID()});assert.equal(created.status,200,JSON.stringify(created.data));const order=created.data.result;
+ await t.test('ediciones operativas usan la versión del registro y conservan validación bajo bloqueo',async()=>{
+   assert.equal((await mutate('create','LecturaHorometro',{equipo_id:'eq-a',valor:100,fecha:new Date(Date.now()-60000).toISOString()})).status,200);
+   const initial=(await call('database',undefined,admin)).data;
+   const ticket=await call('mutate',{action:'create',entity:'Ticket',revision:initial.revision,fields:{equipo_id:'eq-a',titulo:'Solicitud concurrente',descripcion:'Prueba de independencia',prioridad:'Media',solicitud_id:randomUUID()}},admin);assert.equal(ticket.status,200,JSON.stringify(ticket.data));
+   const edit={action:'update',entity:'OrdenServicio',id:order.id,revision:initial.revision,fields:{estado:'En proceso',expected_updated_at:order.fecha_actualizacion}};
+   const saved=await call('mutate',edit,technician);assert.equal(saved.status,200,JSON.stringify(saved.data));
+   const stale=await call('mutate',edit,technician);assert.equal(stale.status,409);assert.match(stale.data.error,/Este registro cambió/);
+   const clientConflict=await call('mutate',{action:'update',entity:'Cliente',id:'client-a',revision:initial.revision,fields:{nombre:'No debe guardarse'}},admin);assert.equal(clientConflict.status,409);
+   const date=new Date().toISOString();
+   const readings=await Promise.all([90,110].map(valor=>call('mutate',{action:'create',entity:'LecturaHorometro',revision:initial.revision,fields:{equipo_id:'eq-a',orden_id:order.id,fecha:date,valor,solicitud_id:randomUUID()}},technician)));
+   assert.deepEqual(readings.map(r=>r.status).sort(),[200,400]);
+   const final=await readSnapshot(pool);assert.equal(Math.max(...final.entities.LecturaHorometro.filter(r=>r.equipo_id==='eq-a').map(r=>r.valor)),110);
+   assert.equal(final.entities.Equipo.find(r=>r.id==='eq-a').horometro,100); // La ficha conserva la lectura de ingreso.
+   assert.equal(final.entities.LecturaHorometro.filter(r=>r.equipo_id==='eq-a'&&r.valor===90).length,0);
+ });
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');const body={orderId:order.id,requestId:randomUUID(),category:'Antes',name:'evidencia.png',base64:bytes.toString('base64')};let file;
  await t.test('subida autorizada e idempotente, rechazo HTML y acceso cruzado',async()=>{
    assert.equal((await call('attachments',body,a)).status,403);const up=await call('attachments',body,technician);assert.equal(up.status,201,JSON.stringify(up.data));file=up.data.file;
