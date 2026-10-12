@@ -25,3 +25,13 @@ Usar únicamente si se perdió acceso administrativo, desde una terminal privada
 4. Ingresar por HTTPS y definir la contraseña propia. No copiar la temporal a GitHub, documentación ni logs compartidos.
 
 La migración añade `must_change_password` de forma repetible y marca versión de estructura 4. Revertir a código anterior puede omitir la obligación de cambio: antes de revertir, completar los cambios pendientes o mantener dichas cuentas revocadas. No restaurar una copia antigua de los datos para revertir código. El segundo factor y la recuperación por correo quedan para cambios separados.
+
+## Segundo factor de administración
+
+Disponible en Mi cuenta. Requiere TOTP_ENCRYPTION_KEY: 32 bytes aleatorios codificados en base64 (generarlos fuera del registro de despliegue y guardarlos como secreto del alojamiento). No se activa automáticamente. Sin clave el acceso existente continúa; si hay cuentas enroladas, el arranque verifica el descifrado y falla cerrado ante clave ausente/incorrecta. Respaldar la clave separada del respaldo SQL; perderla impide usar TOTP. No rotarla sin una migración de recifrado.
+
+Configuración manual en una aplicación TOTP compatible con RFC 6238 (SHA1, 6 dígitos, 30 segundos). La clave pendiente vence a los 10 minutos. Alta y baja requieren contraseña actual; la baja requiere además TOTP o recuperación. Diez códigos aleatorios se muestran una sola vez y se guardan únicamente sus hashes. La clave TOTP se cifra con AES-256-GCM ligada al usuario. Se rechaza reutilizar un intervalo TOTP; se tolera un intervalo de desfase de reloj.
+
+La contraseña correcta entrega un desafío de cinco minutos sin sesión; máximo cinco fallos por desafío y ocho intentos por cuenta en quince minutos, persistidos en SQL, además del límite por IP. Cambiar contraseña invalida desafíos anteriores. Activar/desactivar revoca otras sesiones. Los eventos no guardan secretos. El segundo factor está disponible para administradores; no obliga a las cuentas existentes a enrolarse.
+
+Pérdida del teléfono: usar un código de recuperación y configurar de nuevo. Emergencia sin códigos: en terminal privada del servidor ejecutar scripts/recover-admin.mjs --reset-mfa, confirmar la cuenta y DESACTIVAR 2FA. Conserva el historial, revoca sesiones y desafíos y exige cambiar contraseña temporal. Esta vía requiere acceso al alojamiento y deja evento; no se ejecutó en producción durante la revisión.

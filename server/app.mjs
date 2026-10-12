@@ -1,3 +1,5 @@
+import { encryptionKey } from './totp.mjs';
+import { mfaChallenge, registerMfaLogin, registerMfaRoutes } from './mfa.mjs';
 import { idleTimeout, clearSessionCookies } from './session-policy.mjs';
 import { registerAuditRoutes } from './audit-log.mjs';
 import express from 'express';
@@ -23,8 +25,9 @@ const syncToken = (revision, actor) => digest(JSON.stringify(['portal-sync-v1', 
 const visible = (db, actor) => ({ ...presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, name === 'Bitacora' ? [] : filterVisible(actor, name, db.entities[name], db.entities)])) }), syncToken: syncToken(db.revision, actor), access: actor });
 const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, cliente_id: user.client_id || undefined, tecnico_id: user.technician_id || undefined });
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
-export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60' }) {
+export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60', totpEncryptionKey } ) {
   const app = express();
+  const mfaKey=encryptionKey(totpEncryptionKey);
   const idleMs=idleTimeout(sessionIdleMinutes), cookieName=production?'__Host-em_session':'em_session';
   app.set('portal production', production);
   app.disable('x-powered-by'); app.set('trust proxy', parseTrustProxy(String(trustProxy)));
@@ -75,8 +78,12 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      const [current] = await conn.execute('SELECT id,password_hash,active,expires_at FROM em_users WHERE id=? FOR UPDATE',[rows[0].id]);
+      const [current] = await conn.execute('SELECT id,password_hash,active,expires_at,totp_enabled FROM em_users WHERE id=? FOR UPDATE',[rows[0].id]);
       if (!current[0]?.active || (current[0].expires_at && Number(current[0].expires_at) <= Date.now()) || current[0].password_hash !== rows[0].password_hash) throw fail(401,'Correo o contraseña incorrectos.');
+      if(current[0].totp_enabled) {
+        if(!mfaKey)throw fail(409,'El segundo factor requiere atención del administrador del alojamiento.');
+        const challenge=await mfaChallenge(conn,current[0]);await conn.execute('DELETE FROM em_login_limits WHERE bucket=?',[attemptKey]);await conn.commit();return res.json(challenge);
+      }
       await conn.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at,last_seen_at) VALUES (?,?,?,?,?)',[digest(session),rows[0].id,token(),Date.now()+8*3600000,Date.now()]);
       await conn.execute('DELETE FROM em_login_limits WHERE bucket=?',[attemptKey]);
       await conn.commit();
@@ -84,6 +91,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     res.cookie(cookieName,session,{httpOnly:true,secure:production,sameSite:'strict',path:'/',maxAge:8*3600000});
     res.json({ok:true});
   });
+  registerMfaLogin(app,{pool,key:mfaKey,production,loginLimit,smallJson});
   app.use('/api', async (req,_res,next) => {
     const modern = cookieToken(req.headers.cookie,cookieName);
     const session = modern || (production ? cookieToken(req.headers.cookie,'em_session') : undefined);
@@ -112,6 +120,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf,mustChangePassword:req.mustChangePassword}));
   // Small authenticated requests are parsed only after session and CSRF checks.
   app.use('/api', (req,res,next) => ['/mutate','/attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
+  registerMfaRoutes(app,{pool,key:mfaKey});
   registerAccountRoutes(app, pool);
   registerAuditRoutes(app, pool);
   registerAdminUserRoutes(app, {pool,smallJson,logger});

@@ -1,3 +1,5 @@
+import {encryptionKey} from './totp.mjs';
+import {verifyMfaConfiguration} from './mfa.mjs';
 import { createApp } from './app.mjs';
 import { connectDatabase, migrate } from './database.mjs';
 import { logFailure } from './diagnostics.mjs';
@@ -10,7 +12,8 @@ try {
   if (production && !origin.startsWith('https://')) throw Object.assign(new Error('APP_ORIGIN debe usar HTTPS.'), { code:'CONFIG_APP_ORIGIN' });
   pool = connectDatabase(process.env);
   await migrate(pool);
-  const app = createApp({pool,origin,setupToken:process.env.SETUP_TOKEN,production,trustProxy:process.env.TRUST_PROXY ?? '1',networkDiagnostics:process.env.ENABLE_NETWORK_DIAGNOSTICS === 'true',sessionIdleMinutes:process.env.SESSION_IDLE_MINUTES || '60'});
+  await verifyMfaConfiguration(pool,encryptionKey(process.env.TOTP_ENCRYPTION_KEY));
+  const app = createApp({pool,origin,setupToken:process.env.SETUP_TOKEN,production,trustProxy:process.env.TRUST_PROXY ?? '1',networkDiagnostics:process.env.ENABLE_NETWORK_DIAGNOSTICS === 'true',sessionIdleMinutes:process.env.SESSION_IDLE_MINUTES || '60',totpEncryptionKey:process.env.TOTP_ENCRYPTION_KEY});
   const server = app.listen(Number(process.env.PORT || 3000),'0.0.0.0');
   await new Promise((resolve,reject)=>{server.once('listening',resolve);server.once('error',reject);});
   console.log('Portal EM: servidor iniciado.');

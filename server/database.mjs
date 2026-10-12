@@ -19,6 +19,12 @@ export async function migrate(pool) {
     `CREATE TABLE IF NOT EXISTS em_media_migration (equipment_id VARCHAR(128) PRIMARY KEY, payload LONGTEXT NOT NULL, created_at BIGINT NOT NULL) ENGINE=InnoDB`,
   ];
   for (const statement of sql) await pool.query(statement);
+  await pool.query('CREATE TABLE IF NOT EXISTS em_mfa_challenges (token_hash CHAR(64) PRIMARY KEY,user_id VARCHAR(128) NOT NULL,password_version CHAR(64) NOT NULL,expires_at BIGINT NOT NULL,attempts INT NOT NULL,INDEX(user_id),INDEX(expires_at),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
+  await pool.query('CREATE TABLE IF NOT EXISTS em_recovery_codes (user_id VARCHAR(128) NOT NULL,code_hash CHAR(64) NOT NULL,used_at BIGINT NULL,PRIMARY KEY(user_id,code_hash),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
+  for(const [name,type] of Object.entries({totp_enabled:'BOOLEAN NOT NULL DEFAULT FALSE',totp_secret:'VARCHAR(220) NULL',totp_pending:'VARCHAR(220) NULL',totp_pending_expires:'BIGINT NULL',totp_last_step:'BIGINT NULL'})) {
+    const [columns]=await pool.query('SHOW COLUMNS FROM em_users LIKE ?',[name]);
+    if(!columns.length)try{await pool.query('ALTER TABLE em_users ADD COLUMN '+name+' '+type);}catch(error){if(error.code!=='ER_DUP_FIELDNAME')throw error;}
+  }
   const [sessionColumns] = await pool.query("SHOW COLUMNS FROM em_sessions LIKE 'last_seen_at'");
   if (!sessionColumns.length) { try { await pool.query('ALTER TABLE em_sessions ADD COLUMN last_seen_at BIGINT NULL'); } catch(error) { if(error.code!=='ER_DUP_FIELDNAME')throw error; } }
   await pool.execute('UPDATE em_sessions SET last_seen_at=? WHERE last_seen_at IS NULL',[Date.now()]);
@@ -67,7 +73,7 @@ export async function migrate(pool) {
     if (Number(meta[0].schema_version) < 5) {
       await conn.query("INSERT INTO em_audit_index (id,entity,equipment_id,finding_id,action,created_at) SELECT id,JSON_UNQUOTE(JSON_EXTRACT(payload,'$.entidad')),NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id')),'null'),NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.hallazgo_id')),'null'),JSON_UNQUOTE(JSON_EXTRACT(payload,'$.accion')),JSON_UNQUOTE(JSON_EXTRACT(payload,'$.fecha_creacion')) FROM em_records WHERE entity='Bitacora' ON DUPLICATE KEY UPDATE entity=VALUES(entity),equipment_id=VALUES(equipment_id),finding_id=VALUES(finding_id),action=VALUES(action),created_at=VALUES(created_at)");
     }
-    await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,6) WHERE id=1');
+    await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,7) WHERE id=1');
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }
