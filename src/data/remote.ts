@@ -28,19 +28,19 @@ async function uploadEquipmentFields(fields: Record<string, Scalar>) {
   }
   return { fields: values, mediaUploads: uploads };
 }
-export async function api<T>(path: string, body?: unknown): Promise<T> {
+export async function api<T>(path: string, body?: unknown, options: {poll?:boolean} = {}): Promise<T> {
   const epoch = authEpoch;
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(),30000);
   let response: Response; let data: unknown;
   try {
-    response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: body === undefined ? undefined : JSON.stringify(body),signal:controller.signal });
-    if (response.status === 401 && epoch === authEpoch && !['login','session'].includes(path)) window.dispatchEvent(new Event('portal-session-expired'));
+    response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? (options.poll ? {'X-Portal-Poll':'1'} : {}) : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: body === undefined ? undefined : JSON.stringify(body),signal:controller.signal });
     if (response.status === 204) {
       if (body === undefined && path.startsWith('database?since=')) return undefined as T;
       throw new Error('El servidor no confirmó el resultado de la operación. Revisa la información antes de repetirla.');
     }
     try { data = await response.json(); }
     catch {
+      if (response.status === 401 && epoch === authEpoch && !['login','session'].includes(path)) window.dispatchEvent(new Event('portal-session-expired'));
       throw new Error(response.status === 401 ? 'Tu sesión terminó. Vuelve a ingresar.' : `No recibimos una respuesta válida del servidor (HTTP ${response.status}). ${body === undefined ? 'Intenta actualizar la página.' : 'Tus campos siguen en el formulario. Comprueba la lista antes de volver a guardar para evitar duplicados.'}`);
     }
   } catch (error) {
@@ -49,8 +49,9 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   } finally { clearTimeout(timeout); }
   if (!data || typeof data !== 'object') throw new Error('La respuesta del servidor está incompleta. Actualiza la página antes de continuar.');
   if (!response.ok) {
+    if (response.status === 401 && epoch === authEpoch && !['login','session'].includes(path)) window.dispatchEvent(new CustomEvent('portal-session-expired', {detail:'code' in data ? data.code : undefined}));
     if ('code' in data && data.code === 'PASSWORD_CHANGE_REQUIRED' && epoch === authEpoch) window.dispatchEvent(new Event('portal-password-required'));
-    throw Object.assign(new Error(('error' in data && typeof data.error === 'string' && data.error) || 'No se pudo completar la solicitud.'), { status: response.status });
+    throw Object.assign(new Error(('error' in data && typeof data.error === 'string' && data.error) || 'No se pudo completar la solicitud.'), { status: response.status, code: 'code' in data ? data.code : undefined });
   }
   return data as T;
 }
@@ -81,12 +82,12 @@ export class RemoteDataSource {
     this.listeners.forEach(listener => listener());
   }
   clear() { this.generation++; this.database = undefined; this.pendingCreates.clear(); setCsrf(''); this.reportConnection('syncing', ++this.sequence, this.generation); this.listeners.forEach(listener => listener()); }
-  async refresh() {
+  async refresh(poll = false) {
     const sequence = ++this.sequence; const generation = this.generation;
     const since = this.database?.syncToken;
     this.reportConnection('syncing', sequence, generation);
     try {
-      const db = await api<SyncedDatabase | undefined>(since ? `database?since=${encodeURIComponent(since)}` : 'database');
+      const db = await api<SyncedDatabase | undefined>(since ? `database?since=${encodeURIComponent(since)}` : 'database',undefined,{poll});
       if (db) this.accept(db, sequence, generation);
       this.reportConnection('ok', sequence, generation);
     } catch (error) { this.reportConnection('error', sequence, generation); throw error; }

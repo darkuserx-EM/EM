@@ -1,3 +1,4 @@
+import { clearSessionCookies } from './session-policy.mjs';
 import { rateLimit } from 'express-rate-limit';
 import { randomUUID } from 'node:crypto';
 import { hashPassword, verifyPassword } from './security.mjs';
@@ -26,7 +27,7 @@ export function registerAccountRoutes(app, pool) {
       const all = kind === 'sessions' && body.scope === 'all';
       await conn.execute(`DELETE FROM em_sessions WHERE user_id=?${all ? '' : ' AND token_hash<>?'}`,all ? [req.actor.id] : [req.actor.id,req.sessionHash]);
       await conn.commit();
-      if (all) res.clearCookie('em_session',{path:'/',secure:app.get('portal production'),httpOnly:true,sameSite:'strict'});
+      if (all) clearSessionCookies(res,app.get('portal production'));
       res.json({ok:true,signedOut:all});
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   }
