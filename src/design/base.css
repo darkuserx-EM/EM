@@ -86,6 +86,13 @@ input:focus, select:focus, textarea:focus, .search-box:focus-within { outline: 2
 .data-table { font-size: var(--text-sm); }
 .data-table th { font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--color-text-muted); }
 .data-table small { font-size: var(--text-xs); }
+/* Colores de tabla con tokens (componente DataTable) */
+.data-table th { border-top-color: var(--color-border-subtle); border-bottom-color: var(--color-border-subtle); background: var(--color-surface-subtle); }
+.data-table td { border-bottom-color: var(--color-border-subtle); }
+.data-table tbody tr:hover { background: var(--color-surface-subtle); }
+.data-table td.data-table-empty { padding: var(--space-8) var(--space-5); font-size: var(--text-md); color: var(--color-text-muted); text-align: center; }
+.pagination { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 13px 18px; border-top: 1px solid var(--color-border); font-size: var(--text-sm); }
+.pagination > span { margin-right: auto; color: var(--color-text-muted); }
 
 /* ── Importación de archivos (Clientes y Catálogos) ───────────── */
 .filename { font-size: var(--text-xs); color: var(--color-text-muted); }
@@ -141,6 +148,22 @@ button.kpi-card:hover { border-color: var(--color-border-strong); background: va
 .kpi-card-label { grid-column: 1; grid-row: 1; font-size: var(--text-sm); color: var(--color-text-muted); }
 .kpi-card-value { grid-column: 1 / -1; font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height: var(--leading-tight); font-variant-numeric: tabular-nums; }
 .kpi-card-hint { grid-column: 1 / -1; font-size: var(--text-xs); color: var(--color-text-muted); }
+
+/* ── Pasos de un asistente (componente Steps) ──────────────────── */
+.steps ol { display: flex; gap: 6px; margin: 0 0 17px; padding: 0 0 14px; border-bottom: 1px solid var(--color-border); list-style: none; overflow-x: auto; }
+.steps li { flex: 1; min-width: max-content; }
+.steps-item { display: flex; align-items: center; gap: 7px; width: 100%; padding: 9px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); font-size: var(--text-sm); color: var(--color-text-muted); white-space: nowrap; }
+button.steps-item:hover:not(:disabled) { border-color: var(--color-border-strong); color: var(--color-text); }
+.steps-item[aria-current=step] { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-text); font-weight: var(--weight-semibold); }
+.steps-number { display: grid; place-items: center; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--color-surface-muted); font-size: var(--text-xs); color: var(--color-text); }
+.steps-item.is-done .steps-number { background: var(--color-success-bg); color: var(--color-success-text); }
+.steps-item[aria-current=step] .steps-number { background: var(--color-accent); color: var(--color-text-inverse); }
+@media (pointer: coarse) {
+  .steps-item { min-height: var(--target-min); }
+}
+@media (max-width: 600px) {
+  .steps li { flex: 0 0 auto; }
+}
 
 /* ── Móvil: estos valores reemplazan las reducciones a 8–11 px de styles.css ── */
 @media (max-width: 600px) {
