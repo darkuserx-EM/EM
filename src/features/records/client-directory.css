@@ -148,3 +148,8 @@
   .client-section-heading .button { min-height: 36px; }
   .client-inspector-related p { align-items: flex-start; }
 }
+
+/* Objetivos táctiles: pestañas y acciones de la ficha del cliente con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .client-section-tabs button, .client-section-heading .button { min-height: var(--target-min); }
+}

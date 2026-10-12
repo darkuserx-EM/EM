@@ -137,3 +137,9 @@
   .os-print-report { position: static; padding: 0; }
   .os-report-section, .os-report-header, .os-report-meta { break-inside: avoid; }
 }
+
+/* Objetivos táctiles: enlace de cada fila y botón de la barra de resultados con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .os-row-link, .os-result-bar button { min-height: var(--target-min); }
+  .os-row-link { min-width: var(--target-min); }
+}

@@ -23,3 +23,8 @@
 .portal-bottom { font-size: var(--text-xs); }
 .operator-placeholder small { font-size: var(--text-xs); color: color-mix(in srgb, var(--color-text-inverse) 65%, transparent); }
 .operator-preview > footer { font-size: var(--text-xs); color: color-mix(in srgb, var(--color-text-inverse) 65%, transparent); }
+
+/* Objetivos táctiles: acciones de cada equipo del cliente con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .client-machine-actions .button, .client-reports-link { min-height: var(--target-min); }
+}

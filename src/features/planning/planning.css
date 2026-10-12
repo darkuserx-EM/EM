@@ -234,3 +234,17 @@
   .planning-view-switch > button { flex: 1; }
   .planning-schedule-form { grid-template-columns: 1fr; }
 }
+
+/* Objetivos táctiles: días, encabezados de mes, contadores y enlaces del calendario y del tablero con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .planning-date-navigation .button, .planning-mini-grid > button, .planning-month-heading, .planning-day-number, .planning-mobile-count, .planning-card-name, .planning-report-link { min-height: var(--target-min); }
+}
+
+/* En teléfonos, 7 columnas en 375 px dejan los días en 41–42 px de ancho: menos relleno lateral para llegar a 44 px. */
+@media (pointer: coarse) and (max-width: 750px) {
+  .planning-month-day { padding-inline: 1px; }
+}
+@media (pointer: coarse) and (max-width: 420px) {
+  .planning-mini-month { padding-inline: 8px; }
+  .planning-mini-grid { gap: 1px; }
+}

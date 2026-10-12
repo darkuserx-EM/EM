@@ -32,3 +32,8 @@
 .monthly-detail p { margin-top:8px; }
 .monthly-warning { font-size:var(--text-xs); color:var(--color-warning-text); line-height:1.7; margin-top:12px; }
 @media(max-width:700px) { .monthly-mobile-hint { display:block; font-size:var(--text-xs); color:var(--color-text-muted); line-height:1.7; }.monthly-comparison { font-size:var(--text-sm); }.monthly-controls,.monthly-controls > label { width:100%; }.monthly-controls select { min-width:0; width:100%; }.monthly-detail { padding:14px; } }
+
+/* Objetivos táctiles: casilla «Incluir proyección» con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .monthly-legend .monthly-toggle { min-height: var(--target-min); }
+}
