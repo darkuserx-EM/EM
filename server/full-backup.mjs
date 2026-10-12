@@ -1,3 +1,4 @@
+import {attachmentBatches} from './attachment-batches.mjs';
 import { todayGT } from './generated/domain.mjs';
 import { createHash } from 'node:crypto';
 import { equipmentImageFields, isEquipmentImageReference } from './generated/domain.mjs';
@@ -45,13 +46,10 @@ export async function* fullBackupEntries(conn) {
     id = record.id;
   }
   if (needed.size) throw Object.assign(new Error('Missing referenced equipment media'), { code: 'BACKUP_MEDIA_MISSING' });
-  id = '';
-  for (;;) {
-    const [rows] = await conn.execute('SELECT * FROM em_attachments WHERE id>? ORDER BY id LIMIT 1', [id]);
-    if (!rows.length) break;
-    const row = rows[0]; const { content, ...metadata } = row; metadata.size = Number(metadata.size); metadata.created_at = Number(metadata.created_at);
+  for await(const rows of attachmentBatches(conn)) for(const row of rows) {
+    const { content, ...metadata } = row; metadata.size = Number(metadata.size); metadata.created_at = Number(metadata.created_at);
     const file = { metadata, base64: content.toString('base64') }; validateRestoreFile(file);
-    yield { type: 'attachment', file }; id = row.id;
+    yield { type: 'attachment', file };
   }
 }
 export function registerFullBackupRoutes(app, { pool, logger = console.error }) {

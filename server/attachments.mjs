@@ -1,7 +1,7 @@
 import express from 'express';
 import { randomUUID, createHash } from 'node:crypto';
 import { filterVisible } from './generated/domain.mjs';
-import { readDatabase } from './database.mjs';
+import { manifestPage } from './attachment-batches.mjs';
 const fail=(status,message)=>Object.assign(new Error(message),{status,expose:true});
 const fields='id,order_id,category,name,mime,size,sha256,uploaded_by,created_at';
 export function decodeAttachment(body) {
@@ -34,7 +34,7 @@ async function readOrder(pool,id) {
 export function registerAttachmentRoutes(app,{pool}) {
   app.get('/api/attachments',async(req,res)=>{
     const id=String(req.query.orderId || ''); permitted(await readOrder(pool,id),req.actor);
-    const [files]=await pool.execute(`SELECT ${fields} FROM em_attachments WHERE order_id=? ORDER BY created_at`,[id]); res.json({files});
+    const [files]=await pool.execute(`SELECT ${fields} FROM em_attachments WHERE order_id=? ORDER BY created_at,id`,[id]); res.json({files});
   });
   app.get('/api/attachments/:id/file',async(req,res)=>{
     const [rows]=await pool.execute(`SELECT ${fields} FROM em_attachments WHERE id=?`,[req.params.id]); const file=rows[0];
@@ -50,7 +50,7 @@ export function registerAttachmentRoutes(app,{pool}) {
   },express.json({limit:'6mb'}),async(req,res)=>{
     const conn=await pool.getConnection();
     try {
-      await conn.beginTransaction(); const db=await readDatabase(conn,true); permitted(db.entities.OrdenServicio.find(row=>row.id===req.body?.orderId),req.actor,true);
+      await conn.beginTransaction(); await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE'); permitted(await readOrder(conn,req.body?.orderId),req.actor,true);
       const file=decodeAttachment(req.body);
       const [existing]=await conn.execute(`SELECT ${fields} FROM em_attachments WHERE request_id=?`,[req.body.requestId]);
       if(existing.length) {
@@ -66,6 +66,10 @@ export function registerAttachmentRoutes(app,{pool}) {
   });
   app.get('/api/admin/attachments-manifest',async(req,res)=>{
     if(req.actor.rol!=='Administrador') throw fail(403,'Solo administración puede respaldar archivos.');
-    const [files]=await pool.query(`SELECT ${fields} FROM em_attachments ORDER BY created_at`);res.json({files});
+    const page=manifestPage(req.query);
+    if(!page){const [files]=await pool.query(`SELECT ${fields} FROM em_attachments ORDER BY created_at,id`);return res.json({files});}
+    const [files]=await pool.execute(`SELECT ${fields} FROM em_attachments ${page.cursor?'WHERE created_at>? OR (created_at=? AND id>?)':''} ORDER BY created_at,id LIMIT ${page.limit+1}`,page.cursor?[page.cursor[0],page.cursor[0],page.cursor[1]]:[]);
+    const more=files.length>page.limit,rows=files.slice(0,page.limit),last=rows.at(-1);
+    res.json({files:rows,nextCursor:more?Buffer.from(JSON.stringify([Number(last.created_at),last.id])).toString('base64url'):null});
   });
 }
