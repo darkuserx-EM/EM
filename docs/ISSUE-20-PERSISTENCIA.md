@@ -103,3 +103,35 @@ historial paginado en #63 e índices/lotes por bytes en #67–68. No se duplican
 No se aumenta el pool de cinco conexiones sin medir la carga y el límite real
 del alojamiento. Cambiar el nombre de `/api/mutate` o añadir un ejecutor `tsx`
 no reduce por sí mismo el trabajo de SQL ni sustituye pruebas de integridad.
+
+## Etapa 3: páginas operativas por permisos y revisión
+
+`/api/database?paged=1` mantiene catálogos y conteos autorizados, pero no incluye
+los payloads de solicitudes, órdenes ni lecturas. Las pestañas antiguas conservan
+el contrato completo hasta recargarse. `/api/operations/:entity` filtra y pagina
+estas colecciones en SQL (25 filas por defecto, máximo 200); los contadores se
+calculan sobre todo el ámbito autorizado, no sobre la página visible.
+
+La migración 10 construye `em_operation_index` en lotes de 100, sin modificar ni
+eliminar originales de `em_records`. Cada guardado actualiza registros y proyección
+en la misma transacción. Se conserva el respaldo original completo y la validación
+del dominio. No ejecutar versiones de servidor anteriores en paralelo: no mantienen
+la proyección. Para revertir servidor y volver a publicar esta versión, reconstruir
+la proyección con las escrituras detenidas (marcar esquema 9, arrancar y verificar).
+No hay que restaurar ni eliminar los datos originales para volver al código anterior.
+
+Solicitudes y reportes consultan directamente una página y sus detalles por ID;
+la ficha solicita solo el historial del equipo. Los consumidores que calculan un
+historial completo recorren páginas de 200, cacheadas por revisión. Si cambia la
+revisión o el perfil durante el recorrido, descartan el conjunto incompleto y
+actualizan; no muestran un subtotal como si fuera el total. El orden por fecha e ID
+es determinista. Las búsquedas no permiten inferir campos privados del cliente/técnico.
+
+Las pruebas SQL recorren 10,001 reportes con fechas empatadas, verifican identidad,
+conteos, permisos de cuatro perfiles, búsqueda, detalles inaccesibles, rechazo de
+revisiones antiguas y reanudación de migración sin alterar el hash de los originales.
+El índice por equipo evita filesort en el caso medido. La paginación numérica usa
+offset: el costo de páginas muy profundas y búsquedas de texto crece; no se afirma
+costo constante. Los dashboards aún necesitan todos sus registros autorizados y
+el servidor conserva la instantánea de dominio para validar escrituras. `OTHoras`
+y `OTRepuesto`, sin flujo de captura activo en esta etapa, siguen en la instantánea.

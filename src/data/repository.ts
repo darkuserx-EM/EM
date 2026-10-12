@@ -1,4 +1,5 @@
 import {localAuditPage, type AuditQuery} from './audit-log';
+import {localOperationPage,isPagedEntity,type OperationQuery,type PagedEntity} from './operation-page';
 import { preparePlan, todayGT } from '../domain/maintenance-plan';
 import { findingClosed, upgradeFindingCollection } from '../domain/equipment-findings';
 import { definitions, type Actor, type Database, type EntityName, type EntityRecord, type Scalar } from '../domain/model';
@@ -16,7 +17,7 @@ export const STORAGE_KEY = 'portal-em.database.v1';
 export const LOCAL_MAX_ROWS = 20000;
 export interface StorageAdapter { getItem(key: string): string | null; setItem(key: string, value: string): void }
 export interface Repository {
-  getAll(): Promise<EntityRecord[]>;
+  getAll(query?:OperationQuery): Promise<EntityRecord[]>;
   getById(id: string): Promise<EntityRecord | undefined>;
   create(input: Record<string, Scalar>): Promise<EntityRecord>;
   update(id: string, input: Record<string, Scalar>): Promise<EntityRecord>;
@@ -52,6 +53,11 @@ export class LocalDataSource {
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getRevision = () => this.database.revision;
+  recordCounts(actor:Actor) {assertAdmin(actor);return Object.fromEntries(Object.entries(this.database.entities).map(([name,rows])=>[name,rows.length]));}
+  async operationPage(entity:PagedEntity,actor:Actor,query:OperationQuery={}) {
+    const entities=Object.fromEntries(Object.entries(this.database.entities).map(([name,rows])=>[name,filterVisible(actor,name as EntityName,rows,this.database.entities)])) as Database['entities'];
+    return localOperationPage(entity,query,{...this.database,entities});
+  }
   async auditLog(actor: Actor, query: AuditQuery = {}) { assertAdmin(actor); return localAuditPage(this.database.entities.Bitacora,query); }
   refresh() {
     const saved = this.storage.getItem(STORAGE_KEY);
@@ -110,7 +116,7 @@ export class LocalDataSource {
     if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo', 'Hallazgo', 'PlanPM'].includes(entity)) throw new ValidationError('La edición de este módulo se habilitará en su etapa de desarrollo.');
   }
   repository(entity: EntityName, actor: Actor): Repository {
-    const getAll = async () => structuredClone(filterVisible(actor, entity, this.database.entities[entity], this.database.entities));
+    const getAll = async (query:OperationQuery={}) => isPagedEntity(entity)&&Object.keys(query).length ? (await this.operationPage(entity,actor,{...query,page:1,pageSize:Math.max(1,this.database.entities[entity].length)})).rows : structuredClone(filterVisible(actor, entity, this.database.entities[entity], this.database.entities));
     return {
       getAll,
       getById: async id => (await getAll()).find(row => row.id === id),
