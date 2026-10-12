@@ -1,3 +1,4 @@
+import MfaSettings from './MfaSettings';
 import { useState, type FormEvent } from 'react';
 import { ErrorNotice, Modal } from '../../components/ui';
 import { useActor } from '../../app/state';
@@ -49,6 +50,7 @@ export function AccountDialog({onClose}: {onClose: () => void}) {
       {notice && <p className="auth-notice" role="status">{notice}</p>}<ErrorNotice message={error}/>
       <button type="submit" className="button button-dark" disabled={busy}>{busy ? 'Procesando…' : mode === 'password' ? 'Guardar nueva contraseña' : scope === 'all' ? 'Cerrar todas mis sesiones' : 'Cerrar las demás sesiones'}</button>
     </form>
+    {actor.rol === 'Administrador' && <MfaSettings/>}
     <div className="modal-actions"><button type="button" className="button" disabled={busy} onClick={logout}>Cerrar esta sesión</button></div>
   </Modal>;
 }
