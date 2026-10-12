@@ -71,9 +71,16 @@ Todos los colores y tamaños de las vistas anual, mensual y semanal, del tablero
 - **Token nuevo `--color-warning-solid`** (`#a6752d`, de Mantenimiento): barras y líneas de gráfico en ámbar (estimado, por vencer). `--color-warning-text` es demasiado oscuro para una barra.
 - `equipment-file.css` completa los textos del historial (Reparaciones y Uso) que `styles.css` dejaba bajo AA.
 
+## Paso 6 · Inicio y Reportes
+
+- `home.css`, `admin-home.css` y `operational.css` pasan a tokens con las mismas equivalencias del paso 5: quedan 0 colores fijos y ningún tamaño menor de 12 px.
+- El botón principal de Inicio («Nueva orden») usa `--color-brand-text` (5.7:1 con texto blanco). Al pasar el cursor se oscurece con `color-mix()`, sin color fijo.
+- El resalte naranja de las barras al pasar el cursor usa `--color-brand`, que es decorativo.
+- `base.css`: `small` sin tamaño propio mantiene su proporción (`.83em`) con mínimo de 12 px. Antes el navegador lo dejaba en 10–11 px; pasaba en los indicadores de Reportes y en «Planes de esta semana».
+
 ## Siguientes pasos
 
 1. ~~Base global~~ (paso 1, `base.css`).
-2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → ~~ficha del equipo~~ (paso 5) → Inicio → administración → portal del cliente.
+2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → ~~ficha del equipo~~ (paso 5) → ~~Inicio~~ (paso 6) → administración → portal del cliente.
 3. **Componentes compartidos:** `Button`, `Field`, `Badge`, `Tabs`/`Steps`, `KpiCard`, `DataTable`.
 4. **Control en CI:** Stylelint contra colores y tamaños fuera de los tokens, y prueba de contraste.
