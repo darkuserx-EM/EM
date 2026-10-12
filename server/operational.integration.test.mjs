@@ -46,7 +46,7 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
  });
  async function mutate(action,entity,fields,id){const revision=(await call('database',undefined,admin)).data.revision;return call('mutate',{revision,action,entity,fields,id},admin);}
  const created=await mutate('create','OrdenServicio',{equipo_id:'eq-a',tipo:'Preventivo',sintoma:'Prueba sintética',estado:'Programada',prioridad:'Media',tecnico_id:tech.data.technicianId,fecha_programada:'2026-10-10',visible_cliente:true,solicitud_id:randomUUID()});assert.equal(created.status,200,JSON.stringify(created.data));const order=created.data.result;
- await t.test('ediciones operativas usan la versión del registro y conservan validación bajo bloqueo',async()=>{
+ await t.test('ediciones operativas usan la versión del registro y conservan validación al confirmar',async()=>{
    assert.equal((await mutate('create','LecturaHorometro',{equipo_id:'eq-a',valor:100,fecha:new Date(Date.now()-60000).toISOString()})).status,200);
    const initial=(await call('database',undefined,admin)).data;
    const ticket=await call('mutate',{action:'create',entity:'Ticket',revision:initial.revision,fields:{equipo_id:'eq-a',titulo:'Solicitud concurrente',descripcion:'Prueba de independencia',prioridad:'Media',solicitud_id:randomUUID()}},admin);assert.equal(ticket.status,200,JSON.stringify(ticket.data));
@@ -79,6 +79,55 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
      try {assert.equal((await call('mutate',request(),admin)).status,500);}finally{await pool.execute("UPDATE em_records SET payload=? WHERE entity='Cliente' AND id='client-a'",[original[0].payload]);await pool.query('UPDATE em_meta SET revision=revision+1 WHERE id=1');}
      assert.equal((await call('mutate',request(),admin)).status,200);
    } finally {pool.getConnection=getConnection;if(other){other.closeAllConnections();await new Promise(resolve=>other.close(resolve));}}
+ });
+
+ await t.test('dos escritores calculan en paralelo; el perdedor revalida sin duplicar códigos ni eventos',async()=>{
+   const getConnection=pool.getConnection.bind(pool);let waiting=0,release;
+   const gate=new Promise(resolve=>{release=resolve;});const timer=setTimeout(()=>release(),5000);
+   pool.getConnection=async()=>{const conn=await getConnection();return new Proxy(conn,{get(target,key){const value=target[key];if(key==='execute')return async(...args)=>{if(args[0]==='UPDATE em_meta SET revision=? WHERE id=1 AND revision=?'&&waiting<2){waiting++;if(waiting===2)release();await gate;}return value.apply(target,args);};return typeof value==='function'?value.bind(target):value;}});};
+   try {
+     const before=await readSnapshot(pool),requestId=randomUUID();
+     const request={action:'create',entity:'Ticket',revision:0,fields:{equipo_id:'eq-a',titulo:'Idempotencia concurrente',descripcion:'Solo un alta aunque lleguen dos envíos',solicitud_id:requestId}};
+     const results=await Promise.all([call('mutate',request,admin),call('mutate',request,admin)]);
+     assert.equal(waiting,2,'ambas validaciones deben alcanzar la confirmación sin bloquearse entre sí');assert.ok(results.every(r=>r.status===200),JSON.stringify(results.map(r=>r.data.error)));assert.equal(results[0].data.result.id,results[1].data.result.id);
+     const after=await readSnapshot(pool);assert.equal(after.revision,before.revision+1);assert.equal(after.entities.Bitacora.length,before.entities.Bitacora.length+1);assert.equal(after.entities.Ticket.filter(row=>row.solicitud_id===requestId).length,1);
+   }finally{clearTimeout(timer);pool.getConnection=getConnection;}
+ });
+ await t.test('un commit sin confirmación no se repite y el reintento explícito recupera el mismo registro',async()=>{
+   const getConnection=pool.getConnection.bind(pool);let commits=0;
+   pool.getConnection=async()=>{const conn=await getConnection();return new Proxy(conn,{get(target,key){const value=target[key];if(key==='commit')return async()=>{await value.call(target);commits++;throw Error('Synthetic lost COMMIT acknowledgement');};return typeof value==='function'?value.bind(target):value;}});};
+   const requestId=randomUUID(),request={action:'create',entity:'Ticket',revision:0,fields:{equipo_id:'eq-a',titulo:'Confirmación incierta',descripcion:'No repetir automáticamente',solicitud_id:requestId}};
+   try{assert.equal((await call('mutate',request,admin)).status,500);assert.equal(commits,1);}finally{pool.getConnection=getConnection;}
+   const before=await readSnapshot(pool),rows=before.entities.Ticket.filter(row=>row.solicitud_id===requestId);assert.equal(rows.length,1);
+   const retry=await call('mutate',request,admin);assert.equal(retry.status,200);assert.equal(retry.data.result.id,rows[0].id);assert.deepEqual(await readSnapshot(pool),before);
+ });
+ await t.test('revalida la asignación modificada por otro proceso antes de aceptar una lectura',async()=>{
+   const getConnection=pool.getConnection.bind(pool);let changed=false;
+   pool.getConnection=async()=>{const conn=await getConnection();return new Proxy(conn,{get(target,key){const value=target[key];if(key==='execute')return async(...args)=>{
+     if(args[0]==='UPDATE em_meta SET revision=? WHERE id=1 AND revision=?'&&!changed) {
+       changed=true;const external=await getConnection();
+       try {await external.beginTransaction();const before=await readDatabase(external,true),next=structuredClone(before);const row=next.entities.OrdenServicio.find(row=>row.id===order.id);row.tecnico_id=next.entities.Tecnico.find(row=>row.id!==tech.data.technicianId).id;row.fecha_actualizacion=new Date().toISOString();next.revision++;await saveDatabase(external,next,before);await external.commit();}catch(error){await external.rollback();throw error;}finally{external.release();}
+     }
+     return value.apply(target,args);
+   };return typeof value==='function'?value.bind(target):value;}});};
+   const requestId=randomUUID(),before=await readSnapshot(pool);
+   try {
+     const result=await call('mutate',{action:'create',entity:'LecturaHorometro',revision:before.revision,fields:{equipo_id:'eq-a',orden_id:order.id,valor:120,fecha:new Date().toISOString(),solicitud_id:requestId}},technician);
+     assert.equal(changed,true);assert.equal(result.status,403,JSON.stringify(result.data));
+     const after=await readSnapshot(pool);assert.equal(after.revision,before.revision+1);assert.deepEqual(after.entities.Bitacora,before.entities.Bitacora);assert.ok(!after.entities.LecturaHorometro.some(row=>row.solicitud_id===requestId));
+   }finally{pool.getConnection=getConnection;}
+   const current=(await readSnapshot(pool)).entities.OrdenServicio.find(row=>row.id===order.id);
+   assert.equal((await mutate('update','OrdenServicio',{tecnico_id:tech.data.technicianId,expected_updated_at:current.fecha_actualizacion},order.id)).status,200);
+ });
+ await t.test('un fallo de persistencia posterior al control de revisión revierte también el historial',async()=>{
+   const before=await readSnapshot(pool),getConnection=pool.getConnection.bind(pool);let guarded=false;
+   pool.getConnection=async()=>{const conn=await getConnection();return new Proxy(conn,{get(target,key){const value=target[key];if(key==='execute')return async(...args)=>{
+     if(args[0]==='UPDATE em_meta SET revision=? WHERE id=1 AND revision=?') {const result=await value.apply(target,args);guarded=true;return result;}
+     if(args[0].startsWith('INSERT INTO em_records'))throw Error('Synthetic failure after revision guard');
+     return value.apply(target,args);
+   };return typeof value==='function'?value.bind(target):value;}});};
+   try{assert.equal((await call('mutate',{action:'create',entity:'Ticket',revision:0,fields:{equipo_id:'eq-a',titulo:'No guardar',descripcion:'Prueba rollback',solicitud_id:randomUUID()}},admin)).status,500);assert.equal(guarded,true);}finally{pool.getConnection=getConnection;}
+   assert.deepEqual(await readSnapshot(pool),before);
  });
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');const body={orderId:order.id,requestId:randomUUID(),category:'Antes',name:'evidencia.png',base64:bytes.toString('base64')};let file;
  await t.test('subida autorizada e idempotente, rechazo HTML y acceso cruzado',async()=>{

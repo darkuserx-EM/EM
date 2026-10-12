@@ -54,6 +54,7 @@ function poolFor(user, prepare = () => {}) {
         }
         return [{}];
       }
+      if(sql==='UPDATE em_meta SET revision=? WHERE id=1 AND revision=?'){if(db.revision!==args[1])return [{affectedRows:0}];db.revision=args[0];return [{affectedRows:1}];}
       if(sql.startsWith('UPDATE em_meta SET revision=')) { db.revision=args[0]; return [{}]; }
       throw new Error('Unexpected write');
     },
@@ -476,3 +477,10 @@ test('technician image scope follows orders and never exposes another technician
 });
 
 test('la muestra de operador no se sirve en producción',async t=>{const request=await fixture(t,null);assert.equal((await request('/revision/TCL-001')).status,404);});
+
+test('late commit acknowledgements never replace a newer cache revision',async()=>{
+  const cache=createSnapshotCache(null);let finish;
+  const older=cache.publishAfterCommit({revision:10,entities:{}},()=>new Promise(resolve=>{finish=resolve;}));
+  await cache.publishAfterCommit({revision:11,entities:{}},async()=>{});finish();await older;
+  assert.equal(await cache.peek(10),undefined);assert.equal((await cache.peek(11)).revision,11);
+});
