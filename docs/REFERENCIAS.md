@@ -6,7 +6,7 @@ Prompt proporcionado por el usuario para Portal EM: plataforma de flota, manteni
 
 ## Conversación compartida
 
-Conversación proporcionada por el usuario durante la construcción de la etapa 1. El enlace de la conversación se conserva fuera del repositorio público.
+Conversación proporcionada por el usuario durante la construcción de la etapa 1. El enlace de la conversación se conserva fuera del repositorio privado.
 
 Título visible: **Sistema gestión mantenimiento montacargas**.
 
@@ -21,3 +21,7 @@ El 04/10/2026 se recibió el texto del informe, comenzando por «Resumen Ejecuti
 Se incorporó al diseño solicitado por el usuario la consulta de reparaciones y uso: diagnósticos, trabajos, repuestos, horas de técnico, importes internos, lecturas, gráfica y exportación por equipo. Son datos ficticios, con edición y captura operativa pendientes de sus etapas.
 
 Las propuestas adicionales de ERP, sensores/IoT, SSO, infraestructura AWS/Kubernetes y métricas avanzadas no cambian por sí solas el alcance vigente. Se conserva Hostinger, la construcción en 10 etapas y la separación de facturación prevista con QuickBooks. Tampoco se adoptan como compromisos los plazos, costos, SLA o afirmaciones de cumplimiento del informe.
+
+## Dependencia de Excel
+
+SheetJS se fija al tarball oficial 0.20.3 de cdn.sheetjs.com; el canal npm público no representa las versiones actuales de Community Edition. pnpm-lock.yaml conserva su integridad SHA-512. Actualizar solo desde la documentación oficial, renovar el lockfile y ejecutar importación/exportación/restauración antes de integrar. No descargar una URL mutable en producción. Referencia: https://docs.sheetjs.com/docs/getting-started/installation/frameworks/

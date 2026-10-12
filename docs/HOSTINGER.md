@@ -2,7 +2,7 @@
 
 Configuración de sincronización, registro de errores y comprobación pendiente del proxy: [ESTABILIZACION.md](ESTABILIZACION.md). Las nuevas variables son `TRUST_PROXY` (valor conservado: `1`) y `ENABLE_NETWORK_DIAGNOSTICS` (deshabilitada por defecto).
 
-Destino autorizado: portal.expertosenmontacargas.com, como aplicación independiente del WordPress comercial. El 04/10/2026 se verificó Business Web Hosting, Node.js 24, pnpm y MySQL. El asistente se preparó con el subdominio y el repositorio público https://github.com/darkuserx-EM/EM, rama main. La aplicación quedó publicada para pruebas el 04/10/2026. Se verificaron HTTPS, conexión con una base MySQL dedicada, acceso administrativo, escritura/importación y persistencia después del reinicio.
+Destino autorizado: portal.expertosenmontacargas.com, como aplicación independiente del WordPress comercial. El 04/10/2026 se verificó Business Web Hosting, Node.js 24, pnpm y MySQL. El asistente se preparó con el subdominio y el repositorio entonces público https://github.com/darkuserx-EM/EM, rama main. La aplicación quedó publicada para pruebas el 04/10/2026. Se verificaron HTTPS, conexión con una base MySQL dedicada, acceso administrativo, escritura/importación y persistencia después del reinicio.
 
 ## Aplicación con MySQL
 
@@ -21,7 +21,7 @@ El servidor crea sus tablas y catálogos iniciales. La pantalla de instalación 
 
 La publicación inicial se hizo desde la URL pública y entonces no quedó habilitada la actualización automática. El 08/10/2026 se verificó que la integración del PR #16 en `main` disparó automáticamente un despliegue en Hostinger: commit `7538d948`, estado Completed/Current a las 09:55 de Guatemala. Las pruebas y compilación del PR habían pasado antes de integrarlo. El disparador de Hostinger responde a la actualización de main; no espera por sí mismo los checks de GitHub, por lo que sigue pendiente exigirlos con protección de rama.
 
-En localhost se conserva la demostración; VITE_DATA_MODE=server fuerza la conexión al servidor para pruebas locales. Nunca publicar VITE_DATA_MODE=local como entorno operativo. La gestión de cuentas adicionales y recuperación de contraseña todavía no tiene interfaz. Los adjuntos necesitan almacenamiento persistente y respaldo propios en su etapa.
+En localhost se conserva la demostración; VITE_DATA_MODE=server fuerza la conexión al servidor para pruebas locales. Nunca publicar VITE_DATA_MODE=local como entorno operativo. La gestión de cuentas, recuperación de acceso y sus límites se documentan en CUENTAS-Y-RECUPERACION.md. Las fotografías y adjuntos persisten en MySQL y cuentan con respaldo verificable; ver FOTOGRAFIAS-MYSQL.md.
 
 Los correos automáticos, WhatsApp y procesos programados necesitan configuración adicional; no están implementados ni contratados en esta entrega. No se requiere instalar WordPress ni adquirir un constructor de sitios para ejecutar este proyecto.
 
@@ -31,3 +31,9 @@ Los correos automáticos, WhatsApp y procesos programados necesitan configuraci�
 - https://www.hostinger.com/support/connecting-a-hostinger-mysql-database-to-a-node-js-application/
 
 La verificación del plan confirma compatibilidad, no capacidad garantizada para un volumen de usuarios aún no definido. Los recursos del plan se comparten con otros sitios.
+
+## Estado verificado el 11/10/2026 (Guatemala)
+
+El repositorio es privado y el despliegue automático continúa funcionando. La API de GitHub informa main sin protección; consultar su protección devuelve 403 por el plan de la cuenta. No cambiar a público para habilitarla. Hasta disponer de protección, comprobar manualmente CI del commit exacto antes de cada merge. Issue #11 reabierto con la evidencia. Hostinger no espera el resultado de CI en main.
+
+El panel muestra respaldos diarios de MySQL. Se ensayaron migración, exportación y restauración en una base local aislada, comparando identidades y bytes. No equivale a restaurar una copia del proveedor. Quedan pendientes comprobar retención/recuperación de Hostinger y configurar un destino externo aprobado para copia cifrada.
