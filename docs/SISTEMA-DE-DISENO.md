@@ -120,6 +120,11 @@ Con este paso todas las pantallas usan tokens. Lo único que queda bajo 12 px es
 
 En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-danger` y `button-orange`), `.icon-button` y el aviso de cambios sin guardar pasan a tokens. Visualmente cambia poco: borde del botón `#dddfd5` → `--color-border`, radio 7 → 8 px, y botón oscuro `#3a3a3a` → `--color-primary`. El foco de enlaces y botones usa `--color-focus`. Las tablas (`.data-table`) usan el token `--color-border-subtle` para separar filas y `--color-surface-subtle` en la cabecera y al pasar el cursor. La tabla de permisos de Accesos usa `DataTable` como ejemplo.
 
+## Formularios en línea y casillas
+
+- **Estilos compartidos en `base.css`:** la barra de filtros y formularios en línea (`.ops-filters`: Reportes, Roles y accesos y Adjuntos) y los paneles `.access-accounts`, `.access-credentials`, `.ops-table-actions` y `.attachment-*` estaban en la hoja de Inicio. Al abrir Roles y accesos, Datos u Órdenes directamente (recargar o un enlace), esas pantallas quedaban sin estilos hasta pasar por Inicio. **Regla:** una clase que usan dos o más pantallas va en `base.css`, no en la hoja de una pantalla.
+- **Casilla con texto:** `<label className="check-field"><input type="checkbox" />Sin vencimiento</label>`. Dentro de `.ops-filters` y `.account-fields`, que apilan etiqueta y campo, queda en una sola línea, a 16 px y centrada con los campos vecinos.
+
 ## Objetivos táctiles
 
 En pantallas de dedo (`@media (pointer: coarse)`), todo control mide al menos `--target-min` (44 px). Con mouse no cambia nada: todas las reglas están dentro de ese bloque.
