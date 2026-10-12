@@ -88,10 +88,12 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     const [rows] = await pool.execute('SELECT s.csrf, s.token_hash, u.* FROM em_sessions s JOIN em_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=TRUE AND (u.expires_at IS NULL OR u.expires_at>?)',[digest(session),Date.now(),Date.now()]);
     if (!rows[0]) throw fail(401,'Tu sesión terminó. Vuelve a ingresar.');
     req.actor = actorOf(rows[0]); req.sessionHash = rows[0].token_hash; req.csrf = rows[0].csrf;
+    req.mustChangePassword = Boolean(rows[0].must_change_password);
     if (!['GET','HEAD'].includes(req.method) && !equal(req.get('x-csrf-token'),req.csrf)) throw fail(403,'La sesión de esta solicitud no es válida. Recarga el portal.');
+    if (req.mustChangePassword && !['/session','/password','/logout'].includes(req.path)) return _res.status(403).json({error:'Debes cambiar tu contraseña temporal antes de continuar.',code:'PASSWORD_CHANGE_REQUIRED'});
     next();
   });
-  app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf}));
+  app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf,mustChangePassword:req.mustChangePassword}));
   // Small authenticated requests are parsed only after session and CSRF checks.
   app.use('/api', (req,res,next) => ['/mutate','/attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
   registerAccountRoutes(app, pool);

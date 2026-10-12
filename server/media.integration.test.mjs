@@ -46,10 +46,10 @@ test('Fotografías separadas: permisos, migración, integridad y recuperación c
   const url=`http://127.0.0.1:${server.address().port}/api/`; let serial=1;
   const headers = session => ({Origin:origin,'Content-Type':'application/json','X-Forwarded-For':`198.51.100.${serial++ % 250 + 1}`,...(session?{Cookie:session.cookie,'X-CSRF-Token':session.csrf}:{})});
   async function call(path,body,session) { const r=await fetch(url+path,{method:body===undefined?'GET':'POST',headers:headers(session),body:body===undefined?undefined:JSON.stringify(body)}); return {status:r.status,headers:r.headers,data:await r.json()}; }
-  async function login(email,password) { const r=await call('login',{email,password}); assert.equal(r.status,200); const s={cookie:r.headers.getSetCookie()[0].split(';')[0],csrf:''}; s.csrf=(await call('session',undefined,s)).data.csrf;return s; }
+  async function login(email,password) { const r=await call('login',{email,password}); assert.equal(r.status,200); const s={cookie:r.headers.getSetCookie()[0].split(';')[0],csrf:''}; const session=(await call('session',undefined,s)).data; s.csrf=session.csrf;if(session.mustChangePassword)assert.equal((await call('password',{currentPassword:password,newPassword:password+' changed'},s)).status,200);return s; }
   const password='Synthetic media test password 2026!'; assert.equal((await call('setup',{setupToken,email:'admin@example.invalid',name:'QA Media',password})).status,201);
   const admin=await login('admin@example.invalid',password);
-  const createUser=async(role,email,extra={})=>{const r=await call('admin/users',{name:'Cuenta sintética',email,role,days:7,...extra},admin);assert.equal(r.status,201,JSON.stringify(r.data));return {...await login(r.data.email,r.data.password),...r.data};};
+  const createUser=async(role,email,extra={})=>{const r=await call('admin/users',{name:'Cuenta sintética',email,role,days:7,specialty:'Diagnóstico sintético',...extra},admin);assert.equal(r.status,201,JSON.stringify(r.data));return {...await login(r.data.email,r.data.password),...r.data};};
   const a=await createUser('Cliente','a@example.invalid',{clientId:'client-a'}),b=await createUser('Cliente','b@example.invalid',{clientId:'client-b'});
   const tech=await createUser('Técnico','tech@example.invalid'),otherTech=await createUser('Técnico','other@example.invalid');
   async function mutate(action,entity,fields,id,extra={}) { const revision=(await call('database',undefined,admin)).data.revision; return call('mutate',{action,entity,fields,id,revision,...extra},admin); }

@@ -29,7 +29,9 @@ test('Respaldo y recuperación de adjuntos: binarios completos, integridad y aut
   async function login(email, password) {
     const response = await call('login', { email, password }); assert.equal(response.status, 200);
     const session = { cookie: response.headers.getSetCookie()[0].split(';')[0], csrf: '' };
-    session.csrf = (await call('session', undefined, session)).data.csrf; return session;
+    const state = (await call('session', undefined, session)).data; session.csrf=state.csrf;
+    if(state.mustChangePassword)assert.equal((await call('password',{currentPassword:password,newPassword:password+' changed'},session)).status,200);
+    return session;
   }
   const password = 'Synthetic backup test password 2026!';
   assert.equal((await call('setup', { setupToken, email: 'admin@example.invalid', name: 'QA Backup', password })).status, 201);
