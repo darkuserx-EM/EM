@@ -452,3 +452,5 @@ test('technician image scope follows orders and never exposes another technician
   assert.equal((await request(`/api/equipment-images/equipment-1/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,200);
   assert.equal((await request(`/api/equipment-images/equipment-2/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,404);
 });
+
+test('la muestra de operador no se sirve en producción',async t=>{const request=await fixture(t,null);assert.equal((await request('/revision/TCL-001')).status,404);});

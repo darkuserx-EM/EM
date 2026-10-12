@@ -6,3 +6,4 @@ export { validateDatabase } from '../src/domain/validation';
 export { ValidationError } from '../src/domain/errors';
 export { addClientSectors } from '../src/domain/client-profile';
 export { equipmentImageFields, isEquipmentImageReference, validEquipmentImage } from '../src/domain/equipment-images';
+export { todayGT } from '../src/domain/maintenance-plan';

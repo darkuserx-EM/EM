@@ -1,3 +1,4 @@
+import { todayGT } from './generated/domain.mjs';
 import { createHash } from 'node:crypto';
 import { equipmentImageFields, isEquipmentImageReference } from './generated/domain.mjs';
 import { presentEquipment } from './equipment-images.mjs';
@@ -59,7 +60,7 @@ export function registerFullBackupRoutes(app, { pool, logger = console.error }) 
     const conn = await pool.getConnection();
     try {
       await conn.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ'); await conn.beginTransaction();
-      res.type('application/x-ndjson').set('Content-Disposition', `attachment; filename="Portal-EM-Completo-${new Date().toISOString().slice(0, 10)}.jsonl"`);
+      res.type('application/x-ndjson').set('Content-Disposition', `attachment; filename="Portal-EM-Completo-${todayGT()}.jsonl"`);
       const checksum = createHash('sha256'); const counts = { record: 0, media: 0, attachment: 0 };
       for await (const entry of fullBackupEntries(conn)) {
         checksum.update(await writeLine(res, entry));

@@ -1,3 +1,4 @@
+import { todayGT } from './generated/domain.mjs';
 import express from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { decodeAttachment } from './attachments.mjs';
@@ -41,7 +42,7 @@ export function registerAttachmentBackupRoutes(app, { pool, logger = console.err
       await conn.beginTransaction();
       const [totals] = await conn.query('SELECT COUNT(*) AS n FROM em_attachments');
       const total = Number(totals[0].n); const exportedAt = new Date().toISOString();
-      res.type('application/x-ndjson').set('Content-Disposition', `attachment; filename="portal-em-adjuntos-${exportedAt.slice(0, 10)}.jsonl"`);
+      res.type('application/x-ndjson').set('Content-Disposition', `attachment; filename="portal-em-adjuntos-${todayGT()}.jsonl"`);
       await writeLine(res, { type: 'portal-em.attachments', version: 1, exportedAt, count: total });
       let cursor = ''; let count = 0; const checksum = createHash('sha256');
       while (!res.destroyed) {
