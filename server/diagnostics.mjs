@@ -1,17 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
+import { errorField } from './errors.mjs';
 
 // Never serialize the error itself: mysql messages and stacks can contain values.
+/** @param {unknown} error @param {{event:string,method?:string,route?:string,status:number}} context @param {(line:string)=>void} [logger] */
 export function logFailure(error, { event, method, route, status }, logger = console.error) {
   const reference = randomUUID();
   const names = ['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ValidationError'];
-  const code = typeof error?.code === 'string' && /^(ER_[A-Z0-9_]+|E[A-Z]{2,24}|CONFIG_[A-Z_]+)$/.test(error.code) ? error.code : undefined;
-  const frames = typeof error?.stack === 'string' ? error.stack.split('\n').slice(1, 9).flatMap(line => {
+  const rawCode=errorField(error,'code'),stack=errorField(error,'stack'),name=errorField(error,'name'),errno=errorField(error,'errno');
+  const code = typeof rawCode === 'string' && /^(ER_[A-Z0-9_]+|E[A-Z]{2,24}|CONFIG_[A-Z_]+)$/.test(rawCode) ? rawCode : undefined;
+  const frames = typeof stack === 'string' ? stack.split('\n').slice(1, 9).flatMap(line => {
     const location = line.match(/([\w.-]+\.(?:[cm]?js|ts):\d+:\d+)\)?$/);
     return location ? [location[1]] : [];
   }) : [];
   logger(JSON.stringify({ level: 'error', time: new Date().toISOString(), event, reference, method, route, status,
-    error: { name: names.includes(error?.name) ? error.name : 'Error', code, errno: Number.isInteger(error?.errno) ? error.errno : undefined, frames } }));
+    error: { name: typeof name==='string' && names.includes(name) ? name : 'Error', code, errno: Number.isInteger(errno) ? errno : undefined, frames } }));
   return reference;
 }
 
