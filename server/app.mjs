@@ -187,13 +187,15 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   });
   app.get('/api/equipment-images/:id/:field/:hash', /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").SessionBody>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> {
     const equipment = await readEquipmentRecord(pool,req.params.id);
-    /** @type {Pick<import("../src/domain/model.js").Database["entities"],"Equipo"|"OrdenServicio">|undefined} */
+    /** @type {Pick<import("../src/domain/model.js").Database["entities"],"Equipo"|"OrdenServicio"|"Ticket">|undefined} */
     let scope;
     if (equipment && req.actor.rol === 'Técnico' && req.actor.tecnico_id) {
 
 /** @type {{payload:string}[]} */
     const orders = await select(pool,"SELECT payload FROM em_records WHERE entity='OrdenServicio' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.tecnico_id'))=?", [equipment.id,req.actor.tecnico_id]);
-      scope = { OrdenServicio: orders.map(order => JSON.parse(order.payload)), Equipo:[] };
+      /** @type {{payload:string}[]} */
+      const tickets = await select(pool,"SELECT payload FROM em_records WHERE entity='Ticket' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.responsable_id'))=?", [equipment.id,req.actor.tecnico_id]);
+      scope = { OrdenServicio: orders.map(order => JSON.parse(order.payload)), Ticket:tickets.map(ticket=>JSON.parse(ticket.payload)), Equipo:[] };
     }
     const row = equipment && filterVisible(req.actor,'Equipo',[equipment],scope)[0];
     /** @type {{type:string,bytes:Buffer}|null} */

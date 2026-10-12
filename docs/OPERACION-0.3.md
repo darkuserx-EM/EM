@@ -82,3 +82,13 @@ Inicio, flota y administración se descargan al abrir su pantalla. Excel ya ten�
 La sincronización conserva una colección Bitacora vacía por compatibilidad. El historial real se consulta en /api/audit-log, solo para administración, con cursores por fecha e identificador y filtros por equipo, hallazgo, entidad, acción y fechas de Guatemala. Datos y respaldos permite cargar más; el historial específico se consulta al expandirlo. El índice em_audit_index se rellena en la migración 5 y se actualiza en la misma transacción que los registros. Los respaldos conservan toda la bitácora. La restauración sigue preservando la bitácora vigente.
 
 Roles y accesos incluye /api/admin/security-events, paginado e indexado; nunca devuelve hashes ni contraseñas. Esta mejora reduce las respuestas de sincronización, pero la validación de escrituras todavía lee el conjunto operativo (#20). Reversión: revertir el código; conservar los índices y tablas, que son auxiliares y no alteran los registros originales.
+
+### Solicitudes en el calendario
+
+Las solicitudes operativas con fecha y sin orden aparecen en las vistas anual, mensual y semanal. Las abiertas sin fecha aparecen en «Por programar», ordenadas por prioridad y antigüedad. Las resueltas y canceladas requieren el filtro de estado. La fecha de creación nunca se interpreta como visita.
+
+Cuando existe una orden vinculada, solo esa orden genera la cita y conserva su fecha. La relación se comprueba antes de filtrar fechas y estados, incluso si la orden es privada, borrador o cancelada. Un indicador de solo lectura evita duplicados sin revelar datos de órdenes ajenas. El ticket conserva sus datos originales; en su consulta se distingue la programación de la orden.
+
+Administración y coordinación pueden revisar y programar solicitudes. El cliente consulta las de su empresa y las órdenes compartidas. El técnico consulta únicamente tickets asignados a su responsable, sin poder editarlos; también puede consultar el equipo correspondiente. Las restricciones se aplican en servidor, consultas paginadas y archivos.
+
+Validación: 270 pruebas de aplicación, 47 de servidor y 79 de integración MySQL/MariaDB; tipos y compilación. Recorridos autenticados aislados de administrador, coordinador, cliente y técnico; programación persistida, deduplicación, permisos cruzados y móvil de 390 px. La suite local completa pasó con dos trabajadores; la ejecución paralela inicial agotó el tiempo de tres pruebas existentes de validación incremental. CI debe pasar antes de fusionar.

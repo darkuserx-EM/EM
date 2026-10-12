@@ -5,7 +5,7 @@ import { ValidationError } from './errors';
 export function canAccessModule(actor: Actor, module: string): boolean {
   if (actor.rol === 'Administrador') return module !== 'portal';
   if (actor.rol === 'Cliente') return ['portal', 'tickets', 'ordenes', 'calendario', 'reportes'].includes(module);
-  if (actor.rol === 'Técnico') return ['inicio', 'ordenes', 'calendario', 'planificador'].includes(module);
+  if (actor.rol === 'Técnico') return ['inicio', 'tickets', 'ordenes', 'calendario', 'planificador'].includes(module);
   return ['inicio', 'flota', 'clientes', 'contratos', 'tickets', 'ordenes', 'preventivos', 'calendario', 'planificador', 'checklists', 'reportes', 'plan', 'dashboard'].includes(module);
 }
 export function canWriteCatalogs(actor: Actor) { return actor.rol === 'Administrador'; }
@@ -15,7 +15,7 @@ const publicFields: Partial<Record<EntityName, string[]>> = {
   Sede: ['cliente_id', 'nombre', 'direccion', 'municipio', 'departamento', 'referencia_ubicacion', 'autoriza_contacto_id'],
   Equipo: ['marca', 'modelo', 'serie', 'id_interno_cliente', 'tipo', 'propiedad', 'cliente_id', 'sede_id', 'horometro', 'anio', 'capacidad_lb', 'altura_elevacion_in', 'altura_torre_in', 'largo_cuchillas_in', 'voltaje', 'combustible', 'bateria', 'cargador', 'llantas_delanteras', 'llantas_traseras', 'caster', 'foto_equipo', 'placa_datos', 'foto_frontal', 'foto_trasera', 'foto_lateral_1', 'foto_lateral_2', 'estado_operativo', 'estado_mantenimiento', 'fuera_de_flota'],
   OrdenServicio: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tecnico', 'tipo', 'prioridad', 'estado', 'fecha_programada', 'hora_programada', 'fecha', 'fecha_fin', 'sintoma', 'motivo', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'trabajo', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas', 'visible_cliente', 'ubicacion'],
-  Ticket: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'titulo', 'descripcion', 'prioridad', 'estado', 'fecha_programada', 'responsable_id', 'orden_id'],
+  Ticket: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'titulo', 'descripcion', 'prioridad', 'estado', 'fecha_programada', 'responsable_id', 'orden_id', 'tiene_orden'],
   LecturaHorometro: ['equipo_id', 'cliente_id', 'orden_id', 'fecha', 'valor', 'odometro_millas', 'origen', 'es_estimado'],
   Tecnico: ['nombre', 'especialidad', 'activo'],
 };
@@ -31,7 +31,13 @@ export function projectOperation(actor:Actor,entity:EntityName,row:EntityRecord)
   const redacted=Object.fromEntries(Object.entries(row).filter(([key])=>!key.startsWith('costo_'))) as EntityRecord;
   return actor.rol==='Coordinador'?redacted:project(entity,redacted);
 }
-export function filterVisible(actor: Actor, entity: EntityName, rows: EntityRecord[], entities?: Pick<Database['entities'], 'Equipo' | 'OrdenServicio'>) {
+export function filterVisible(actor: Actor, entity: EntityName, rows: EntityRecord[], entities?: Pick<Database['entities'], 'Equipo' | 'OrdenServicio'> & Partial<Pick<Database['entities'], 'Ticket'>>) {
+  // Read-only metadata: suppress a duplicate appointment even when the linked
+  // order is private or assigned to another technician. Never expose that order.
+  if (entity === 'Ticket') {
+    const linked = new Set(entities?.OrdenServicio.map(order => order.ticket_id).filter(Boolean));
+    rows = rows.map(row => ({ ...row, tiene_orden: !!row.orden_id || linked.has(row.id) }));
+  }
   if (actor.rol === 'Administrador') return rows;
   // Findings remain internal to administration until client visibility is designed.
   if (['Hallazgo', 'PlanPM'].includes(entity)) return [];
@@ -56,12 +62,16 @@ export function filterVisible(actor: Actor, entity: EntityName, rows: EntityReco
   if (actor.rol === 'Técnico') {
     if (!actor.tecnico_id) return [];
     const assigned = entities?.OrdenServicio.filter(row => row.tecnico_id === actor.tecnico_id) || [];
+    const tickets = entities?.Ticket?.filter(row => row.responsable_id === actor.tecnico_id) || [];
     const equipmentIds = new Set(assigned.map(row => row.equipo_id));
     const clientIds = new Set(assigned.map(row => row.cliente_id));
+    const ticketEquipmentIds = new Set(tickets.map(row => row.equipo_id));
+    const ticketClientIds = new Set(tickets.map(row => row.cliente_id));
     if (entity === 'Tecnico') return rows.filter(row => row.id === actor.tecnico_id).map(row => project(entity, row));
+    if (entity === 'Ticket') return rows.filter(row => row.responsable_id === actor.tecnico_id).map(row => project(entity, row));
     if (entity === 'OrdenServicio') return rows.filter(row => row.tecnico_id === actor.tecnico_id).map(row => project(entity, row));
-    if (entity === 'Equipo') return rows.filter(row => equipmentIds.has(row.id)).map(row => project(entity, { ...row, estado_operativo: operationalState(row), estado_mantenimiento: maintenanceState(row) }));
-    if (entity === 'Cliente') return rows.filter(row => clientIds.has(row.id)).map(row => project(entity, row));
+    if (entity === 'Equipo') return rows.filter(row => equipmentIds.has(row.id) || ticketEquipmentIds.has(row.id)).map(row => project(entity, { ...row, estado_operativo: operationalState(row), estado_mantenimiento: maintenanceState(row) }));
+    if (entity === 'Cliente') return rows.filter(row => clientIds.has(row.id) || ticketClientIds.has(row.id)).map(row => project(entity, row));
     if (['Contacto', 'Sede'].includes(entity)) return rows.filter(row => clientIds.has(row.cliente_id)).map(row => project(entity, row));
     if (entity === 'LecturaHorometro') return rows.filter(row => equipmentIds.has(row.equipo_id)).map(row => project(entity, row));
     return [];
