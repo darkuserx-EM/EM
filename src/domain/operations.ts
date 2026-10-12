@@ -8,6 +8,21 @@ export const orderTypes = ['Preventivo', 'Correctivo', 'Inspección', 'Mantenimi
 export const operationalEntities = ['Ticket', 'OrdenServicio', 'LecturaHorometro'] as const;
 export const isOperationalEntity = (entity: EntityName) => operationalEntities.some(name => name === entity);
 export const managesOperations = (actor: Actor) => ['Administrador', 'Coordinador'].includes(actor.rol);
+
+/** Called only after a validated transition to Completada, using the full write baseline. */
+export function ticketsResolvedByOrder(order: EntityRecord, entities: Database['entities']): EntityRecord[] {
+  if (order.schema_operacion !== 1 || order.importado === true || order.estado !== 'Completada') return [];
+  return entities.Ticket.filter(ticket => {
+    if (ticket.schema_operacion !== 1 || ticket.importado === true || !['Nuevo', 'En revisión', 'Programado'].includes(String(ticket.estado))) return false;
+    if (order.ticket_id !== ticket.id && ticket.orden_id !== order.id) return false;
+    const related = entities.OrdenServicio.filter(row => row.ticket_id === ticket.id || ticket.orden_id === row.id);
+    // Canceled, historical, ambiguous or still-open work requires manual review.
+    // Keep both legacy link directions; never infer a relationship from equipment alone.
+    return related.length > 0 && (!ticket.orden_id || related.some(row => row.id === ticket.orden_id)) && related.every(row =>
+      row.schema_operacion === 1 && row.importado !== true && row.estado === 'Completada' &&
+      row.equipo_id === ticket.equipo_id && row.cliente_id === ticket.cliente_id && (!row.ticket_id || row.ticket_id === ticket.id));
+  });
+}
 const text = (value: unknown) => String(value ?? '').trim();
 const validDay = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 const validInstant = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));

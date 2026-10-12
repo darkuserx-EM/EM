@@ -134,6 +134,42 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
    try{assert.equal((await call('mutate',{action:'create',entity:'Ticket',revision:0,fields:{equipo_id:'eq-a',titulo:'No guardar',descripcion:'Prueba rollback',solicitud_id:randomUUID()}},admin)).status,500);assert.equal(guarded,true);}finally{pool.getConnection=getConnection;}
    assert.deepEqual(await readSnapshot(pool),before);
  });
+ const closure={estado:'Completada',diagnostico:'Prueba',trabajo_realizado:'Ajuste',pruebas_realizadas:'Frenado',resultado_pruebas:'Satisfactorio'};
+ async function linkedWork(count=1) {
+   const ticket=(await mutate('create','Ticket',{equipo_id:'eq-a',titulo:'Cierre '+randomUUID(),descripcion:'Prueba de cierre atómico',solicitud_id:randomUUID()})).data.result;
+   const orders=[];
+   for(let i=0;i<count;i++) {
+     const created=await mutate('create','OrdenServicio',{equipo_id:'eq-a',ticket_id:ticket.id,sintoma:'Prueba vinculada',estado:'Programada',tecnico_id:tech.data.technicianId,fecha_programada:'2026-10-12',solicitud_id:randomUUID()});
+     assert.equal(created.status,200,JSON.stringify(created.data));
+     const started=await mutate('update','OrdenServicio',{estado:'En proceso',expected_updated_at:created.data.result.fecha_actualizacion},created.data.result.id);assert.equal(started.status,200);orders.push(started.data.result);
+   }
+   return {ticket,orders};
+ }
+ await t.test('dos cierres concurrentes resuelven el ticket una sola vez al completar la última orden',async()=>{
+   const {ticket,orders}=await linkedWork(2),getConnection=pool.getConnection.bind(pool);let waiting=0,release;
+   const gate=new Promise(resolve=>{release=resolve;}),timer=setTimeout(()=>release(),5000);
+   pool.getConnection=async()=>{const conn=await getConnection();return new Proxy(conn,{get(target,key){const value=target[key];if(key==='execute')return async(...args)=>{if(args[0]==='UPDATE em_meta SET revision=? WHERE id=1 AND revision=?'&&waiting<2){waiting++;if(waiting===2)release();await gate;}return value.apply(target,args);};return typeof value==='function'?value.bind(target):value;}});};
+   let results;
+   try {results=await Promise.all(orders.map(row=>call('mutate',{action:'update',entity:'OrdenServicio',id:row.id,revision:0,fields:{...closure,expected_updated_at:row.fecha_actualizacion}},technician)));}
+   finally {clearTimeout(timer);pool.getConnection=getConnection;}
+   assert.equal(waiting,2);assert.ok(results.every(r=>r.status===200),JSON.stringify(results.map(r=>r.data)));
+   const after=await readSnapshot(pool),resolved=after.entities.Ticket.find(row=>row.id===ticket.id);
+   assert.equal(resolved.estado,'Resuelto');assert.equal(resolved.creado_por,ticket.creado_por);
+   assert.equal(after.entities.Bitacora.filter(row=>row.ticket_id===ticket.id&&row.accion==='Resolución por orden').length,1);
+   const [indexed]=await pool.execute("SELECT state FROM em_operation_index WHERE entity='Ticket' AND id=?",[ticket.id]);assert.equal(indexed[0].state,'Resuelto');
+   const clientView=await call(`operations/Ticket?id=${ticket.id}`,undefined,a);assert.equal(clientView.status,200);assert.equal(clientView.data.rows[0].estado,'Resuelto');
+   const retry=await call('mutate',{action:'update',entity:'OrdenServicio',id:orders[1].id,revision:0,fields:{...closure,expected_updated_at:orders[1].fecha_actualizacion}},technician);assert.ok([400,409].includes(retry.status));assert.deepEqual(await readSnapshot(pool),after);
+ });
+ await t.test('un fallo al guardar la auditoría revierte orden, ticket, lectura e índices',async()=>{
+   const {ticket,orders}=await linkedWork(),before=await readSnapshot(pool),getConnection=pool.getConnection.bind(pool);let failed=false;
+   pool.getConnection=async()=>{const conn=await getConnection();return new Proxy(conn,{get(target,key){const value=target[key];if(key==='execute')return async(...args)=>{if(args[0].startsWith('INSERT INTO em_audit_log')){failed=true;throw Error('Synthetic closure audit failure');}return value.apply(target,args);};return typeof value==='function'?value.bind(target):value;}});};
+   try {const r=await call('mutate',{action:'update',entity:'OrdenServicio',id:orders[0].id,revision:0,fields:{...closure,horometro:130,expected_updated_at:orders[0].fecha_actualizacion}},technician);assert.equal(r.status,500);assert.equal(failed,true);}
+   finally {pool.getConnection=getConnection;}
+   assert.deepEqual(await readSnapshot(pool),before);
+   const [indexed]=await pool.execute("SELECT state FROM em_operation_index WHERE entity='Ticket' AND id=?",[ticket.id]);assert.equal(indexed[0].state,'Nuevo');
+   const saved=await call('mutate',{action:'update',entity:'OrdenServicio',id:orders[0].id,revision:0,fields:{...closure,horometro:130,expected_updated_at:orders[0].fecha_actualizacion}},technician);assert.equal(saved.status,200,JSON.stringify(saved.data));
+   const after=await readSnapshot(pool);assert.equal(after.entities.Ticket.find(row=>row.id===ticket.id).estado,'Resuelto');assert.equal(after.entities.LecturaHorometro.filter(row=>row.orden_id===orders[0].id).length,1);
+ });
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');const body={orderId:order.id,requestId:randomUUID(),category:'Antes',name:'evidencia.png',base64:bytes.toString('base64')};let file;
  await t.test('subida autorizada e idempotente, rechazo HTML y acceso cruzado',async()=>{
    assert.equal((await call('attachments',body,a)).status,403);const up=await call('attachments',body,technician);assert.equal(up.status,201,JSON.stringify(up.data));file=up.data.file;

@@ -92,3 +92,20 @@ Cuando existe una orden vinculada, solo esa orden genera la cita y conserva su f
 Administración y coordinación pueden revisar y programar solicitudes. El cliente consulta las de su empresa y las órdenes compartidas. El técnico consulta únicamente tickets asignados a su responsable, sin poder editarlos; también puede consultar el equipo correspondiente. Las restricciones se aplican en servidor, consultas paginadas y archivos.
 
 Validación: 270 pruebas de aplicación, 47 de servidor y 79 de integración MySQL/MariaDB; tipos y compilación. Recorridos autenticados aislados de administrador, coordinador, cliente y técnico; programación persistida, deduplicación, permisos cruzados y móvil de 390 px. La suite local completa pasó con dos trabajadores; la ejecución paralela inicial agotó el tiempo de tres pruebas existentes de validación incremental. CI debe pasar antes de fusionar.
+
+### Cierre de solicitudes desde órdenes
+
+Al completar una orden operativa se resuelven sus tickets abiertos solo si todas sus órdenes vinculadas también están completadas. Se reconocen ambos enlaces históricos (ticket_id y orden_id); no se relacionan solicitudes por compartir equipo. Un borrador, orden pendiente, cancelada, histórica o vínculo contradictorio conserva la revisión manual. No se reescriben solicitudes ya resueltas/canceladas ni se procesan cierres antiguos en bloque.
+
+El cambio de estado del ticket, su autor y fecha, la lectura opcional de cierre, la orden y sus entradas de bitácora se confirman en la misma transacción. La bitácora identifica ticket y orden que provoca el cierre. Un técnico no obtiene permiso para editar tickets: esta transición es una consecuencia de completar su orden autorizada. Si fallan validación, lectura, versión o persistencia, no se guarda ningún cambio parcial. Dos cierres simultáneos se reevalúan sobre la revisión vigente y generan una sola resolución. Estado del equipo, hallazgos y visibilidad del reporte conservan su gestión independiente.
+
+Evaluación del reporte de flujos recibido el 12/10/2026:
+
+- FR-01: la ficha de cliente ya reúne Equipos, Contactos y Sedes con altas vinculadas; no se añade otro asistente.
+- FR-02: ya hay campos numéricos, unidades y selector de voltaje. Se descarta extraer números ignorando sufijos: aceptar kg como lb o metros como pulgadas corrompería las medidas.
+- FR-03: se incorpora la resolución transaccional anterior. La creación de orden desde ticket ya precarga equipo, cliente, sede, descripción, prioridad, fecha y responsable.
+- FR-04: el reporte ya tiene cinco pasos y permite guardar avances antes del cierre; conserva el borrador ante errores. El cierre exige cuatro textos, no seis; horómetro, causa confirmada y receptor siguen opcionales.
+- FR-05: el costeo e inventario estructurados requieren su etapa propia. No se deducen consumos ni importes del texto libre y no se inventan costos.
+- FR-06: las sedes y condiciones de acceso ya se gestionan en la ficha; la orden admite seleccionar la sede. Se conserva la posibilidad de registrar solicitudes urgentes con información incompleta.
+
+Pruebas del cierre: 280 pruebas de aplicación, 47 de servidor y 81 de integración con base de datos; lint, tipado y compilación correctos. Se comprobó el cierre autenticado por técnico desde la interfaz sin inventar horómetro, conservación del historial, aislamiento del cliente, concurrencia entre dos órdenes y reversión ante fallo de auditoría.

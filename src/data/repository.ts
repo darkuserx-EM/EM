@@ -11,7 +11,7 @@ import { administrativeState, equipmentStatusChanges, equipmentStatusValues } fr
 import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-images';
 import { ValidationError } from '../domain/errors';
 import type { HistoricalReportsImport } from './historical-reports';
-import { isOperationalEntity, prepareOperation } from '../domain/operations';
+import { isOperationalEntity, prepareOperation, ticketsResolvedByOrder } from '../domain/operations';
 
 export const STORAGE_KEY = 'portal-em.database.v1';
 export const LOCAL_MAX_ROWS = 20000;
@@ -186,6 +186,14 @@ export class LocalDataSource {
           this.audit(next, actor, 'LecturaHorometro', 'Lectura de cierre', `${row.codigo} · ${row.horometro} h; lectura original conservada.`);
         }
         if (entity === 'Equipo' && typeof original.horometro !== 'number') this.initialEquipmentReading(next, actor, row);
+        if (entity === 'OrdenServicio' && row.estado === 'Completada' && original.estado !== 'Completada') {
+          for (const ticket of ticketsResolvedByOrder(row, next.entities)) {
+            const previousState = ticket.estado;
+            Object.assign(ticket, { estado: 'Resuelto', actualizado_por: actor.id, fecha_actualizacion: new Date(Math.max(Date.now(), Date.parse(ticket.fecha_actualizacion) + 1)).toISOString() });
+            this.audit(next, actor, 'Ticket', 'Resolución por orden', `${ticket.codigo} · ${previousState} → Resuelto. Resuelto automáticamente por finalización de ${row.codigo}; todas sus órdenes vinculadas están completadas.`);
+            Object.assign(next.entities.Bitacora.at(-1)!, { ticket_id: ticket.id, orden_id: row.id, equipo_id: ticket.equipo_id, estado_anterior: previousState, estado_nuevo: 'Resuelto' });
+          }
+        }
         const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : equipmentImageFields.some(field => field === key) ? `${equipmentImageLabels[key as keyof typeof equipmentImageLabels]}: ${value ? 'actualizada' : 'retirada'}` : `${key}: ${original[key]} → ${value}`).join('; ');
         if (entity === 'Hallazgo') this.recordFindingChange(next, actor, row, original);
         else this.audit(next, actor, entity, 'Actualización', `${row.codigo} · ${changed || 'Sin cambios'}`); this.commit(next); return structuredClone(row);
