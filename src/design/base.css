@@ -7,6 +7,8 @@
  */
 
 /* ── Textos generales ─────────────────────────────────────────── */
+/* <small> sin tamaño propio: el navegador lo reduce (smaller ≈ 0.83em) y puede quedar en 10 px. Mantiene la proporción con mínimo de 12 px. */
+small { font-size: max(var(--text-xs), .83em); }
 .eyebrow { font-size: var(--text-xs); color: var(--color-text-muted); letter-spacing: .1em; }
 .muted, .subtle-label { color: var(--color-text-muted); }
 .section-caption { font-size: var(--text-sm); }
