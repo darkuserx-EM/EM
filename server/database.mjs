@@ -13,6 +13,9 @@ export async function migrate(pool) {
     `CREATE TABLE IF NOT EXISTS em_login_limits (bucket CHAR(64) PRIMARY KEY, attempts INT NOT NULL, expires_at BIGINT NOT NULL) ENGINE=InnoDB`,
     `CREATE TABLE IF NOT EXISTS em_security_events (id VARCHAR(128) PRIMARY KEY, actor_id VARCHAR(128) NOT NULL, target_id VARCHAR(128) NOT NULL, action VARCHAR(50) NOT NULL, created_at BIGINT NOT NULL) ENGINE=InnoDB`,
     `CREATE TABLE IF NOT EXISTS em_attachments (id VARCHAR(128) PRIMARY KEY, order_id VARCHAR(128) NOT NULL, request_id CHAR(36) NOT NULL UNIQUE, category VARCHAR(30) NOT NULL, name VARCHAR(160) NOT NULL, mime VARCHAR(40) NOT NULL, size INT NOT NULL, sha256 CHAR(64) NOT NULL, uploaded_by VARCHAR(128) NOT NULL, created_at BIGINT NOT NULL, content MEDIUMBLOB NOT NULL, INDEX(order_id)) ENGINE=InnoDB`,
+    `CREATE TABLE IF NOT EXISTS em_media (equipment_id VARCHAR(128) NOT NULL, field VARCHAR(30) NOT NULL, hash CHAR(64) NOT NULL, mime VARCHAR(40) NOT NULL, size INT NOT NULL, sha256 CHAR(64) NOT NULL, uploaded_by VARCHAR(128) NOT NULL, created_at BIGINT NOT NULL, content MEDIUMBLOB NOT NULL, thumbnail MEDIUMBLOB, PRIMARY KEY(equipment_id,field,hash)) ENGINE=InnoDB`,
+    `CREATE TABLE IF NOT EXISTS em_media_uploads (id CHAR(36) PRIMARY KEY, equipment_id VARCHAR(128), field VARCHAR(30) NOT NULL, hash CHAR(64) NOT NULL, mime VARCHAR(40) NOT NULL, size INT NOT NULL, sha256 CHAR(64) NOT NULL, uploaded_by VARCHAR(128) NOT NULL, created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL, content MEDIUMBLOB NOT NULL, thumbnail MEDIUMBLOB, INDEX(uploaded_by), INDEX(expires_at)) ENGINE=InnoDB`,
+    `CREATE TABLE IF NOT EXISTS em_media_migration (equipment_id VARCHAR(128) PRIMARY KEY, payload LONGTEXT NOT NULL, created_at BIGINT NOT NULL) ENGINE=InnoDB`,
   ];
   for (const statement of sql) await pool.query(statement);
   const [userColumns] = await pool.query("SHOW COLUMNS FROM em_users LIKE 'expires_at'");

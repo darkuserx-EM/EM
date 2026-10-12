@@ -4,11 +4,29 @@ import { planClientImport, type ClientImportRow } from '../domain/client-import'
 import type { Repository } from './repository';
 import type { HistoricalReportsImport } from './historical-reports';
 import { isOperationalEntity } from '../domain/operations';
+import { equipmentImageFields } from '../domain/equipment-images';
 
 let csrf = '';
 let authEpoch = 0;
 type SyncedDatabase = Database & { syncToken?: string; access?: Actor };
 export function setCsrf(value: string) { csrf = value; authEpoch++; }
+async function uploadEquipmentFields(fields: Record<string, Scalar>) {
+  const values = { ...fields }; const uploads: Record<string, string> = {};
+  for (const field of equipmentImageFields) {
+    const value = values[field];
+    if (typeof value !== 'string' || !value.startsWith('data:')) continue;
+    const match = value.match(/^data:(image\/(?:png|jpeg|webp));base64,(.*)$/);
+    if (!match) throw new Error('La fotografía no es válida.');
+    const bytes = Uint8Array.from(atob(match[2]), char => char.charCodeAt(0));
+    const uploadId = crypto.randomUUID();
+    const response = await fetch('/api/equipment-media/upload', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': match[1], 'X-CSRF-Token': csrf, 'X-Upload-ID': uploadId, 'X-Equipment-Field': field }, body: bytes, signal: AbortSignal.timeout(30000) });
+    if (response.status === 401) window.dispatchEvent(new Event('portal-session-expired'));
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'No se pudo cargar la fotografía. Tus campos siguen en el formulario.');
+    values[field] = data.reference; uploads[field] = data.uploadId;
+  }
+  return { fields: values, mediaUploads: uploads };
+}
 export async function api<T>(path: string, body?: unknown): Promise<T> {
   const epoch = authEpoch;
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(),30000);
@@ -69,7 +87,7 @@ export class RemoteDataSource {
       getAll, getById: async id => (await getAll()).find(row => row.id === id),
       export: async predicate => { assertAdmin(actor); const rows = (await getAll()).filter(predicate || (() => true)); return entity === 'Equipo' ? (await api<{rows:EntityRecord[]}>('equipment-export', {ids:rows.map(row => row.id)})).rows : rows; },
       create: async (fields: Record<string, Scalar>) => {
-        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'create', entity, fields }); }
+        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'create', entity, ...(entity === 'Equipo' ? await uploadEquipmentFields(fields) : {fields}) }); }
         const key = JSON.stringify([actor.id, entity, Object.entries(fields).sort(([a], [b]) => a.localeCompare(b))]);
         const requestId = fields.solicitud_id || this.pendingCreates.get(key) || crypto.randomUUID();
         if (this.pendingCreates.size >= 100) this.pendingCreates.delete(this.pendingCreates.keys().next().value!);
@@ -78,7 +96,7 @@ export class RemoteDataSource {
         this.pendingCreates.delete(key); return result;
       },
       update: async (id, fields) => {
-        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'update', entity, id, fields }); }
+        if (!isOperationalEntity(entity)) { assertAdmin(actor); return this.mutate<EntityRecord>({ action: 'update', entity, id, ...(entity === 'Equipo' ? await uploadEquipmentFields(fields) : {fields}) }); }
         return this.mutate<EntityRecord>({ action: 'update', entity, id, fields: { expected_updated_at: this.current().entities[entity].find(row => row.id === id)?.fecha_actualizacion || '', ...fields } });
       },
       remove: async id => { assertAdmin(actor); await this.mutate({ action: 'remove', entity, id }); },
