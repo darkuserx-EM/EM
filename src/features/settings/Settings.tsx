@@ -4,6 +4,7 @@ import { Check, LockKeyhole, Route, ShieldCheck } from 'lucide-react';
 import { SectionTitle } from '../../components/ui';
 import { stages } from '../../domain/model';
 import { demoUsers } from '../../data/seed';
+import './admin.css';
 
 export function AccessPage() {
   const rows = [
