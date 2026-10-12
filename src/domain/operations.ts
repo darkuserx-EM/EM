@@ -9,7 +9,7 @@ export const operationalEntities = ['Ticket', 'OrdenServicio', 'LecturaHorometro
 export const isOperationalEntity = (entity: EntityName) => operationalEntities.some(name => name === entity);
 export const managesOperations = (actor: Actor) => ['Administrador', 'Coordinador'].includes(actor.rol);
 
-/** Called only after a validated transition to Completada, using the full write baseline. */
+/** Called only after a validated completion, using the full write baseline. */
 export function ticketsResolvedByOrder(order: EntityRecord, entities: Database['entities']): EntityRecord[] {
   if (order.schema_operacion !== 1 || order.importado === true || order.estado !== 'Completada') return [];
   return entities.Ticket.filter(ticket => {
