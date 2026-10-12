@@ -52,6 +52,10 @@ export async function migrate(pool) {
   }
   const [eventIndexes] = await pool.query("SHOW INDEX FROM em_security_events WHERE Key_name='idx_created_id'");
   if (!eventIndexes.length) { try { await pool.query('ALTER TABLE em_security_events ADD INDEX idx_created_id (created_at,id)'); } catch(error) { if(error.code!=='ER_DUP_KEYNAME')throw error; } }
+  for(const [name,columns] of [['idx_attachment_order_created','order_id,created_at,id'],['idx_attachment_created','created_at,id']]) {
+    const [indexes]=await pool.query('SHOW INDEX FROM em_attachments WHERE Key_name=?',[name]);
+    if(!indexes.length)try{await pool.query('ALTER TABLE em_attachments ADD INDEX '+name+' ('+columns+')');}catch(error){if(error.code!=='ER_DUP_KEYNAME')throw error;}
+  }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -73,7 +77,7 @@ export async function migrate(pool) {
     if (Number(meta[0].schema_version) < 5) {
       await conn.query("INSERT INTO em_audit_index (id,entity,equipment_id,finding_id,action,created_at) SELECT id,JSON_UNQUOTE(JSON_EXTRACT(payload,'$.entidad')),NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id')),'null'),NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.hallazgo_id')),'null'),JSON_UNQUOTE(JSON_EXTRACT(payload,'$.accion')),JSON_UNQUOTE(JSON_EXTRACT(payload,'$.fecha_creacion')) FROM em_records WHERE entity='Bitacora' ON DUPLICATE KEY UPDATE entity=VALUES(entity),equipment_id=VALUES(equipment_id),finding_id=VALUES(finding_id),action=VALUES(action),created_at=VALUES(created_at)");
     }
-    await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,7) WHERE id=1');
+    await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,8) WHERE id=1');
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }

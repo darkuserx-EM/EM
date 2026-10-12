@@ -1,3 +1,4 @@
+import {attachmentBatches} from './attachment-batches.mjs';
 import { todayGT } from './generated/domain.mjs';
 import express from 'express';
 import { createHash, randomUUID } from 'node:crypto';
@@ -44,15 +45,13 @@ export function registerAttachmentBackupRoutes(app, { pool, logger = console.err
       const total = Number(totals[0].n); const exportedAt = new Date().toISOString();
       res.type('application/x-ndjson').set('Content-Disposition', `attachment; filename="portal-em-adjuntos-${todayGT()}.jsonl"`);
       await writeLine(res, { type: 'portal-em.attachments', version: 1, exportedAt, count: total });
-      let cursor = ''; let count = 0; const checksum = createHash('sha256');
-      while (!res.destroyed) {
-        const [rows] = await conn.execute(`SELECT ${fields},content FROM em_attachments WHERE id>? ORDER BY id LIMIT 1`, [cursor]);
-        if (!rows.length) break;
-        const row = rows[0]; const metadata = metadataOf(row);
+      let count = 0; const checksum = createHash('sha256');
+      for await (const rows of attachmentBatches(conn)) for(const row of rows) {
+        const metadata = metadataOf(row);
         const file = { metadata, base64: row.content.toString('base64') };
         validateRestoreFile(file);
         checksum.update(await writeLine(res, { type: 'attachment', file }), 'utf8');
-        cursor = row.id; count++;
+        count++;
       }
       if (count !== total || res.destroyed) throw Object.assign(new Error('Incomplete download'), { code: 'DOWNLOAD_INCOMPLETE' });
       await conn.commit();
