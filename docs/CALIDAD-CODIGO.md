@@ -17,3 +17,9 @@ No se reformatea todo el repositorio ni se introduce Prettier en esta correcció
 Se incluyen la conexión y migraciones de base de datos, planes de escritura, proyección operativa, caché de snapshots, presentación de imágenes y diagnóstico seguro de errores. Los comandos de escritura forman una unión discriminada; no se puede ejecutar un plan en un pool en lugar de su conexión transaccional. Los errores capturados son `unknown` y sus propiedades se estrechan antes de utilizarlas.
 
 La declaración de `generated/domain.mjs` se genera desde `server/domain.ts`, la misma entrada TypeScript que compila esbuild. No duplica contratos a mano ni inspecciona JavaScript generado como si fuera fuente mantenible. `typecheck` genera primero ese puente y usa resolución Bundler, igual que el dominio compartido. Las fuentes `.mjs` mantienen extensiones explícitas para Node. `server/type-tests/database.mts` añade once contratos negativos; el comportamiento de caché, CAS, rollback y migraciones sigue cubierto por integración.
+
+## Issue #70 · etapa 3: archivos y respaldos
+
+Fotografías, adjuntos, recuperación y respaldo completo se comprueban con tipos de Express y mysql2. Se distinguen los metadatos públicos de los de recuperación, las cargas pendientes de las fotografías guardadas y los bytes `Buffer` de su transporte base64. El archivo de respaldo tiene una unión discriminada por tipo de entrada. Las respuestas de carga y recuperación tienen contratos explícitos.
+
+Las validaciones existentes estrechan los valores antes de persistirlos; se construyen los metadatos a partir de los campos comprobados y no mediante conversiones de tipo. Se mantiene la verificación de tamaño/huella, la identidad, autoría, fecha original, control de acceso y transmisión con contrapresión. `@types/express` es exclusivamente de desarrollo. Diez contratos negativos adicionales cubren estos límites, además de las pruebas HTTP y de recuperación contra MariaDB/MySQL.
