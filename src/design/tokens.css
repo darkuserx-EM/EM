@@ -31,6 +31,7 @@
   --color-warning-text: #7a5a12;  --color-warning-bg: #fbf2dc;   /* 5.71:1 · Por vencer, estimado, por revisar */
   --color-danger-text:  #9b2c1f;  --color-danger-bg:  #fdecea;   /* 6.62:1 · Vencido, crítico, no operativo */
   --color-info-text:    #2f5f8a;  --color-info-bg:    #e8f0f8;   /* 5.84:1 · Programada, informativo */
+  --color-warning-solid: #a6752d;   /* barras y líneas de gráfico: estimado, por vencer · 4.0:1 sobre blanco (≥ 3:1 no textual) */
 
   /* ── Tipografía ───────────────────────────────────────────────── */
   --font-body: Inter, Arial, sans-serif;
