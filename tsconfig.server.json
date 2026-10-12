@@ -15,6 +15,10 @@
   "include": [
     "server/security.mjs",
     "server/totp.mjs",
-    "server/session-policy.mjs"
+    "server/session-policy.mjs",
+    "server/sql.mjs",
+    "server/audit-storage.mjs",
+    "server/attachment-batches.mjs",
+    "server/type-tests/**/*.mts"
   ]
 }
