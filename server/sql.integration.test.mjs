@@ -29,6 +29,7 @@ test('SQL: planes reales, lotes por bytes y permisos',{skip:process.env.MYSQL_IN
  await t.test('índices idempotentes evitan ordenar las consultas acotadas con 4,000 adjuntos',async()=>{
   await pool.query('ALTER TABLE em_attachments DROP INDEX idx_attachment_order_created, DROP INDEX idx_attachment_created');
   const query=`SELECT ${attachmentFields} FROM em_attachments WHERE order_id=? ORDER BY created_at,id`,manifest=`SELECT ${attachmentFields} FROM em_attachments ORDER BY created_at,id LIMIT 101`;
+  await pool.query('ANALYZE TABLE em_attachments');
   const before={order:await explain(query,['order-100']),manifest:await explain(manifest)};
   await migrate(pool);await migrate(pool);await pool.query('ANALYZE TABLE em_attachments');
   const after={order:await explain(query,['order-100']),manifest:await explain(manifest)};
