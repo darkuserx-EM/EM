@@ -26,7 +26,7 @@ export function EquipmentDetail({ equipment, clients, onBack, onEdit, initialVie
   const findings = useRows('Hallazgo', true);
   const sites = useRows('Sede');
   const actor = useActor(); const notify = useToast(state => state.notify);
-  const services = useRows('OrdenServicio', true); const readings = useRows('LecturaHorometro', true); const parts = useRows('OTRepuesto'); const labor = useRows('OTHoras'); const technicians = useRows('Tecnico');
+  const services = useRows('OrdenServicio', true, {equipment:equipment.id}); const readings = useRows('LecturaHorometro', true, {equipment:equipment.id}); const parts = useRows('OTRepuesto'); const labor = useRows('OTHoras'); const technicians = useRows('Tecnico');
   const [selectedView, setView] = useState<'summary' | 'maintenance' | 'findings' | 'repairs' | 'usage' | 'images'>(actor.rol === 'Administrador' ? initialView || 'summary' : 'repairs');
   const view = ['summary', 'findings', 'maintenance'].includes(selectedView) && actor.rol !== 'Administrador' ? 'repairs' : selectedView;
   const [design, setDesign] = useState(false);

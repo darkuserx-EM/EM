@@ -28,6 +28,7 @@ function poolFor(user, prepare = () => {}) {
       throw new Error('Unexpected query');
     },
     async execute(sql, args) {
+      if(sql.startsWith('INSERT INTO em_operation_index')||sql.startsWith('DELETE FROM em_operation_index'))return [{}];
       if(sql.startsWith('SELECT id,payload FROM em_audit_log'))return [db.entities.Bitacora.filter(row=>args.includes(row.id)).map(row=>({id:row.id,payload:JSON.stringify(row)}))];
       if(sql.startsWith('INSERT INTO em_audit_log')) {for(let i=0;i<args.length;i+=7)db.entities.Bitacora.push(JSON.parse(args[i+6]));return [{}];}
       if(sql.startsWith('UPDATE em_audit_state'))return [{}];

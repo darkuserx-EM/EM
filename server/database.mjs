@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import {ensureOperationIndex,migrateOperationIndex,indexOperations,operationalEntities} from './operation-index.mjs';
 import {ensureAuditStorage, migrateAuditStorage, appendAudit} from './audit-storage.mjs';
 import { createSeed, entityNames, validateDatabase, addClientSectors } from './generated/domain.mjs';
 export function connectDatabase(env) {
@@ -21,6 +22,7 @@ export async function migrate(pool) {
   ];
   for (const statement of sql) await pool.query(statement);
   await ensureAuditStorage(pool);
+  await ensureOperationIndex(pool);
   await pool.query('CREATE TABLE IF NOT EXISTS em_mfa_challenges (token_hash CHAR(64) PRIMARY KEY,user_id VARCHAR(128) NOT NULL,password_version CHAR(64) NOT NULL,expires_at BIGINT NOT NULL,attempts INT NOT NULL,INDEX(user_id),INDEX(expires_at),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
   await pool.query('CREATE TABLE IF NOT EXISTS em_recovery_codes (user_id VARCHAR(128) NOT NULL,code_hash CHAR(64) NOT NULL,used_at BIGINT NULL,PRIMARY KEY(user_id,code_hash),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');
   for(const [name,type] of Object.entries({totp_enabled:'BOOLEAN NOT NULL DEFAULT FALSE',totp_secret:'VARCHAR(220) NULL',totp_pending:'VARCHAR(220) NULL',totp_pending_expires:'BIGINT NULL',totp_last_step:'BIGINT NULL'})) {
@@ -83,6 +85,7 @@ export async function migrate(pool) {
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   await migrateAuditStorage(pool);
+  await migrateOperationIndex(pool);
 }
 export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
   const [meta] = await conn.query(`SELECT revision FROM em_meta WHERE id=1${lock ? ' FOR UPDATE' : ''}`);
@@ -104,6 +107,7 @@ export async function saveDatabase(conn, db, previous, {validate=validateDatabas
   const flush = async () => {
     if (!batch.length) return;
     await conn.execute(`INSERT INTO em_records (entity,id,payload) VALUES ${batch.map(() => '(?,?,?)').join(',')} ON DUPLICATE KEY UPDATE payload=VALUES(payload)`, batch.flat());
+    await indexOperations(conn,batch.filter(([entity])=>operationalEntities.includes(entity)).map(([entity,,payload])=>({entity,row:JSON.parse(payload)})));
     batch = []; bytes = 0;
   };
   for (const entity of entityNames) {
@@ -126,6 +130,7 @@ export async function saveDatabase(conn, db, previous, {validate=validateDatabas
     for (let i = 0; i < removed.length; i += 200) {
       const ids = removed.slice(i, i + 200);
       await conn.execute(`DELETE FROM em_records WHERE entity=? AND id IN (${ids.map(() => '?').join(',')})`, [entity, ...ids]);
+      if(operationalEntities.includes(entity))await conn.execute(`DELETE FROM em_operation_index WHERE entity=? AND id IN (${ids.map(()=>'?').join(',')})`,[entity,...ids]);
     }
   }
   await conn.execute('UPDATE em_meta SET revision=? WHERE id=1', [db.revision]);

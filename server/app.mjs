@@ -1,4 +1,6 @@
 import { encryptionKey } from './totp.mjs';
+import {registerOperationPages} from './operation-pages.mjs';
+import {operationalEntities} from './operation-index.mjs';
 import {auditSequence} from './audit-storage.mjs';
 import { mfaChallenge, registerMfaLogin, registerMfaRoutes } from './mfa.mjs';
 import { idleTimeout, clearSessionCookies } from './session-policy.mjs';
@@ -23,7 +25,12 @@ import { registerFullBackupRoutes } from './full-backup.mjs';
 
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
 const syncToken = (revision, actor) => digest(JSON.stringify(['portal-sync-v1', revision, actor]));
-const visible = (db, actor) => ({ ...presentDatabase({ ...db, entities: Object.fromEntries(entityNames.map(name => [name, name === 'Bitacora' ? [] : filterVisible(actor, name, db.entities[name], db.entities)])) }), syncToken: syncToken(db.revision, actor), access: actor });
+const visible = (db, actor, paged=false) => {
+  const entities=Object.fromEntries(entityNames.map(name=>[name,name==='Bitacora'?[]:filterVisible(actor,name,db.entities[name],db.entities)]));
+  const counts=Object.fromEntries(entityNames.map(name=>[name,entities[name].length]));
+  if(paged)for(const name of operationalEntities)entities[name]=[];
+  return {...presentDatabase({...db,entities}),syncToken:syncToken(db.revision,actor),access:actor,...(paged?{pagedEntities:operationalEntities,counts}:{})};
+};
 const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, cliente_id: user.client_id || undefined, tecnico_id: user.technician_id || undefined });
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
 export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60', totpEncryptionKey } ) {
@@ -125,6 +132,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   registerMfaRoutes(app,{pool,key:mfaKey});
   registerAccountRoutes(app, pool);
   registerAuditRoutes(app, pool);
+  registerOperationPages(app,{pool,syncToken});
   registerAdminUserRoutes(app, {pool,smallJson,logger});
   registerAttachmentRoutes(app, {pool,smallJson,logger});
   registerAttachmentBackupRoutes(app, {pool,logger});
@@ -135,7 +143,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     const [rows] = await pool.query('SELECT revision FROM em_meta WHERE id=1');
     const revision = Number(rows[0].revision);
     if (req.query.since === syncToken(revision, req.actor)) return res.status(204).end();
-    res.json(visible(await snapshots.read(revision),req.actor));
+    res.json(visible(await snapshots.read(revision),req.actor,req.query.paged==='1'));
   });
   if (networkDiagnostics) app.get('/api/diagnostico/red', (req,res) => {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
@@ -239,7 +247,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       if(nextChecker)validationIndexes.set(published,nextChecker);
       await snapshots.publishAfterCommit(published,()=>conn.commit());
       const publicResult = result && body.entity && req.actor.rol !== 'Administrador' ? filterVisible(req.actor,body.entity,[result],next.entities)[0] : result;
-      res.json({result:body.entity === 'Equipo' && result ? presentEquipment(next.entities.Equipo.find(row => row.id === result.id)) : publicResult,database:visible(next,req.actor)});
+      res.json({result:body.entity === 'Equipo' && result ? presentEquipment(next.entities.Equipo.find(row => row.id === result.id)) : publicResult,database:visible(next,req.actor,body.paged===true)});
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   });
   app.use('/api', (_req,_res,next)=>next(fail(404,'Ruta no encontrada.')));

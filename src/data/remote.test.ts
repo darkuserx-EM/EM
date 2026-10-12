@@ -19,7 +19,7 @@ it('usa el token recibido y conserva datos y suscriptores cuando no hay cambios'
   const fetch = vi.fn().mockResolvedValueOnce(Response.json(db)).mockResolvedValueOnce(new Response(null,{status:204}));vi.stubGlobal('fetch',fetch);
   const source = new RemoteDataSource();const listener=vi.fn();source.subscribe(listener);
   await source.refresh();await source.refresh();
-  expect(fetch.mock.calls[1][0]).toBe('/api/database?since=version-one');
+  expect(fetch.mock.calls[1][0]).toBe('/api/database?since=version-one&paged=1');
   expect(source.snapshot(demoUsers[0])).toEqual(db);expect(listener).toHaveBeenCalledTimes(1);
 });
 it('un 204 en un guardado no se interpreta como confirmación',async()=>{
