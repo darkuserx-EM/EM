@@ -34,7 +34,7 @@ test('Páginas operativas: índices, roles, migración y revisión consistente',
     const ids=[];let total;
     for(let page=1;page<=51;page++){const result=await operationPage(pool,admin,'OrdenServicio',{search:'Revisión hidráulica',page,pageSize:200},3);total=result.total;assert.ok(result.rows.length<=200);ids.push(...result.rows.map(row=>row.id));}
     assert.equal(total,10001);assert.equal(ids.length,10001);assert.equal(new Set(ids).size,10001);assert.deepEqual(ids,[...ids].sort().reverse());
-    const [plan]=await pool.execute("EXPLAIN SELECT id FROM em_operation_index WHERE entity='OrdenServicio' AND equipment_id=? ORDER BY sort_value DESC,id DESC LIMIT 25",[template.equipo_id]);assert.ok(plan.some(row=>row.key==='idx_operation_equipment'));assert.ok(plan.every(row=>!/filesort/i.test(row.Extra||'')));
+    const [plan]=await pool.execute("EXPLAIN SELECT id FROM em_operation_index WHERE entity='OrdenServicio' AND equipment_id=? ORDER BY sort_value DESC,id DESC LIMIT 25",['equipment-2']);t.diagnostic(JSON.stringify({operationPlan:plan.map(({type,key,rows,Extra})=>({type,key,rows,Extra}))}));assert.ok(plan.some(row=>row.key==='idx_operation_equipment'));assert.ok(plan.every(row=>!/filesort/i.test(row.Extra||'')));
   });
   await t.test('páginas, contadores y detalle respetan los mismos permisos que la base completa',async()=>{
     for(const actor of [admin,{...admin,rol:'Coordinador'},client,tech,{...client,cliente_id:'absent'},{...tech,tecnico_id:'absent'}])for(const entity of ['Ticket','OrdenServicio','LecturaHorometro']){
