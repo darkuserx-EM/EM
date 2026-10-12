@@ -65,6 +65,17 @@ button:focus-visible, a:focus-visible { outline-color: var(--color-focus); }
   .icon-button { min-width: var(--target-min); }
 }
 
+/* ── Objetivos táctiles: 44 px en pantallas de dedo (no cambia el escritorio) ── */
+/* min-height no afecta a los enlaces en línea dentro de un texto: solo a los que se muestran como bloque. */
+@media (pointer: coarse) {
+  /* Especificidad alta a propósito: gana a las reglas de cada pantalla que fijan la altura de sus campos. */
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]), select:not([multiple]):not([size]):not([hidden]) { min-height: var(--target-min); }
+  .nav-item, td > a, li > a { min-height: var(--target-min); }
+  .profile-button { min-width: var(--target-min); min-height: var(--target-min); }
+  .text-link, .summary-link { display: inline-flex; align-items: center; min-height: var(--target-min); }
+  summary { min-height: var(--target-min); align-content: center; }
+}
+
 /* ── Campos ───────────────────────────────────────────────────── */
 input, select, textarea { border-color: var(--color-border-strong); }
 input::placeholder, textarea::placeholder { color: var(--color-text-muted); }

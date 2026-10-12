@@ -195,3 +195,8 @@
   .chart-instruction { margin-left:0; width:100%; }
   .equipment-dashboard .dashboard-next > header .button { width:auto; }
 }
+
+/* Objetivos táctiles: acciones del encabezado y desplegables de los gráficos con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .equipment-dashboard .equipment-heading-actions .button, .chart-disclosure > summary { min-height: var(--target-min); }
+}

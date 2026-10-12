@@ -150,3 +150,8 @@
   .admin-home .home-trend-filters { gap: 12px; }
   .admin-home .home-trend-filters :is(input, select) { font-size: var(--text-lg); }
 }
+
+/* Objetivos táctiles: desplegable de motivos con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .admin-home .home-more-reasons summary { min-height: var(--target-min); }
+}

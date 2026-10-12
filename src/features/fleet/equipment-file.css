@@ -175,3 +175,8 @@
 @media(max-width:480px) {
   .equipment-detail.equipment-file .modal.equipment-data-drawer { width:100%; padding:20px 16px; }
 }
+
+/* Objetivos táctiles: botones de la ficha y «Volver» con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .equipment-detail.equipment-file .button, .equipment-detail.equipment-file .history-back { min-height: var(--target-min); }
+}

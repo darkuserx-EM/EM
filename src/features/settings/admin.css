@@ -90,3 +90,8 @@
 @media (max-width: 1080px) {
   .catalog-groups button { font-size: var(--text-xs); }
 }
+
+/* Objetivos táctiles: grupos de catálogos con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .catalog-groups button, .phase-banner > a { min-height: var(--target-min); }
+}

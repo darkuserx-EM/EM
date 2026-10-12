@@ -120,6 +120,15 @@ Con este paso todas las pantallas usan tokens. Lo único que queda bajo 12 px es
 
 En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-danger` y `button-orange`), `.icon-button` y el aviso de cambios sin guardar pasan a tokens. Visualmente cambia poco: borde del botón `#dddfd5` → `--color-border`, radio 7 → 8 px, y botón oscuro `#3a3a3a` → `--color-primary`. El foco de enlaces y botones usa `--color-focus`. Las tablas (`.data-table`) usan el token `--color-border-subtle` para separar filas y `--color-surface-subtle` en la cabecera y al pasar el cursor. La tabla de permisos de Accesos usa `DataTable` como ejemplo.
 
+## Objetivos táctiles
+
+En pantallas de dedo (`@media (pointer: coarse)`), todo control mide al menos `--target-min` (44 px). Con mouse no cambia nada: todas las reglas están dentro de ese bloque.
+
+- **Regla general en `base.css`:** campos y selectores (con especificidad alta a propósito, para ganar a las alturas fijas de cada pantalla), menú lateral, botón de perfil, `.text-link`, `summary`, y enlaces que se muestran como bloque dentro de tablas y listas (`td > a`, `li > a`). `min-height` no afecta a los enlaces en línea dentro de un texto.
+- **Hojas de pantalla:** cuando una pantalla fija la altura de un botón con un selector más específico, se agrega su propio bloque `@media (pointer: coarse)` **al final** de la hoja, para ganar también a sus reglas de móvil. Ejemplos: días del calendario, enlace de fila de Órdenes y botones de la ficha.
+- **Calendario en teléfonos:** 7 columnas en 375 px dejan poco ancho; las celdas usan menos relleno lateral para que cada día llegue a 44 × 44 px.
+- **Al crear un control nuevo:** usar los componentes (`Button`, `IconButton`, `Tabs`, `Steps`…), que ya cumplen. Si una hoja fija una altura menor de 44 px, agregar su bloque táctil.
+
 ## Revisión automática
 
 `src/design/design-tokens.test.ts` corre con `pnpm test`, y por lo tanto en «Portal EM checks» de GitHub. También se puede correr sola con `pnpm check:design`. Falla si:

@@ -71,3 +71,8 @@
   .pm-form :is(select,button),.pm-dashboard :is(select,button),.pm-actions .button { min-height:44px; }
   .pm-open { display:inline-flex; align-items:center; min-height:44px; }
 }
+
+/* Objetivos táctiles: botones de resultados del plan con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */
+@media (pointer: coarse) {
+  .pm-results button { min-height: var(--target-min); }
+}
