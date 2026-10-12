@@ -2,7 +2,7 @@
 
 CI ejecuta lint, typecheck, pruebas de aplicación/servidor, integración MySQL y compilación. ESLint revisa src, server y scripts con reglas de errores recomendadas; no altera formato ni diseño. Los generados y dependencias se excluyen. Las expresiones que rechazan caracteres de control se permiten explícitamente, y las variables descartadas se nombran con prefijo _. No se desactiva no-undef en JavaScript.
 
-TypeScript verifica la aplicación con tsc -b. checkJs estricto comienza en security.mjs, totp.mjs y session-policy.mjs, con contratos JSDoc, sin any ni ts-nocheck. Las rutas Express, persistencia y respaldos siguen cubiertos por lint y pruebas de integración, pero aún no por checkJs estricto; M8 queda parcial. Extender módulo por módulo a esos archivos con tipos concretos de peticiones y consultas SQL. No añadir casts masivos para simular cobertura.
+TypeScript verifica la aplicación con tsc -b y todo el servidor de producción con checkJs estricto: rutas Express, persistencia, migraciones, archivos, respaldos, autenticación, mantenimiento y entrada del proceso. El dominio compartido conserva su fuente TypeScript. Los contratos JSDoc y las declaraciones se comprueban sin any explícito, ts-nocheck, ts-ignore ni conversiones masivas. Las excepciones esperadas solo existen en pruebas negativas de compilación.
 
 No se reformatea todo el repositorio ni se introduce Prettier en esta corrección: produciría diffs extensos ajenos a los fallos y dificultaría revisar seguridad. Las dependencias de desarrollo de ESLint quedan fijadas por lockfile.
 
@@ -23,3 +23,13 @@ La declaración de `generated/domain.mjs` se genera desde `server/domain.ts`, la
 Fotografías, adjuntos, recuperación y respaldo completo se comprueban con tipos de Express y mysql2. Se distinguen los metadatos públicos de los de recuperación, las cargas pendientes de las fotografías guardadas y los bytes `Buffer` de su transporte base64. El archivo de respaldo tiene una unión discriminada por tipo de entrada. Las respuestas de carga y recuperación tienen contratos explícitos.
 
 Las validaciones existentes estrechan los valores antes de persistirlos; se construyen los metadatos a partir de los campos comprobados y no mediante conversiones de tipo. Se mantiene la verificación de tamaño/huella, la identidad, autoría, fecha original, control de acceso y transmisión con contrapresión. `@types/express` es exclusivamente de desarrollo. Diez contratos negativos adicionales cubren estos límites, además de las pruebas HTTP y de recuperación contra MariaDB/MySQL.
+
+## Issue #70 · etapa 4: cobertura completa
+
+La configuración incluye recursivamente los módulos del servidor, en lugar de enumerar unas pocas utilidades. Comprueba también los archivos de contratos (`skipLibCheck: false`). Se excluyen los artefactos generados y las pruebas de ejecución; los contratos negativos `.mts` sí se compilan y nunca se ejecutan ni publican como rutas.
+
+Las consultas declaran columnas concretas de cuentas, sesiones, segundo factor, eventos e índices. Las mutaciones son una unión por acción y distinguen registros de resultados de importación. Los cuerpos de petición, respuestas, cursores y errores dejan de propagarse como valores sin tipo. El contexto de permisos compartido expresa las dos colecciones que realmente lee, sin cambiar su filtrado.
+
+`scripts/check-server-types.mjs`, incluido en `typecheck` y por tanto en CI, verifica que los 28 módulos/contratos de producción entren en la comprobación, que no se desactive la revisión y que ningún acceso a un cuerpo de petición conserve el `any` predeterminado de Express. Añadir un módulo bajo `server/` lo incorpora automáticamente. Las pruebas negativas cubren cada grupo de módulos y se comprobó adicionalmente que una asignación incompatible y una ruta con cuerpo sin tipo hacen fallar el proceso; los dos archivos de prueba temporal se retiraron.
+
+Validación de cada etapa: aplicación, servidor, integración con MariaDB local y MySQL en CI, compilación y comprobación de producción. Se mantienen autenticación, roles, CSRF, vencimiento, TOTP, archivos, respaldo, rollback y concurrencia; no se cambian el esquema SQL ni los datos de clientes. La cobertura estricta no sustituye la validación de entrada ni las pruebas de integración.

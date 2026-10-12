@@ -7,28 +7,20 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "target": "ES2023",
-    "skipLibCheck": true,
+    "skipLibCheck": false,
     "types": [
       "node",
       "vite/client"
     ]
   },
   "include": [
-    "server/security.mjs",
-    "server/totp.mjs",
-    "server/session-policy.mjs",
-    "server/sql.mjs",
-    "server/audit-storage.mjs",
-    "server/attachment-batches.mjs",
-    "server/type-tests/**/*.mts",
-    "server/database.mjs",
-    "server/snapshot-cache.mjs",
-    "server/equipment-images.mjs",
-    "server/diagnostics.mjs",
-    "server/media.mjs",
-    "server/attachments.mjs",
-    "server/attachment-backup.mjs",
-    "server/full-backup.mjs",
-    "server/http-contracts.d.ts"
+    "server/**/*.mjs",
+    "server/**/*.ts",
+    "server/**/*.mts"
+  ],
+  "exclude": [
+    "server/**/*.test.mjs",
+    "server/**/*.test.ts",
+    "server/generated"
   ]
 }

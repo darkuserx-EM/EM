@@ -7,6 +7,7 @@ import { startMaintenance } from './maintenance.mjs';
 import { migrateLegacyMedia } from './media.mjs';
 const production = process.env.NODE_ENV !== 'development';
 const origin = process.env.APP_ORIGIN || 'https://portal.expertosenmontacargas.com';
+/** @type {import("mysql2/promise").Pool|undefined} */
 let pool;
 try {
   if (production && !origin.startsWith('https://')) throw Object.assign(new Error('APP_ORIGIN debe usar HTTPS.'), { code:'CONFIG_APP_ORIGIN' });
@@ -20,7 +21,8 @@ try {
   // Compatible reads serve old and new storage while bounded, atomic batches progress.
   const mediaMigration = migrateLegacyMedia(pool).then(result => console.log('Portal EM: migración de fotografías', result)).catch(error => logFailure(error,{event:'media.migration',status:500}));
   const stopMaintenance = startMaintenance(pool);
-  const shutdown = () => server.close(async()=>{await stopMaintenance();await mediaMigration;await pool.end();process.exit(0);});
+  const connectedPool=pool;
+  const shutdown = () => server.close(async()=>{await stopMaintenance();await mediaMigration;await connectedPool.end();process.exit(0);});
   process.once('SIGTERM',shutdown); process.once('SIGINT',shutdown);
 } catch (error) {
   logFailure(error, {event:'startup',status:500});
