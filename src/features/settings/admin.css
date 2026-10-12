@@ -1,6 +1,6 @@
 /*
  * Administración: Catálogos, Datos, Accesos, Plan de trabajo, módulos próximos y «Mi cuenta» · paso 7 del sistema de diseño (docs/SISTEMA-DE-DISENO.md).
- * Reemplaza con tokens las reglas equivalentes de styles.css: se importa en Settings.tsx (paquete principal), se carga después y gana por orden.
+ * Reemplaza con tokens las reglas equivalentes de styles.css: se importa globalmente en App.tsx y también en Settings.tsx, se carga después y gana por orden.
  * Las reglas de styles.css se retirarán cuando ese archivo se divida por pantalla.
  */
 

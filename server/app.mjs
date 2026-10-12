@@ -196,6 +196,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
   });
   app.use('/api', (_req,_res,next)=>next(fail(404,'Ruta no encontrada.')));
+  if (production) app.get('/revision/TCL-001', (_req,res) => res.status(404).type('text/plain').send('Página no disponible.'));
   app.use(express.static(dist,{index:false,dotfiles:'deny',setHeaders:(res,path)=>res.set('Cache-Control',path.includes('/assets/')?'public,max-age=31536000,immutable':'no-cache')}));
   app.get('/{*path}', (_req,res)=>{res.set('Cache-Control','no-cache');res.sendFile(resolve(dist,'index.html'));});
   app.use((error,req,res,_next)=>{

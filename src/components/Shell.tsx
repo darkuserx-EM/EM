@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Building2, CalendarDays, ChartNoAxesColumn, ChevronDown, ChevronRight, ClipboardList, Clock3, Database, FileText, Forklift, LayoutGrid, ListChecks, Menu, Route, Settings2, ShieldCheck, Ticket, Wallet, Wrench, type LucideIcon } from 'lucide-react';
 import { Brand, Modal, Toast } from './ui';
 import { demoUsers } from '../data/seed';
 import { useActor, useSession } from '../app/state';
-import { serverMode } from '../data/source';
+import { remoteSource, serverMode } from '../data/source';
 import { AccountDialog } from '../features/settings/AccountDialog';
 import { canAccessModule } from '../domain/permissions';
 import './client-shell.css';
@@ -20,6 +20,8 @@ export function Shell() {
   const [menu, setMenu] = useState(false); const [roles, setRoles] = useState(false);
   const module = location.pathname.split('/')[1] || 'inicio';
   const title = navigation.flatMap(group => group.items).find(item => item.module === module)?.title ?? 'Portal del cliente';
+  const connection = useSyncExternalStore(remoteSource.subscribeConnection, remoteSource.getConnection);
+  const connectionLabel = !serverMode ? 'Demostración local' : connection === 'ok' ? 'Datos sincronizados' : connection === 'error' ? 'Sin conexión confirmada: revisa tu red' : 'Comprobando conexión';
   const isClient = actor.rol === 'Cliente';
   useEffect(() => setMenu(false), [location.pathname]);
   useEffect(() => { if (!canAccessModule(actor, module)) navigate(actor.rol === 'Cliente' ? '/portal' : '/inicio', { replace: true }); }, [actor, module, navigate]);
@@ -27,7 +29,7 @@ export function Shell() {
     {menu && <button className="sidebar-scrim" aria-label="Cerrar menú" onClick={() => setMenu(false)} />}
     <aside className={`sidebar ${menu ? 'sidebar-open' : ''}`}>
       <NavLink to={isClient ? '/portal' : '/inicio'} className="brand-link" aria-label="Portal EM, inicio"><Brand /></NavLink>
-      <div className="workspace-label"><span className="workspace-symbol">E</span><div><strong>EMSA Guatemala</strong><small>Gestión de flota y servicio</small></div><span className="online-dot" /></div>
+      <div className="workspace-label"><span className="workspace-symbol">E</span><div><strong>EMSA Guatemala</strong><small>Gestión de flota y servicio</small></div><span className="online-dot" data-connection={serverMode ? connection : "local"} role="status" aria-label={connectionLabel} title={connectionLabel} /></div>
       <nav aria-label="Navegación principal">
         {isClient ? <>{[{path:'portal',label:'Mi empresa',icon:LayoutGrid},{path:'tickets',label:'Solicitudes',icon:Ticket},{path:'ordenes',label:'Reportes de servicio',icon:ClipboardList},{path:'calendario',label:'Agenda',icon:CalendarDays},{path:'reportes',label:'Indicadores',icon:ChartNoAxesColumn}].map(item=><NavLink key={item.path} className="nav-item" to={`/${item.path}`}><item.icon size={18}/><span>{item.label}</span></NavLink>)}</> : navigation.map(group => {
           const items = group.items.filter(item => canAccessModule(actor, item.module));

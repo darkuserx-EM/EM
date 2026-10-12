@@ -72,3 +72,7 @@ Las cuentas de prueba vencen. Administración puede revocarlas desde Roles y acc
 - Correcciones retroactivas y reemplazo de contador con segmentos de uso: pendientes de diseñar; no se inventan ni sobrescriben lecturas.
 - AppSheet se revisó como referencia de captura; no se modificó su aplicación ni se enlazó Drive.
 - Pruebas móviles realizadas con viewport en navegador; no representan pruebas en hardware de todos los modelos de teléfono.
+
+### Carga e indicadores de conexión
+
+Inicio, flota y administración se descargan al abrir su pantalla. Excel ya tenía carga diferida: se conserva y no se modifica su API. Las reglas compartidas de administración permanecen globales. El indicador muestra el resultado de la última sincronización (gris al comprobar, rojo al fallar, verde al confirmar); no garantiza disponibilidad futura. La ruta de muestra del operador solo existe en modo local. Los nombres del respaldo Excel usan la fecha de Guatemala.

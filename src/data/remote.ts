@@ -54,6 +54,16 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   return data as T;
 }
 export class RemoteDataSource {
+  private connection: 'ok' | 'error' | 'syncing' = 'syncing';
+  private connectionSequence = 0;
+  private connectionListeners = new Set<() => void>();
+  subscribeConnection = (listener: () => void) => { this.connectionListeners.add(listener); return () => { this.connectionListeners.delete(listener); }; };
+  getConnection = () => this.connection;
+  private reportConnection(value: 'ok' | 'error' | 'syncing', sequence: number, generation: number) {
+    if (generation !== this.generation || sequence < this.connectionSequence) return;
+    this.connectionSequence = sequence;
+    if (this.connection !== value) { this.connection = value; this.connectionListeners.forEach(listener => listener()); }
+  }
   private database?: SyncedDatabase;
   private sequence = 0;
   private lastAccepted = 0;
@@ -69,12 +79,16 @@ export class RemoteDataSource {
     if (accessChanged && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('portal-access-changed', {detail:db.access}));
     this.listeners.forEach(listener => listener());
   }
-  clear() { this.generation++; this.database = undefined; this.pendingCreates.clear(); setCsrf(''); this.listeners.forEach(listener => listener()); }
+  clear() { this.generation++; this.database = undefined; this.pendingCreates.clear(); setCsrf(''); this.reportConnection('syncing', ++this.sequence, this.generation); this.listeners.forEach(listener => listener()); }
   async refresh() {
     const sequence = ++this.sequence; const generation = this.generation;
     const since = this.database?.syncToken;
-    const db = await api<SyncedDatabase | undefined>(since ? `database?since=${encodeURIComponent(since)}` : 'database');
-    if (db) this.accept(db, sequence, generation);
+    this.reportConnection('syncing', sequence, generation);
+    try {
+      const db = await api<SyncedDatabase | undefined>(since ? `database?since=${encodeURIComponent(since)}` : 'database');
+      if (db) this.accept(db, sequence, generation);
+      this.reportConnection('ok', sequence, generation);
+    } catch (error) { this.reportConnection('error', sequence, generation); throw error; }
   }
   private current() { if (!this.database) throw new Error('Espera a que termine la conexión al servidor.'); return this.database; }
   private async mutate<T>(body: Record<string, unknown>): Promise<T> {
