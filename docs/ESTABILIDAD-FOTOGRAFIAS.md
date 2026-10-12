@@ -1,5 +1,7 @@
 # Revisión de estabilidad · 09/10/2026
 
+Actualización: la separación de fotografías, miniaturas, caché con autorización y recuperación completa se describe en [Fotografías MySQL](FOTOGRAFIAS-MYSQL.md). Las observaciones siguientes conservan el diagnóstico y las decisiones del 09/10; el almacenamiento privado actual no depende de Drive.
+
 La propuesta recibida detecta correctamente el crecimiento de las fotografías base64 dentro de `em_records`. Sus mediciones sintéticas no establecen un número universal de equipos soportados: dependen del tamaño de cada imagen, del motor JavaScript y de la memoria disponible. No se ha ejecutado esa prueba de saturación contra producción.
 
 ## Cambios de este bloque

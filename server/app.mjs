@@ -6,13 +6,15 @@ import { randomUUID } from 'node:crypto';
 import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames, ValidationError } from './generated/domain.mjs';
 import { readSnapshot, readDatabase, readEquipmentRecord, saveDatabase, consumeLoginAttempt } from './database.mjs';
 import { hashPassword, verifyPassword, digest, equal, token, cookieToken } from './security.mjs';
-import { presentDatabase, presentEquipment, resolveEquipmentImages, readEquipmentImage } from './equipment-images.mjs';
+import { presentDatabase, presentEquipment, readEquipmentImage } from './equipment-images.mjs';
 import { logFailure, parseTrustProxy } from './diagnostics.mjs';
 import { createSnapshotCache } from './snapshot-cache.mjs';
 import { registerAccountRoutes } from './account.mjs';
 import { registerAdminUserRoutes } from './admin-users.mjs';
 import { registerAttachmentRoutes } from './attachments.mjs';
 import { registerAttachmentBackupRoutes } from './attachment-backup.mjs';
+import { registerMediaUploadRoutes, persistEquipmentMedia, hydrateEquipment } from './media.mjs';
+import { registerFullBackupRoutes } from './full-backup.mjs';
 
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
 const syncToken = (revision, actor) => digest(JSON.stringify(['portal-sync-v1', revision, actor]));
@@ -34,7 +36,8 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   } });
   app.use('/api', rateLimit({ windowMs:60000, limit:240, standardHeaders:'draft-8', legacyHeaders:false, message:{error:'Demasiadas solicitudes. Intenta de nuevo en un minuto.'} }));
   app.use('/api', (req,_res,next) => {
-    if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || !req.is('application/json'))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
+    const imageUpload = req.method === 'POST' && req.path === '/equipment-media/upload' && ['image/png','image/jpeg','image/webp'].includes(req.get('content-type'));
+    if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || (!req.is('application/json') && !imageUpload))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
     next();
   });
   const smallJson = express.json({ limit:'100kb' });
@@ -90,11 +93,13 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   });
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf}));
   // Small authenticated requests are parsed only after session and CSRF checks.
-  app.use('/api', (req,res,next) => ['/mutate','/attachments','/admin/attachments/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
+  app.use('/api', (req,res,next) => ['/mutate','/attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
   registerAccountRoutes(app, pool);
   registerAdminUserRoutes(app, {pool,smallJson,logger});
   registerAttachmentRoutes(app, {pool,smallJson,logger});
   registerAttachmentBackupRoutes(app, {pool,logger});
+  registerMediaUploadRoutes(app, {pool});
+  registerFullBackupRoutes(app, {pool,logger});
   app.post('/api/logout', async (req,res) => { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); res.clearCookie(cookieName,{path:'/',secure:production,httpOnly:true,sameSite:'strict'}); res.json({ok:true}); });
   app.get('/api/database', async (req,res) => {
     const [rows] = await pool.query('SELECT revision FROM em_meta WHERE id=1');
@@ -108,24 +113,41 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   });
   app.get('/api/backup', async (req,res) => {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
-    res.json(await readSnapshot(pool));
+    const db = await readSnapshot(pool);
+    db.entities.Equipo = await hydrateEquipment(pool,db.entities.Equipo);
+    res.json(db);
   });
   app.post('/api/equipment-export', async (req,res) => {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
     if (!Array.isArray(req.body.ids) || req.body.ids.length > 2000 || req.body.ids.some(id => typeof id !== 'string')) throw fail(400,'Selección de equipos inválida.');
     const ids = new Set(req.body.ids); const db = await readSnapshot(pool);
-    res.json({ rows: db.entities.Equipo.filter(row => ids.has(row.id)) });
+    const imageFields = ['foto_equipo','placa_datos','foto_frontal','foto_trasera','foto_lateral_1','foto_lateral_2'];
+    res.json({ rows: db.entities.Equipo.filter(row => ids.has(row.id)).map(row => Object.fromEntries(Object.entries(row).filter(([key]) => !imageFields.includes(key)))), includesImages: false });
   });
   app.get('/api/equipment-images/:id/:field/:hash', async (req,res) => {
     const equipment = await readEquipmentRecord(pool,req.params.id);
-    const scope = req.actor.rol === 'Técnico' ? (await readSnapshot(pool)).entities : undefined;
+    let scope;
+    if (equipment && req.actor.rol === 'Técnico' && req.actor.tecnico_id) {
+      const [orders] = await pool.execute("SELECT payload FROM em_records WHERE entity='OrdenServicio' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.tecnico_id'))=?", [equipment.id,req.actor.tecnico_id]);
+      scope = { OrdenServicio: orders.map(order => JSON.parse(order.payload)) };
+    }
     const row = equipment && filterVisible(req.actor,'Equipo',[equipment],scope)[0];
-    const image = readEquipmentImage(row,req.params.field,req.params.hash);
+    let image = readEquipmentImage(row,req.params.field,req.params.hash);
+    if (row && row[req.params.field] === `media:${req.params.hash}` && ['foto_equipo','placa_datos','foto_frontal','foto_trasera','foto_lateral_1','foto_lateral_2'].includes(req.params.field)) {
+      const preview = req.query.preview === '1';
+      // Select just the requested representation; a thumbnail request does not read the original BLOB.
+      const [files] = await pool.execute(`SELECT mime,${preview ? 'COALESCE(thumbnail,content)' : 'content'} AS bytes,${preview ? 'thumbnail IS NOT NULL' : 'FALSE'} AS preview FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id,req.params.field,req.params.hash]);
+      if (files.length) image = { type: files[0].preview ? 'image/webp' : files[0].mime, bytes: files[0].bytes };
+    }
     if (!image) throw fail(404,'Imagen no disponible.');
+    // Revalidate authorization on every request, including conditional requests.
+    // An immutable browser cache would outlive account revocation or reassignment.
+    res.set('Cache-Control','private, no-cache').set('ETag',`"${req.params.hash}-${req.query.preview === '1' ? 'preview-v1' : 'original'}"`);
     res.type(image.type).send(image.bytes);
   });
   app.post('/api/mutate', (req,res,next) => express.json({ limit:req.actor.rol === 'Administrador' ? '32mb' : '128kb' })(req,res,next), async (req,res) => {
     const body = req.body;
+    if (body?.mediaUploads !== undefined && (!body.mediaUploads || typeof body.mediaUploads !== 'object' || Array.isArray(body.mediaUploads) || Object.entries(body.mediaUploads).some(([field,id]) => !['foto_equipo','placa_datos','foto_frontal','foto_trasera','foto_lateral_1','foto_lateral_2'].includes(field) || typeof id !== 'string' || !/^[a-f0-9-]{36}$/i.test(id)))) throw fail(400,'La carga de fotografías no es válida.');
     if (req.actor.rol !== 'Administrador') {
       const operational = ['Ticket','OrdenServicio','LecturaHorometro'].includes(body?.entity);
       const manager = req.actor.rol === 'Coordinador' && operational && ['create','update'].includes(body?.action);
@@ -162,7 +184,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
         }
       } catch (error) { if (error instanceof ValidationError) throw fail([403,409].includes(error.status) ? error.status : 400,error.message); throw error; }
       const next = JSON.parse(saved);
-      try { resolveEquipmentImages(next,db); } catch (error) { if (error instanceof ValidationError) throw fail(400,error.message); throw error; }
+      await persistEquipmentMedia(conn,next,db,{actor:req.actor,uploads:body.mediaUploads,targetId:body.entity==='Equipo' ? result?.id : undefined,restore:body.action==='restore'});
       await saveDatabase(conn,next,db); await conn.commit(); snapshots.publish(next);
       const publicResult = result && body.entity && req.actor.rol !== 'Administrador' ? filterVisible(req.actor,body.entity,[result],next.entities)[0] : result;
       res.json({result:body.entity === 'Equipo' && result ? presentEquipment(next.entities.Equipo.find(row => row.id === result.id)) : publicResult,database:visible(next,req.actor)});
