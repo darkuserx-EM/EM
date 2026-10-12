@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { Badge, Button, ButtonLink, Field, IconButton, KpiCard, Panel, Tabs, buttonClass, nextTab, statusTone } from './design-system';
+import { Badge, Button, ButtonLink, DataTable, Field, IconButton, KpiCard, Pagination, Panel, Steps, Tabs, buttonClass, nextTab, statusTone } from './design-system';
 
 const html = (node: ReactNode) => renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>);
 
@@ -60,5 +60,46 @@ describe('componentes compartidos', () => {
     expect(html(<KpiCard label="Abiertas" value={12} />)).toBe('<div class="kpi-card"><span class="kpi-card-label">Abiertas</span><strong class="kpi-card-value">12</strong></div>');
     expect(html(<KpiCard label="Abiertas" value={12} onClick={() => {}} />)).toMatch(/^<button type="button" class="kpi-card">/);
     expect(html(<KpiCard label="Abiertas" value={12} pressed onClick={() => {}} />)).toMatch(/^<button type="button" class="kpi-card" aria-pressed="true">/);
+  });
+});
+
+describe('componentes compartidos · pasos y tablas', () => {
+  const steps = [{ label: 'Diagnóstico', done: true }, { label: 'Trabajo' }, { label: 'Cierre', disabled: true }];
+
+  it('Steps marca el paso actual, los completados y los deshabilitados', () => {
+    const markup = html(<Steps label="Pasos del reporte" current={1} items={steps} onSelect={() => {}} />);
+    expect(markup).toContain('<nav class="steps" aria-label="Pasos del reporte"><ol>');
+    expect(markup).toContain('<button type="button" class="steps-item is-done"><span class="steps-number" aria-hidden="true">✓</span>Diagnóstico<span class="sr-only"> (completado)</span></button>');
+    expect(markup).toContain('<button type="button" class="steps-item" aria-current="step"><span class="steps-number" aria-hidden="true">2</span>Trabajo</button>');
+    expect(markup).toContain('<button type="button" class="steps-item" disabled=""><span class="steps-number" aria-hidden="true">3</span>Cierre</button>');
+  });
+
+  it('Steps sin onSelect solo indica el avance', () => {
+    const markup = html(<Steps label="Avance" current={0} items={steps} />);
+    expect(markup).not.toContain('<button');
+    expect(markup).toContain('<span class="steps-item is-done" aria-current="step"><span class="steps-number" aria-hidden="true">1</span>Diagnóstico</span>');
+  });
+
+  type Row = { id: string; name: string; hours: number };
+  const columns = [
+    { id: 'name', header: 'Equipo', cell: (row: Row) => row.name },
+    { id: 'hours', header: 'Horómetro', numeric: true, cell: (row: Row) => `${row.hours} h` },
+    { id: 'actions', header: 'Acciones', hideHeader: true, cell: (row: Row) => <Button size="sm">Ver {row.name}</Button> },
+  ];
+
+  it('DataTable genera cabeceras con alcance, título oculto y columnas numéricas', () => {
+    const markup = html(<DataTable caption="Equipos" columns={columns} rows={[{ id: 'a', name: 'TCL-001', hours: 850 }]} rowKey={row => row.id} />);
+    expect(markup).toMatch(/^<div class="table-scroll"><table class="data-table"><caption class="sr-only">Equipos<\/caption>/);
+    expect(markup).toContain('<th scope="col">Equipo</th><th scope="col" class="numeric mono">Horómetro</th><th scope="col"><span class="sr-only">Acciones</span></th>');
+    expect(markup).toContain('<td class="numeric mono">850 h</td>');
+  });
+
+  it('DataTable sin filas muestra el mensaje vacío en todo el ancho', () => {
+    expect(html(<DataTable caption="Equipos" columns={columns} rows={[] as Row[]} rowKey={row => row.id} empty="Sin equipos" />)).toContain('<tbody><tr><td class="data-table-empty" colSpan="3">Sin equipos</td></tr></tbody>');
+  });
+
+  it('Pagination desactiva Anterior en la primera página y Siguiente en la última', () => {
+    expect(html(<Pagination page={1} pageCount={3} onChange={() => {}} />)).toBe('<div class="pagination"><span>Página 1 de 3</span><button type="button" class="button button-small" disabled="">Anterior</button><button type="button" class="button button-small">Siguiente</button></div>');
+    expect(html(<Pagination page={3} pageCount={3} onChange={() => {}} summary="24 órdenes" />)).toContain('<span>24 órdenes</span><button type="button" class="button button-small">Anterior</button><button type="button" class="button button-small" disabled="">Siguiente</button>');
   });
 });

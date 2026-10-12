@@ -79,3 +79,35 @@ export function KpiCard({ label, value, hint, icon, pressed, onClick }: { label:
   const content = <>{icon && <span className="kpi-card-icon" aria-hidden="true">{icon}</span>}<span className="kpi-card-label">{label}</span><strong className="kpi-card-value">{value}</strong>{hint && <small className="kpi-card-hint">{hint}</small>}</>;
   return onClick ? <button type="button" className="kpi-card" aria-pressed={pressed} onClick={onClick}>{content}</button> : <div className="kpi-card">{content}</div>;
 }
+
+export type StepItem = { label: ReactNode; done?: boolean; disabled?: boolean };
+/**
+ * Pasos de un asistente (p. ej. el reporte de una orden): marca el actual con aria-current="step".
+ * Con onSelect cada paso es un botón; sin onSelect solo indica el avance. Para secciones libres sin orden, usar Tabs.
+ */
+export function Steps({ items, current, onSelect, label, disabled = false }: { items: StepItem[]; current: number; onSelect?: (index: number) => void; label: string; disabled?: boolean }) {
+  return <nav className="steps" aria-label={label}><ol>{items.map((item, index) => {
+    const content = <><span className="steps-number" aria-hidden="true">{item.done && index !== current ? '✓' : index + 1}</span>{item.label}{item.done && index !== current && <span className="sr-only"> (completado)</span>}</>;
+    const className = `steps-item${item.done ? ' is-done' : ''}`;
+    return <li key={index}>{onSelect ? <button type="button" className={className} aria-current={index === current ? 'step' : undefined} disabled={disabled || item.disabled} onClick={() => onSelect(index)}>{content}</button> : <span className={className} aria-current={index === current ? 'step' : undefined}>{content}</span>}</li>;
+  })}</ol></nav>;
+}
+
+export type DataColumn<T> = { id: string; header: ReactNode; cell: (row: T) => ReactNode; numeric?: boolean; hideHeader?: boolean; className?: string };
+/**
+ * Tabla de datos con desplazamiento horizontal propio (.table-scroll) y título para lectores de pantalla.
+ * hideHeader deja la cabecera solo para lectores (p. ej. «Acciones»); numeric alinea a la derecha con cifras tabulares.
+ */
+export function DataTable<T>({ columns, rows, rowKey, caption, empty = 'No hay registros para mostrar.', className = '', rowClassName }: { columns: DataColumn<T>[]; rows: T[]; rowKey: (row: T) => string; caption: string; empty?: ReactNode; className?: string; rowClassName?: (row: T) => string | undefined }) {
+  const cellClass = (column: DataColumn<T>) => [column.numeric && 'numeric mono', column.className].filter(Boolean).join(' ') || undefined;
+  return <div className="table-scroll"><table className={`data-table ${className}`.trim()}>
+    <caption className="sr-only">{caption}</caption>
+    <thead><tr>{columns.map(column => <th key={column.id} scope="col" className={cellClass(column)}>{column.hideHeader ? <span className="sr-only">{column.header}</span> : column.header}</th>)}</tr></thead>
+    <tbody>{rows.length ? rows.map(row => <tr key={rowKey(row)} className={rowClassName?.(row)}>{columns.map(column => <td key={column.id} className={cellClass(column)}>{column.cell(row)}</td>)}</tr>) : <tr><td className="data-table-empty" colSpan={columns.length}>{empty}</td></tr>}</tbody>
+  </table></div>;
+}
+
+/** Paginación para DataTable: resumen a la izquierda, Anterior y Siguiente a la derecha. */
+export function Pagination({ page, pageCount, onChange, summary }: { page: number; pageCount: number; onChange: (page: number) => void; summary?: ReactNode }) {
+  return <div className="pagination"><span>{summary ?? `Página ${page} de ${pageCount}`}</span><Button size="sm" disabled={page <= 1} onClick={() => onChange(page - 1)}>Anterior</Button><Button size="sm" disabled={page >= pageCount} onClick={() => onChange(page + 1)}>Siguiente</Button></div>;
+}

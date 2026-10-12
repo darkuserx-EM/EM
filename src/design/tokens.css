@@ -12,6 +12,7 @@
   --color-surface-muted: #eef2e8;   /* bloques secundarios, chips neutros */
   --color-border: #dde2d6;          /* separadores y bordes decorativos (no identifican controles) */
   --color-border-strong: #8a9580;   /* bordes de campos y controles · 3.14:1 sobre blanco (WCAG 1.4.11) */
+  --color-border-subtle: #eef0e8;   /* separadores internos: filas y cabeceras de tabla (más tenue que --color-border) */
 
   --color-text: #273328;            /* texto principal · 13.2:1 blanco · 11.9:1 fondo */
   --color-text-muted: #59634f;      /* texto secundario y metadatos · 6.3:1 blanco · 5.7:1 fondo */
