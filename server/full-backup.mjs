@@ -1,3 +1,5 @@
+import { select, selectQuery } from './sql.mjs';
+import { errorCode } from './errors.mjs';
 import {attachmentBatches} from './attachment-batches.mjs';
 import { todayGT } from './generated/domain.mjs';
 import { createHash } from 'node:crypto';
@@ -7,15 +9,20 @@ import { legacyMedia, mediaColumns, mediaMetadata, verifyStoredMedia } from './m
 import { writeLine, validateRestoreFile } from './attachment-backup.mjs';
 import { logFailure } from './diagnostics.mjs';
 
+/** @param {string} id @param {string} field @param {string} hash */
 const key = (id, field, hash) => JSON.stringify([id, field, hash]);
+/** @param {import("mysql2/promise").PoolConnection} conn @returns {AsyncGenerator<import("./contracts.js").FullBackupEntry>} */
 export async function* fullBackupEntries(conn) {
-  const [meta] = await conn.query('SELECT revision FROM em_meta WHERE id=1');
+  /** @type {{revision:number}[]} */
+    const meta = await selectQuery(conn,'SELECT revision FROM em_meta WHERE id=1');
   yield { type: 'portal-em.full', version: 1, schemaVersion: 1, revision: Number(meta[0].revision), exportedAt: new Date().toISOString() };
   let entity = '', id = ''; const needed = new Set();
   for (;;) {
-    const [rows] = await conn.execute('SELECT entity,id,payload FROM em_records WHERE entity>? OR (entity=? AND id>?) ORDER BY entity,id LIMIT 1', [entity, entity, id]);
+    /** @type {{entity:import("../src/domain/model.js").EntityName,id:string,payload:string}[]} */
+    const rows = await select(conn,'SELECT entity,id,payload FROM em_records WHERE entity>? OR (entity=? AND id>?) ORDER BY entity,id LIMIT 1', [entity, entity, id]);
     if (!rows.length) break;
-    const row = rows[0]; let record = JSON.parse(row.payload);
+    const row = rows[0]; /** @type {import("../src/domain/model.js").EntityRecord} */
+    let record = JSON.parse(row.payload);
     if (row.entity === 'Equipo') {
       record = presentEquipment(record);
       for (const field of equipmentImageFields) if (isEquipmentImageReference(record[field])) needed.add(key(record.id, field, record[field].slice(6)));
@@ -26,15 +33,17 @@ export async function* fullBackupEntries(conn) {
   // Same archive format as legacy backups; audit rows now have their own table.
   let auditId='';
   for(;;) {
-    const [rows]=await conn.execute('SELECT id,payload FROM em_audit_log WHERE id>? ORDER BY id LIMIT 200',[auditId]);
+    /** @type {{entity:import("../src/domain/model.js").EntityName,id:string,payload:string}[]} */
+    const rows = await select(conn,'SELECT id,payload FROM em_audit_log WHERE id>? ORDER BY id LIMIT 200',[auditId]);
     if(!rows.length)break;
     for(const row of rows)yield {type:'record',entity:'Bitacora',record:JSON.parse(row.payload)};
-    auditId=rows.at(-1).id;
+    auditId=rows[rows.length-1].id;
   }
   // Include retired files as well. Only the currently bound hash is accessible in the portal.
   let equipment = '', field = '', hash = ''; const included = new Set();
   for (;;) {
-    const [files] = await conn.execute(`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id>? OR (equipment_id=? AND field>?) OR (equipment_id=? AND field=? AND hash>?) ORDER BY equipment_id,field,hash LIMIT 1`, [equipment, equipment, field, equipment, field, hash]);
+    /** @type {import("./contracts.js").MediaFile[]} */
+    const files = await select(conn,`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id>? OR (equipment_id=? AND field>?) OR (equipment_id=? AND field=? AND hash>?) ORDER BY equipment_id,field,hash LIMIT 1`, [equipment, equipment, field, equipment, field, hash]);
     if (!files.length) break;
     const file = files[0]; verifyStoredMedia(file);
     const identity = key(file.equipment_id, file.field, file.hash); included.add(identity); needed.delete(identity);
@@ -43,8 +52,10 @@ export async function* fullBackupEntries(conn) {
   }
   id = '';
   for (;;) {
-    const [rows] = await conn.execute("SELECT id,payload FROM em_records WHERE entity='Equipo' AND id>? ORDER BY id LIMIT 1", [id]);
+    /** @type {{entity:import("../src/domain/model.js").EntityName,id:string,payload:string}[]} */
+    const rows = await select(conn,"SELECT id,payload FROM em_records WHERE entity='Equipo' AND id>? ORDER BY id LIMIT 1", [id]);
     if (!rows.length) break;
+    /** @type {import("../src/domain/model.js").EntityRecord} */
     const record = JSON.parse(rows[0].payload);
     for (const field of equipmentImageFields) if (typeof record[field] === 'string' && record[field].startsWith('data:')) {
       const file = await legacyMedia(record[field]); const identity = key(record.id, field, file.hash);
@@ -60,8 +71,9 @@ export async function* fullBackupEntries(conn) {
     yield { type: 'attachment', file };
   }
 }
+/** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool,logger?:(line:string)=>void}} options */
 export function registerFullBackupRoutes(app, { pool, logger = console.error }) {
-  app.get('/api/admin/full-backup', async (req, res) => {
+  app.get('/api/admin/full-backup', /** @param {import("./http-contracts.js").PortalRequest<unknown>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> {
     if (req.actor.rol !== 'Administrador') throw Object.assign(new Error('Solo administración puede descargar el respaldo completo.'), { status: 403, expose: true });
     const conn = await pool.getConnection();
     try {
@@ -70,14 +82,14 @@ export function registerFullBackupRoutes(app, { pool, logger = console.error }) 
       const checksum = createHash('sha256'); const counts = { record: 0, media: 0, attachment: 0 };
       for await (const entry of fullBackupEntries(conn)) {
         checksum.update(await writeLine(res, entry));
-        if (entry.type in counts) counts[entry.type]++;
+        if (entry.type==='record'||entry.type==='media'||entry.type==='attachment') counts[entry.type]++;
       }
       await conn.commit();
       await writeLine(res, { type: 'complete', counts, sha256: checksum.digest('hex') }); res.end();
     } catch (error) {
       await conn.rollback();
       if (!res.headersSent) throw error;
-      if (error.code !== 'DOWNLOAD_CLOSED') logFailure(error, { event: 'full.backup', status: 500 }, logger);
+      if (errorCode(error) !== 'DOWNLOAD_CLOSED') logFailure(error, { event: 'full.backup', status: 500 }, logger);
       res.destroy();
     } finally { conn.release(); }
   });

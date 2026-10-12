@@ -1,5 +1,5 @@
 import type { Pool, PoolConnection } from 'mysql2/promise';
-import type { EntityName } from '../src/domain/model.js';
+import type { EntityName, EntityRecord } from '../src/domain/model.js';
 
 export type SqlConnection = Pool | PoolConnection;
 export interface StoredPayload { id: string; payload: string }
@@ -8,6 +8,14 @@ export interface AttachmentMetadata {
   mime: string; size: number; sha256: string; uploaded_by: string; created_at: number;
 }
 export interface AttachmentFile extends AttachmentMetadata { content: Buffer }
+export interface MediaMetadata {
+  equipment_id: string; field: string; hash: string; mime: string; size: number;
+  sha256: string; uploaded_by: string; created_at: number;
+}
+export interface MediaFile extends MediaMetadata { content: Buffer; thumbnail: Buffer | null }
+export interface MediaUpload extends Omit<MediaFile, 'equipment_id'> {
+  id: string; equipment_id: string | null; expires_at: number;
+}
 export interface AuditPayload {
   id: string; codigo: string; fecha_creacion: string;
   entidad?: string; equipo_id?: string; hallazgo_id?: string; accion?: string;
@@ -16,3 +24,8 @@ export type WriteCommand =
   | { kind: 'upsert'; rows: [EntityName, string, string][] }
   | { kind: 'audit'; entries: StoredPayload[] }
   | { kind: 'remove'; entity: EntityName; ids: string[] };
+export type FullBackupEntry =
+  | { type: 'portal-em.full'; version: 1; schemaVersion: 1; revision: number; exportedAt: string }
+  | { type: 'record'; entity: EntityName; record: EntityRecord }
+  | { type: 'media'; file: { metadata: MediaMetadata; base64: string } }
+  | { type: 'attachment'; file: { metadata: AttachmentMetadata; base64: string } };

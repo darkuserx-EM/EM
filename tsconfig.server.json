@@ -24,6 +24,11 @@
     "server/database.mjs",
     "server/snapshot-cache.mjs",
     "server/equipment-images.mjs",
-    "server/diagnostics.mjs"
+    "server/diagnostics.mjs",
+    "server/media.mjs",
+    "server/attachments.mjs",
+    "server/attachment-backup.mjs",
+    "server/full-backup.mjs",
+    "server/http-contracts.d.ts"
   ]
 }
