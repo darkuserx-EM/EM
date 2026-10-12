@@ -166,7 +166,10 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     try {
       await conn.beginTransaction(); const db = await readDatabase(conn,true);
       const replay = body.action === 'create' && ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && body.fields?.solicitud_id && db.entities[body.entity].some(row => row.solicitud_id === body.fields.solicitud_id && row.creado_por === req.actor.id);
-      if (body.revision !== db.revision && !replay) throw fail(409,'Los datos cambiaron en otro dispositivo. Recarga y revisa antes de guardar.');
+      // Operational writes validate their own record version and all current links
+      // inside this lock. Unrelated changes must not reject a technician's work.
+      const recordConcurrency = ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && ['create','update'].includes(body.action);
+      if (body.revision !== db.revision && !replay && !recordConcurrency) throw fail(409,'Los datos cambiaron en otro dispositivo. Recarga y revisa antes de guardar.');
       // Existing images stay in MySQL while the shared domain edits compact references.
       // Resolve them against this locked snapshot before saving; never concatenate
       // every existing photo into the domain's intermediate JSON string.
