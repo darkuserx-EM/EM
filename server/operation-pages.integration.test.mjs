@@ -22,6 +22,8 @@ test('Páginas operativas: índices, roles, migración y revisión consistente',
   // Legacy services have no operational state constraints; their full original payload remains intact.
   seed.entities.OrdenServicio.push(...Array.from({length:10001},(_,i)=>({...template,id:'paged-'+String(i).padStart(6,'0'),codigo:'OS-P'+i,fecha:'2026-10-01T12:00:00.000Z',orden_origen:'PRIVATE-ORIGIN-'+i,diagnostico:'Revisión hidráulica '+i,costo_mano_obra:i,visible_cliente:i%2===0})));
   seed.entities.Ticket.push({...template,id:'ticket-paged',codigo:'TKT-1',titulo:'Solicitud sintética',descripcion:'No funciona',estado:'Nuevo',prioridad:'Media',fecha:'2026-10-01',schema_operacion:1,solicitud_id:randomUUID(),solicitud_datos:'qa'});
+  seed.entities.Ticket.push(...['a','b'].map((suffix,i)=>({...seed.entities.Ticket.at(-1),id:'assigned-'+suffix,solicitud_id:randomUUID(),codigo:'TKT-'+(i+2),responsable_id:'tech-'+(i+1),tecnico_id:'',cliente_id:i?'client-2':'client-1',equipo_id:i?'equipment-7':'equipment-1'})));
+  seed.entities.OrdenServicio.push({...template,id:'private-linked',codigo:'OS-PRIVATE',ticket_id:'assigned-a',cliente_id:'client-1',equipo_id:'equipment-1',tecnico_id:'tech-2',visible_cliente:false});
   const conn=await pool.getConnection();try{await conn.beginTransaction();const before=await readSnapshot(pool);await saveDatabase(conn,seed,before);await conn.commit();}finally{conn.release();}
   await t.test('migración interrumpida y reanudada no cambia ningún registro original',async()=>{
     const fingerprint=async()=>{const [rows]=await pool.query('SELECT entity,id,payload FROM em_records ORDER BY entity,id');return createHash('sha256').update(JSON.stringify(rows)).digest('hex');};
@@ -53,6 +55,18 @@ test('Páginas operativas: índices, roles, migración y revisión consistente',
     const connection=await pool.getConnection();try{await connection.beginTransaction();await indexOperations(connection,[{entity:'OrdenServicio',row:{...seed.entities.OrdenServicio.find(row=>row.id==='paged-000000'),visible_cliente:false}}]);await connection.rollback();}finally{connection.release();}
     const result=await operationPage(pool,client,'OrdenServicio',{id:'paged-000000'},3);assert.equal(result.total,1);
   });
+  await t.test('ticket asignado: SQL autoriza el detalle y marca la orden privada sin revelar su contenido',async()=>{
+    const own=await operationPage(pool,tech,'Ticket',{id:'assigned-a'},3);
+    assert.equal(own.total,1);assert.equal(own.rows[0].tiene_orden,true);
+    assert.equal(own.rows[0].responsable_id,'tech-1');assert.equal(own.rows[0].solicitud_datos,undefined);
+    for(const actor of [client,tech]) {
+      assert.equal((await operationPage(pool,actor,'Ticket',{id:'assigned-b'},3)).total,0);
+      assert.equal((await operationPage(pool,actor,'OrdenServicio',{id:'private-linked'},3)).total,0);
+    }
+    assert.equal((await operationPage(pool,client,'Ticket',{id:'assigned-a'},3)).rows[0].tiene_orden,true);
+    const [stored]=await pool.query("SELECT payload FROM em_records WHERE entity='Ticket' AND id='assigned-a'");
+    assert.equal(JSON.parse(stored[0].payload).tiene_orden,undefined);
+  });
   await t.test('API ligera compatible, autenticación y cambio de revisión entre páginas',async()=>{
     const session=token(),csrf=token();await pool.execute('INSERT INTO em_users (id,email,name,role,password_hash,active) VALUES (?,?,?,?,?,TRUE)',[admin.id,'qa@example.invalid',admin.nombre,admin.rol,'synthetic-unusable']);await pool.execute('INSERT INTO em_sessions (token_hash,user_id,csrf,expires_at,last_seen_at) VALUES (?,?,?,?,?)',[digest(session),admin.id,csrf,Date.now()+60000,Date.now()]);
     server=createApp({pool,origin:'http://localhost:3000',setupToken:token(),production:false}).listen(0,'127.0.0.1');await once(server,'listening');const root=`http://127.0.0.1:${server.address().port}/api/`;
@@ -64,4 +78,3 @@ test('Páginas operativas: índices, roles, migración y revisión consistente',
     await pool.query('UPDATE em_meta SET revision=revision+1 WHERE id=1');result=await get('operations/OrdenServicio?page=2&token='+compact.syncToken);assert.equal(result.status,409);
   });
 });
-

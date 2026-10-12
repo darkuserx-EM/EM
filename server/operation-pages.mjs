@@ -13,8 +13,11 @@ function scope(actor,entity) {
     else if(entity==='LecturaHorometro'){where.push("EXISTS (SELECT 1 FROM em_records eq WHERE eq.entity='Equipo' AND eq.id=o.equipment_id AND BINARY JSON_UNQUOTE(JSON_EXTRACT(eq.payload,'$.cliente_id'))=BINARY ?)");args.push(actor.cliente_id);}
     else{where.push('o.client_id=?');args.push(actor.cliente_id);if(entity==='OrdenServicio')where.push('o.visible_client=TRUE');}
   } else if(actor.rol==='Técnico') {
-    if(!actor.tecnico_id||entity==='Ticket')where.push('FALSE');
+    if(!actor.tecnico_id)where.push('FALSE');
     else if(entity==='OrdenServicio'){where.push('o.technician_id=?');args.push(actor.tecnico_id);}
+    // The legacy shared index can contain tecnico_id on a ticket. Only the
+    // ticket's actual responsable_id authorizes reading it, including old data.
+    else if(entity==='Ticket'){where.push("EXISTS (SELECT 1 FROM em_records assigned_ticket WHERE assigned_ticket.entity='Ticket' AND assigned_ticket.id=o.id AND BINARY JSON_UNQUOTE(JSON_EXTRACT(assigned_ticket.payload,'$.responsable_id'))=BINARY ?)");args.push(actor.tecnico_id);}
     else{where.push("EXISTS (SELECT 1 FROM em_operation_index assigned WHERE assigned.entity='OrdenServicio' AND assigned.equipment_id=o.equipment_id AND assigned.technician_id=?)");args.push(actor.tecnico_id);}
   } else if(!['Administrador','Coordinador'].includes(actor.rol))where.push('FALSE');
   return {where,args};
@@ -52,9 +55,11 @@ export async function operationPage(conn,actor,entity,query,revision) {
 /** @type {{n:number}[]} */
     const totals = await select(conn,`SELECT COUNT(*) n FROM em_operation_index o WHERE ${clause}`,args),total=Number(totals[0].n),page=Math.min(requested,Math.max(1,Math.ceil(total/pageSize)));
 
-/** @type {{payload:string}[]} */
-    const rows = await select(conn,`SELECT r.payload FROM em_operation_index o JOIN em_records r ON r.entity=o.entity AND r.id=o.id WHERE ${clause} ORDER BY o.sort_value DESC,o.id DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`,args);
-  return {rows:rows.map(row=>projectOperation(actor,entity,JSON.parse(row.payload))),total,page,pageSize,revision,counts,states};
+  // Only a boolean crosses the access boundary; the linked order keeps its own scope.
+  const relation=entity==='Ticket'?", (o.order_id<>'' OR EXISTS (SELECT 1 FROM em_operation_index linked WHERE linked.entity='OrdenServicio' AND linked.ticket_id=o.id)) AS has_order":'';
+/** @type {{payload:string,has_order?:number}[]} */
+    const rows = await select(conn,`SELECT r.payload${relation} FROM em_operation_index o JOIN em_records r ON r.entity=o.entity AND r.id=o.id WHERE ${clause} ORDER BY o.sort_value DESC,o.id DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`,args);
+  return {rows:rows.map(row=>projectOperation(actor,entity,{...JSON.parse(row.payload),...(entity==='Ticket'?{tiene_orden:!!row.has_order}:{})})),total,page,pageSize,revision,counts,states};
 }
 /** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool,syncToken:(revision:number,actor:import("../src/domain/model.js").Actor)=>string}} options */
 export function registerOperationPages(app,{pool,syncToken}) {

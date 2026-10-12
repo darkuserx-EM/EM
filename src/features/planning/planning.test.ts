@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { boardMoveAllowed, calendarRange, monthGrid, operationalOrders, planningEvents, shiftCalendar, weekStart } from '../../domain/planning';
+import { boardMoveAllowed, calendarRange, monthGrid, operationalOrders, planningEvents, shiftCalendar, weekStart, ticketsToSchedule, matchesPlanningState } from '../../domain/planning';
+import { filterVisible } from '../../domain/permissions';
 import { localDay } from '../../domain/equipment-history';
 import type { EntityRecord } from '../../domain/model';
 
@@ -41,5 +42,51 @@ describe('calendario operativo en Guatemala', () => {
     expect(boardMoveAllowed(order, 'En proceso', 'Cliente')).toBe(false);
     expect(boardMoveAllowed({ ...order, estado: 'Completada' }, 'Borrador', 'Administrador')).toBe(false);
     expect(boardMoveAllowed({ ...order, importado: true }, 'En proceso', 'Administrador')).toBe(false);
+  });
+});
+
+describe('solicitudes en la agenda', () => {
+  const ticket = row({ id: 'ticket', codigo: 'TKT-1', schema_operacion: 1, equipo_id: 'eq', cliente_id: 'a', responsable_id: 'tech-a', estado: 'Programado', fecha_programada: '2026-10-13', prioridad: 'Alta', titulo: 'Revisar frenos' });
+  const order = row({ id: 'order', schema_operacion: 1, ticket_id: ticket.id, equipo_id: 'eq', cliente_id: 'a', tecnico_id: 'tech-a', estado: 'Programada', fecha_programada: '2026-10-14', hora_programada: '09:00', visible_cliente: true });
+  it('muestra fecha, prioridad, equipo y responsable sin inventar una hora', () => {
+    expect(planningEvents([], [], [], [], '2026-10-12', [ticket])[0]).toMatchObject({ id: 'ticket-ticket', kind: 'ticket', day: '2026-10-13', time: '', technicianId: 'tech-a', clientId: 'a', priority: 'Alta', href: '/tickets?ticket=ticket' });
+  });
+  it.each(['ticket_id', 'orden_id'])('resuelve %s y conserva solo la fecha de la orden, con ambos enlaces', direction => {
+    const request = direction === 'orden_id' ? { ...ticket, orden_id: order.id } : ticket;
+    const service = direction === 'orden_id' ? { ...order, ticket_id: '' } : order;
+    const events = planningEvents([service], [], [], [], '2026-10-12', [request]);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ day: '2026-10-14', time: '09:00', href: '/ordenes?orden=order', ticketHref: '/tickets?ticket=ticket' });
+    expect(ticketsToSchedule([{ ...request, fecha_programada: '' }], [service])).toEqual([]);
+  });
+  it.each(['Borrador', 'Cancelada', 'Completada'])('no revive el ticket de una orden %s aunque cambie la fecha o el estado', estado => {
+    const events = planningEvents([{ ...order, estado, fecha_programada: '' }], [], [], [], '2026-10-12', [ticket]);
+    expect(events).toEqual([]);
+  });
+  it('separa pendientes, ordena por prioridad y antigüedad, y no cambia los originales', () => {
+    const rows = [row({ ...ticket, id: 'low', prioridad: 'Baja', fecha_programada: '' }), row({ ...ticket, id: 'new', fecha_programada: '' }), row({ ...ticket, id: 'old', fecha_programada: '', fecha_creacion: '2026-10-01T00:00:00Z' }), row({ ...ticket, id: 'critical', prioridad: 'Crítica', fecha_programada: '' }), { ...ticket, id: 'closed', fecha_programada: '', estado: 'Resuelto' }, { ...ticket, id: 'canceled', fecha_programada: '', estado: 'Cancelado' }, { ...ticket, id: 'linked', fecha_programada: '', tiene_orden: true }, ticket];
+    const before = structuredClone(rows);
+    expect(ticketsToSchedule(rows, []).map(row => row.id)).toEqual(['critical', 'old', 'new', 'low']);
+    expect(rows).toEqual(before);
+    expect(planningEvents([], [], [], [], '2026-10-12', rows).map(event => event.id)).toEqual(['ticket-ticket']);
+  });
+  it('conserva resueltos/cancelados para consulta explícita, fuera de la agenda pendiente', () => {
+    for (const estado of ['Resuelto', 'Cancelado']) {
+      const event = planningEvents([], [], [], [], '2026-10-12', [{ ...ticket, estado }])[0];
+      expect(matchesPlanningState(event, '')).toBe(false);
+      expect(matchesPlanningState(event, estado)).toBe(true);
+    }
+  });
+  it.each(['Administrador', 'Coordinador', 'Cliente', 'Técnico'] as const)('respeta el alcance de %s antes de construir la agenda', rol => {
+    const actor = { id: 'actor', nombre: 'QA', rol, cliente_id: 'a', tecnico_id: 'tech-a' };
+    const requests = [ticket, { ...ticket, id: 'foreign', cliente_id: 'b', responsable_id: 'tech-b' }];
+    const entities = { Equipo: [], OrdenServicio: [{ ...order, visible_cliente: false, tecnico_id: 'tech-b' }], Ticket: requests };
+    const scoped = filterVisible(actor, 'Ticket', requests, entities);
+    const orders = filterVisible(actor, 'OrdenServicio', entities.OrdenServicio, entities);
+    const events = planningEvents(orders, [], [], [], '2026-10-12', scoped);
+    expect(events.some(event => event.id === 'ticket-ticket')).toBe(false);
+    expect(events.some(event => event.id === 'order-order')).toBe(['Administrador', 'Coordinador'].includes(rol));
+    expect(events.some(event => event.id === 'ticket-foreign')).toBe(['Administrador', 'Coordinador'].includes(rol));
+    if (rol === 'Cliente' || rol === 'Técnico') { expect(scoped[0].tiene_orden).toBe(true); expect(scoped[0]).not.toHaveProperty('orden_id'); }
   });
 });

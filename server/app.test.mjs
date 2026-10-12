@@ -41,6 +41,7 @@ function poolFor(user, prepare = () => {}) {
         media.set(JSON.stringify([equipment_id,field,hash]),{equipment_id,field,hash,mime,size,sha256,uploaded_by,created_at,content,thumbnail}); return [{}];
       }
       if(sql.startsWith("SELECT payload FROM em_records WHERE entity='OrdenServicio'")) return [db.entities.OrdenServicio.filter(row=>row.equipo_id===args[0]&&row.tecnico_id===args[1]).map(row=>({payload:JSON.stringify(row)}))];
+      if(sql.startsWith("SELECT payload FROM em_records WHERE entity='Ticket'")) return [db.entities.Ticket.filter(row=>row.equipo_id===args[0]&&row.responsable_id===args[1]).map(row=>({payload:JSON.stringify(row)}))];
       if(sql.includes('em_sessions s')) return [user?[user]:[]];
       if(sql.startsWith("SELECT payload FROM em_records WHERE entity='Equipo'")) {
         const row=db.entities.Equipo.find(item=>item.id===args[0]);
@@ -105,6 +106,21 @@ test('shared engine does not inject demo records into an empty online workspace'
 const picture='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jp9sAAAAASUVORK5CYII=';
 const imageHash=imageReference(picture).slice(6);
 const withImages=db=>{for(const field of equipmentImageFields) db.entities.Equipo[0][field]=picture;db.entities.Equipo[0].cliente_id='client-1';};
+
+test('agenda de técnico: ticket asignado, equipo y foto autorizados; cambios y recursos ajenos rechazados',async t=>{
+  const prepare=db=>{
+    withImages(db);for(const name of ['OrdenServicio','LecturaHorometro','OTRepuesto','OTHoras'])db.entities[name]=[];
+    const template={...db.entities.Equipo[0],titulo:'Agenda QA',descripcion:'Solicitud de prueba',equipo_id:'equipment-1',cliente_id:'client-1',schema_operacion:1,estado:'Programado',fecha_programada:'2026-10-13',prioridad:'Alta'};
+    db.entities.Ticket=[{...template,id:'ticket-own',codigo:'TKT-1',responsable_id:'tech-1'},{...template,id:'ticket-other',codigo:'TKT-2',responsable_id:'tech-2'}];
+  };
+  const user={...coordinator,role:'Técnico',technician_id:'tech-1'};
+  const request=await fixture(t,user,prepare);
+  const response=await request('/api/database',{headers:{Cookie:'em_session=x'}});assert.equal(response.status,200);
+  const db=await response.json();assert.deepEqual(db.entities.Ticket.map(row=>row.id),['ticket-own']);assert.deepEqual(db.entities.Equipo.map(row=>row.id),['equipment-1']);
+  assert.equal((await request(`/api/equipment-images/equipment-1/foto_equipo/${imageHash}`,{headers:{Cookie:'em_session=x'}})).status,200);
+  assert.equal((await request(`/api/equipment-images/equipment-2/foto_equipo/${imageHash}`,{headers:{Cookie:'em_session=x'}})).status,404);
+  assert.equal((await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'update',entity:'Ticket',id:'ticket-own',revision:db.revision,fields:{estado:'Resuelto',expected_updated_at:db.entities.Ticket[0].fecha_actualizacion}})})).status,403);
+});
 
 test('findings persist with trusted audit, reject stale or invalid updates and preserve equipment/history/images',async t=>{
   const request=await fixture(t,{...coordinator,role:'Administrador'},withImages);
