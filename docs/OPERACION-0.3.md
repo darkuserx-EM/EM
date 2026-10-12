@@ -108,4 +108,6 @@ Evaluación del reporte de flujos recibido el 12/10/2026:
 - FR-05: el costeo e inventario estructurados requieren su etapa propia. No se deducen consumos ni importes del texto libre y no se inventan costos.
 - FR-06: las sedes y condiciones de acceso ya se gestionan en la ficha; la orden admite seleccionar la sede. Se conserva la posibilidad de registrar solicitudes urgentes con información incompleta.
 
-Pruebas del cierre: 280 pruebas de aplicación, 47 de servidor y 81 de integración con base de datos; lint, tipado y compilación correctos. Se comprobó el cierre autenticado por técnico desde la interfaz sin inventar horómetro, conservación del historial, aislamiento del cliente, concurrencia entre dos órdenes y reversión ante fallo de auditoría.
+Pruebas del cierre: 282 pruebas de aplicación, 47 de servidor y 82 de integración con base de datos; lint, tipado y compilación correctos. Se comprobó el cierre autenticado por técnico desde la interfaz sin inventar horómetro, conservación del historial, aislamiento del cliente, concurrencia entre dos órdenes y reversión ante fallo de auditoría.
+
+No se admiten nuevas órdenes vinculadas a solicitudes resueltas o canceladas; los reintentos de altas ya confirmadas conservan su idempotencia. Se prueba también la creación concurrente de una orden durante el cierre: o la solicitud permanece abierta por el nuevo trabajo, o el alta se rechaza al encontrarla ya cerrada.

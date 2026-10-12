@@ -16,6 +16,13 @@ function fixture() {
 }
 
 describe('resolución de solicitudes al completar sus órdenes', () => {
+  it.each(['Resuelto', 'Cancelado'])('rechaza nuevas órdenes desde un ticket %s sin invalidar reintentos de altas ya guardadas', async estado => {
+    const { source } = fixture(); const tickets = source.repository('Ticket', coordinator); const orders = source.repository('OrdenServicio', coordinator);
+    const ticket = await tickets.create(ticketInput); const input = { ...orderInput, ticket_id: ticket.id, solicitud_id: 'closure-retry-123' };
+    const order = await orders.create(input); await tickets.update(ticket.id, { estado }); const before = source.snapshot(admin);
+    await expect(orders.create({ ...orderInput, ticket_id: ticket.id })).rejects.toThrow('solicitud está cerrada');
+    expect((await orders.create(input)).id).toBe(order.id); expect(source.snapshot(admin)).toEqual(before);
+  });
   it.each(['Nuevo', 'En revisión', 'Programado'])('resuelve %s con actor e historial, sin liberar equipo ni publicar el reporte privado', async estado => {
     const { source } = fixture();
     const ticket = await source.repository('Ticket', coordinator).create({ ...ticketInput, estado, ...(estado === 'Programado' ? { responsable_id: 'tech-1', fecha_programada: '2026-10-11' } : {}) });

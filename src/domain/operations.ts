@@ -104,6 +104,7 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
   }
   if (original && entity === 'LecturaHorometro') throw new ValidationError('Las lecturas originales se conservan. Registra una nueva lectura; las correcciones requieren revisión de administración.');
   const row: Record<string, Scalar> = { ...(original || {}), ...input, schema_operacion: 1 };
+  if (entity === 'OrdenServicio' && !original && row.ticket_id && entities.Ticket.some(ticket => ticket.id === row.ticket_id && ['Resuelto', 'Cancelado'].includes(String(ticket.estado)))) throw new ValidationError('La solicitud está cerrada. Registra una nueva solicitud para continuar la atención y conservar su historial.');
   if (entity === 'OrdenServicio' && original && ['horometro', 'odometro_millas'].some(key => typeof original[key] === 'number' && (input[key] === null || input[key] === ''))) throw new ValidationError('Conserva la lectura capturada. Las correcciones deben revisarse antes de sustituir el dato.');
   const equipment = entities.Equipo.find(item => item.id === row.equipo_id);
   if (!equipment) throw new ValidationError('Selecciona un equipo existente.');

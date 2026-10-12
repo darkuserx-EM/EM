@@ -170,6 +170,21 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
    const saved=await call('mutate',{action:'update',entity:'OrdenServicio',id:orders[0].id,revision:0,fields:{...closure,horometro:130,expected_updated_at:orders[0].fecha_actualizacion}},technician);assert.equal(saved.status,200,JSON.stringify(saved.data));
    const after=await readSnapshot(pool);assert.equal(after.entities.Ticket.find(row=>row.id===ticket.id).estado,'Resuelto');assert.equal(after.entities.LecturaHorometro.filter(row=>row.orden_id===orders[0].id).length,1);
  });
+ await t.test('una nueva orden concurrente con el cierre nunca deja un ticket resuelto con trabajo abierto',async()=>{
+   const {ticket,orders}=await linkedWork(),getConnection=pool.getConnection.bind(pool);let waiting=0,release;
+   const gate=new Promise(resolve=>{release=resolve;}),timer=setTimeout(()=>release(),5000);
+   pool.getConnection=async()=>{const conn=await getConnection();return new Proxy(conn,{get(target,key){const value=target[key];if(key==='execute')return async(...args)=>{if(args[0]==='UPDATE em_meta SET revision=? WHERE id=1 AND revision=?'&&waiting<2){waiting++;if(waiting===2)release();await gate;}return value.apply(target,args);};return typeof value==='function'?value.bind(target):value;}});};
+   let results;
+   try {results=await Promise.all([
+     call('mutate',{action:'update',entity:'OrdenServicio',id:orders[0].id,revision:0,fields:{...closure,expected_updated_at:orders[0].fecha_actualizacion}},technician),
+     call('mutate',{action:'create',entity:'OrdenServicio',revision:0,fields:{equipo_id:'eq-a',ticket_id:ticket.id,sintoma:'Trabajo adicional concurrente',estado:'Borrador',solicitud_id:randomUUID()}},admin),
+   ]);}finally {clearTimeout(timer);pool.getConnection=getConnection;}
+   assert.equal(waiting,2);assert.equal(results[0].status,200,JSON.stringify(results[0].data));
+   const after=await readSnapshot(pool),resolved=after.entities.Ticket.find(row=>row.id===ticket.id).estado==='Resuelto';
+   const open=after.entities.OrdenServicio.filter(row=>row.ticket_id===ticket.id&&row.estado!=='Completada');
+   if(resolved){assert.equal(results[1].status,400);assert.match(results[1].data.error,/solicitud está cerrada/);assert.equal(open.length,0);}
+   else{assert.equal(results[1].status,200,JSON.stringify(results[1].data));assert.equal(open.length,1);}
+ });
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');const body={orderId:order.id,requestId:randomUUID(),category:'Antes',name:'evidencia.png',base64:bytes.toString('base64')};let file;
  await t.test('subida autorizada e idempotente, rechazo HTML y acceso cruzado',async()=>{
    assert.equal((await call('attachments',body,a)).status,403);const up=await call('attachments',body,technician);assert.equal(up.status,201,JSON.stringify(up.data));file=up.data.file;
