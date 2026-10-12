@@ -28,3 +28,7 @@ Las pruebas de contraseñas, restauración y revocación se ejecutan con cuentas
 ## Sesiones e inactividad
 
 Máximo absoluto: 8 horas. Se cierra tras 60 minutos sin interacción (SESSION_IDLE_MINUTES, 15–240). El sondeo y las lecturas automáticas no renuevan la sesión. La interacción de teclado, clic o desplazamiento envía una confirmación con CSRF, como máximo una vez por minuto. En producción la cookie es __Host-em_session (Secure, HttpOnly, SameSite=Strict, Path=/, sin Domain). Las sesiones antiguas se migran al siguiente uso conservando su vencimiento; salir borra ambas cookies. La migración 6 inicializa la actividad de sesiones anteriores una sola vez; no amplía las 8 horas. Reversión: cerrar las sesiones y volver a ingresar con la versión anterior; la columna añadida es compatible.
+
+## Límites de acceso por proceso
+
+express-rate-limit conserva contadores generales y por IP en la memoria de cada proceso; reiniciar los reinicia y varias instancias no los comparten. El login usa adicionalmente límites persistentes correo+IP en em_login_limits; el segundo factor, por cuenta. Antes de escalar a varias instancias, configurar un almacén compartido de límites y verificar el proxy (#4). No se confunde esta decisión con una protección distribuida ya instalada.
