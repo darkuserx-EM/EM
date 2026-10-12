@@ -39,9 +39,10 @@ test('segundo factor: alta, acceso y recuperación',{skip:process.env.MYSQL_INTE
   const [stored]=await pool.query('SELECT code_hash FROM em_recovery_codes');assert.equal(stored.length,10);assert.ok(stored.every(row=>!codes.includes(row.code_hash)));
  });
  await t.test('contraseña sola no da sesión; TOTP de un solo uso y desafío consumido',async()=>{
-  await resetCounter();const c=await challenge(),r=await call('login/totp',{challenge:c,code:totp(secret)});const s=await session(r);assert.equal((await call('session',undefined,s)).status,200);
-  assert.equal((await call('login/totp',{challenge:c,code:totp(secret)})).status,401);
-  const next=await challenge();assert.equal((await call('login/totp',{challenge:next,code:totp(secret)})).status,401);
+  // Replay the exact accepted code, even if the wall clock crosses a TOTP step.
+  await resetCounter();const c=await challenge(),code=totp(secret),r=await call('login/totp',{challenge:c,code});const s=await session(r);assert.equal((await call('session',undefined,s)).status,200);
+  assert.equal((await call('login/totp',{challenge:c,code})).status,401);
+  const next=await challenge();assert.equal((await call('login/totp',{challenge:next,code})).status,401);
  });
  await t.test('recuperación se usa una vez y no elimina segundo factor',async()=>{
   const c=await challenge();await session(await call('login/totp',{challenge:c,code:codes[0]}));
