@@ -1,5 +1,7 @@
 # Portal EMSA · Entrega operativa 0.3
 
+Gestión actual de altas, renovaciones, reactivación y recuperación administrativa: [Cuentas y recuperación](CUENTAS-Y-RECUPERACION.md). Respaldo de fotografías y evidencias: [Fotografías MySQL](FOTOGRAFIAS-MYSQL.md).
+
 Fecha de revisión: 10 de octubre de 2026. Base: `8d58852`. Contratos, checklist diario, horas de técnicos y viáticos quedan fuera de esta entrega por alcance.
 
 ## Cambios por módulo

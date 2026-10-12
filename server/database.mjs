@@ -18,6 +18,11 @@ export async function migrate(pool) {
     `CREATE TABLE IF NOT EXISTS em_media_migration (equipment_id VARCHAR(128) PRIMARY KEY, payload LONGTEXT NOT NULL, created_at BIGINT NOT NULL) ENGINE=InnoDB`,
   ];
   for (const statement of sql) await pool.query(statement);
+  const [passwordColumns] = await pool.query("SHOW COLUMNS FROM em_users LIKE 'must_change_password'");
+  if (!passwordColumns.length) {
+    try { await pool.query('ALTER TABLE em_users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE'); }
+    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+  }
   const [userColumns] = await pool.query("SHOW COLUMNS FROM em_users LIKE 'expires_at'");
   if (!userColumns.length) {
     try { await pool.query('ALTER TABLE em_users ADD COLUMN expires_at BIGINT NULL'); }
@@ -53,6 +58,7 @@ export async function migrate(pool) {
       if (addClientSectors(next)) { next.revision++; await saveDatabase(conn,next,previous); }
       await conn.execute('UPDATE em_meta SET schema_version=2 WHERE id=1');
     }
+    await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,4) WHERE id=1');
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
 }

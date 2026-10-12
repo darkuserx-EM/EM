@@ -48,6 +48,7 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   } finally { clearTimeout(timeout); }
   if (!data || typeof data !== 'object') throw new Error('La respuesta del servidor está incompleta. Actualiza la página antes de continuar.');
   if (!response.ok) {
+    if ('code' in data && data.code === 'PASSWORD_CHANGE_REQUIRED' && epoch === authEpoch) window.dispatchEvent(new Event('portal-password-required'));
     throw Object.assign(new Error(('error' in data && typeof data.error === 'string' && data.error) || 'No se pudo completar la solicitud.'), { status: response.status });
   }
   return data as T;

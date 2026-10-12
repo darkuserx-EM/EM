@@ -18,9 +18,9 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
  const conn=await pool.getConnection();try{await conn.beginTransaction();const before=await readDatabase(conn,true),db=structuredClone(before);for(const id of ['a','b']){db.entities.Cliente.push(row(`client-${id}`,`CLI-${id}`,{nombre:`Cliente ${id} PRUEBA`,estado:'Activo'}));db.entities.Equipo.push(row(`eq-${id}`,`TCE-${id}`,{marca:'Crown',modelo:'QA',serie:`SYNTHETIC-${id}`,tipo:'Reach',propiedad:'De cliente',estado:'Disponible',cliente_id:`client-${id}`,horometro:100}));}db.revision++;await saveDatabase(conn,db,before);await conn.commit();}finally{conn.release();}
  const origin='http://localhost:3000',setupToken=token();server=createApp({pool,origin,setupToken,production:false}).listen(0,'127.0.0.1');await once(server,'listening');const url=`http://127.0.0.1:${server.address().port}`;let serial=1;
  async function call(path,body,session){const r=await fetch(`${url}/api/${path}`,{method:body===undefined?'GET':'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Forwarded-For':`198.51.100.${serial++}`,...(session?{Cookie:session.cookie,'X-CSRF-Token':session.csrf}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,headers:r.headers,data:(r.headers.get('content-type')||'').includes('json')?await r.json():Buffer.from(await r.arrayBuffer())};}
- async function login(email,password){const r=await call('login',{email,password});assert.equal(r.status,200,JSON.stringify(r.data));const s={cookie:r.headers.getSetCookie()[0].split(';')[0],csrf:''};s.csrf=(await call('session',undefined,s)).data.csrf;return s;}
+ async function login(email,password){const r=await call('login',{email,password});assert.equal(r.status,200,JSON.stringify(r.data));const s={cookie:r.headers.getSetCookie()[0].split(';')[0],csrf:''};const state=(await call('session',undefined,s)).data;s.csrf=state.csrf;if(state.mustChangePassword)assert.equal((await call('password',{currentPassword:password,newPassword:password+' changed'},s)).status,200);return s;}
  const password='Synthetic QA password 2026!';assert.equal((await call('setup',{email:'admin@example.invalid',name:'QA Admin',password,setupToken})).status,201);const admin=await login('admin@example.invalid',password);
- const technicianRequest={name:'Técnico PRUEBA',email:'tech@example.invalid',role:'Técnico',days:7,password:'Synthetic technician stable password 2026!',requestId:randomUUID()};
+ const technicianRequest={name:'Técnico PRUEBA',email:'tech@example.invalid',role:'Técnico',specialty:'Mantenimiento sintético',days:7,password:'Synthetic technician stable password 2026!',requestId:randomUUID()};
  const tech=(await call('admin/users',technicianRequest,admin));assert.equal(tech.status,201,JSON.stringify(tech.data));
  const clientA=await call('admin/users',{name:'A PRUEBA',email:'a@example.invalid',role:'Cliente',clientId:'client-a',days:7},admin);assert.equal(clientA.status,201);
  const clientB=await call('admin/users',{name:'B PRUEBA',email:'b@example.invalid',role:'Cliente',clientId:'client-b',days:7},admin);assert.equal(clientB.status,201);
@@ -31,9 +31,11 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
    assert.equal((await readSnapshot(pool)).entities.Tecnico.filter(row=>row.id===tech.data.technicianId).length,1);
  });
  await t.test('reintentar alta de cuenta conserva usuario, técnico y vigencia sin duplicar eventos',async()=>{
+   const retryRequest={...technicianRequest,email:'retry@example.invalid',requestId:randomUUID()};
+   const first=await call('admin/users',retryRequest,admin);assert.equal(first.status,201);
    const before=await readSnapshot(pool);
-   const repeated=await call('admin/users',technicianRequest,admin);assert.equal(repeated.status,200,JSON.stringify(repeated.data));
-   assert.deepEqual(repeated.data,tech.data);
+   const repeated=await call('admin/users',retryRequest,admin);assert.equal(repeated.status,200,JSON.stringify(repeated.data));
+   assert.deepEqual(repeated.data,first.data);
    assert.deepEqual(await readSnapshot(pool),before);
    const [users]=await pool.execute('SELECT id,technician_id FROM em_users WHERE email=?',[technicianRequest.email]);assert.equal(users.length,1);assert.equal(users[0].technician_id,tech.data.technicianId);
    const [events]=await pool.execute("SELECT id FROM em_security_events WHERE target_id=? AND action='account.created'",[tech.data.id]);assert.equal(events.length,1);
