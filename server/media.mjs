@@ -49,7 +49,7 @@ export function verifyStoredMedia(row) {
 }
 /** @param {import("mysql2/promise").PoolConnection} conn @param {import("./contracts.js").MediaFile} value */
 export async function storeMedia(conn, value) {
-  /** @type {import("./contracts.js").MediaFile[]} */
+  /** @type {Omit<import("./contracts.js").MediaFile,"thumbnail">[]} */
     const old = await select(conn,`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [value.equipment_id, value.field, value.hash]);
   if (old.length) {
     verifyStoredMedia(old[0]);
@@ -58,7 +58,7 @@ export async function storeMedia(conn, value) {
   }
   await conn.execute('INSERT INTO em_media (equipment_id,field,hash,mime,size,sha256,uploaded_by,created_at,content,thumbnail) VALUES (?,?,?,?,?,?,?,?,?,?)', [value.equipment_id, value.field, value.hash, value.mime, value.size, value.sha256, value.uploaded_by, value.created_at, value.content, value.thumbnail]);
   // Verify bytes before replacing any original embedded value.
-  /** @type {import("./contracts.js").MediaFile[]} */
+  /** @type {Omit<import("./contracts.js").MediaFile,"thumbnail">[]} */
     const saved = await select(conn,`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [value.equipment_id, value.field, value.hash]);
   verifyStoredMedia(saved[0]);
   return true;
@@ -94,7 +94,7 @@ export async function persistEquipmentMedia(conn, next, previous, { actor, uploa
       continue;
     }
     if (restore || value === original) {
-      /** @type {import("./contracts.js").MediaFile[]} */
+      /** @type {{hash:string}[]} */
     const files = await select(conn,`SELECT hash FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id, field, value.slice(6)]);
       if (files.length) continue;
       throw fail(409, 'Falta una fotografía del respaldo. Recupera primero los archivos y luego sus registros.');
@@ -117,7 +117,7 @@ export async function hydrateEquipment(conn, records, { maxBytes = 24 * 1024 * 1
     if (!metadata.length) throw fail(409, 'No se puede exportar: falta una fotografía. Revisa el respaldo completo.');
     bytes += Math.ceil(Number(metadata[0].size) / 3) * 4 + 40;
     if (bytes > maxBytes) throw fail(413, 'Las fotografías superan el respaldo Excel. Descarga el respaldo completo por archivos desde Datos y respaldos.');
-    /** @type {import("./contracts.js").MediaFile[]} */
+    /** @type {Omit<import("./contracts.js").MediaFile,"thumbnail">[]} */
     const files = await select(conn,`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id, field, row[field].slice(6)]);
     if (!files.length) throw fail(409, 'No se puede exportar: falta una fotografía. Revisa el respaldo completo.');
     verifyStoredMedia(files[0]); row[field] = mediaDataUrl(files[0]);

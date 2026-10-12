@@ -103,7 +103,7 @@ export async function migrate(pool) {
 }
 /** @param {import("./contracts.js").SqlConnection} conn @param {boolean} [lock] @param {{includeAudit?:boolean}} [options] */
 export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
-  /** @type {{revision:number,schema_version:number}[]} */
+  /** @type {{revision:number}[]} */
   const meta = await selectQuery(conn,`SELECT revision FROM em_meta WHERE id=1${lock ? ' FOR UPDATE' : ''}`);
   /** @type {{entity:import("../src/domain/model.js").EntityName,payload:string}[]} */
   const rows = await selectQuery(conn,`SELECT entity, payload FROM em_records${includeAudit?'':" WHERE entity<>'Bitacora'"} ORDER BY entity,id`);
