@@ -98,8 +98,8 @@ export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
   validateDatabase(db);
   return db;
 }
-export async function saveDatabase(conn, db, previous) {
-  validateDatabase(db);
+export async function saveDatabase(conn, db, previous, {validate=validateDatabase}={}) {
+  validate(db);
   let batch = []; let bytes = 0;
   const flush = async () => {
     if (!batch.length) return;

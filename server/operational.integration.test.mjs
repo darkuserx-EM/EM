@@ -11,7 +11,7 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
  const host=process.env.TEST_DB_HOST||'127.0.0.1';assert.ok(['127.0.0.1','localhost','::1'].includes(host));
  const config={host,port:Number(process.env.TEST_DB_PORT||3306),user:process.env.TEST_DB_USER||'root',password:process.env.TEST_DB_PASSWORD};assert.ok(config.password);
  const name=`em_ci_${randomUUID().replaceAll('-','')}`,control=await mysql.createConnection(config);await control.query(`CREATE DATABASE ${name} CHARACTER SET utf8mb4`);
- const pool=mysql.createPool({...config,database:name});let server;
+ const pool=mysql.createPool({...config,database:name,connectionLimit:5});let server;
  t.after(async()=>{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await pool.end();assert.match(name,/^em_ci_[a-f0-9]{32}$/);await control.query(`DROP DATABASE ${name}`);await control.end();});
  await migrate(pool);await migrate(pool);
  const now=new Date().toISOString(),row=(id,codigo,fields)=>({id,codigo,creado_por:'qa',actualizado_por:'qa',fecha_creacion:now,fecha_actualizacion:now,...fields});
@@ -60,6 +60,25 @@ test('Cuentas y adjuntos privados: aislamiento, expiración, reintentos y recupe
    const final=await readSnapshot(pool);assert.equal(Math.max(...final.entities.LecturaHorometro.filter(r=>r.equipo_id==='eq-a').map(r=>r.valor)),110);
    assert.equal(final.entities.Equipo.find(r=>r.id==='eq-a').horometro,100); // La ficha conserva la lectura de ingreso.
    assert.equal(final.entities.LecturaHorometro.filter(r=>r.equipo_id==='eq-a'&&r.valor===90).length,0);
+ });
+ await t.test('base validada por revisión: escrituras concurrentes sin releer todo y cambios de otro proceso',async()=>{
+   const getConnection=pool.getConnection.bind(pool);let wholeReads=0;
+   pool.getConnection=async()=>{const conn=await getConnection();return new Proxy(conn,{get(target,key){const value=target[key];if(key==='query')return(...args)=>{if(args[0].startsWith('SELECT entity, payload FROM em_records'))wholeReads++;return value.apply(target,args);};return typeof value==='function'?value.bind(target):value;}});};
+   let other;
+   try {
+     const request=()=>({action:'create',entity:'Ticket',revision:0,fields:{equipo_id:'eq-a',titulo:'Concurrencia '+randomUUID(),descripcion:'Solicitud sintética',solicitud_id:randomUUID()}});
+     assert.equal((await call('mutate',request(),admin)).status,200);wholeReads=0;
+     const results=await Promise.all(Array.from({length:5},()=>call('mutate',request(),admin)));
+     assert.ok(results.every(r=>r.status===200),JSON.stringify(results.map(r=>r.data.error)));assert.equal(wholeReads,0);
+     assert.equal(new Set(results.map(r=>r.data.result.codigo)).size,5);
+     other=createApp({pool,origin,setupToken,production:false}).listen(0,'127.0.0.1');await once(other,'listening');
+     const r=await fetch(`http://127.0.0.1:${other.address().port}/api/mutate`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:admin.cookie,'X-CSRF-Token':admin.csrf},body:JSON.stringify(request())});assert.equal(r.status,200);const external=await r.json();
+     wholeReads=0;const refreshed=await call('mutate',request(),admin);assert.equal(refreshed.status,200);assert.equal(wholeReads,1);assert.ok(refreshed.data.database.entities.Ticket.some(row=>row.id===external.result.id));
+     const [original]=await pool.execute("SELECT payload FROM em_records WHERE entity='Cliente' AND id='client-a'");
+     await pool.execute("UPDATE em_records SET payload=? WHERE entity='Cliente' AND id='client-a'",[JSON.stringify({...JSON.parse(original[0].payload),nombre:''})]);await pool.query('UPDATE em_meta SET revision=revision+1 WHERE id=1');
+     try {assert.equal((await call('mutate',request(),admin)).status,500);}finally{await pool.execute("UPDATE em_records SET payload=? WHERE entity='Cliente' AND id='client-a'",[original[0].payload]);await pool.query('UPDATE em_meta SET revision=revision+1 WHERE id=1');}
+     assert.equal((await call('mutate',request(),admin)).status,200);
+   } finally {pool.getConnection=getConnection;if(other){other.closeAllConnections();await new Promise(resolve=>other.close(resolve));}}
  });
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');const body={orderId:order.id,requestId:randomUUID(),category:'Antes',name:'evidencia.png',base64:bytes.toString('base64')};let file;
  await t.test('subida autorizada e idempotente, rechazo HTML y acceso cruzado',async()=>{

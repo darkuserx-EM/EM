@@ -8,7 +8,7 @@ import helmet from 'helmet';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames, ValidationError } from './generated/domain.mjs';
+import { LocalDataSource, STORAGE_KEY, filterVisible, entityNames, ValidationError, IncrementalValidation } from './generated/domain.mjs';
 import { readSnapshot, readDatabase, readEquipmentRecord, saveDatabase, consumeLoginAttempt } from './database.mjs';
 import { hashPassword, verifyPassword, digest, equal, token, cookieToken } from './security.mjs';
 import { presentDatabase, presentEquipment, readEquipmentImage } from './equipment-images.mjs';
@@ -33,6 +33,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.set('portal production', production);
   app.disable('x-powered-by'); app.set('trust proxy', parseTrustProxy(String(trustProxy)));
   const snapshots = createSnapshotCache(pool);
+  const validationIndexes=new WeakMap();
   app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null } } }));
   app.use((_req, res, next) => { res.set('X-Robots-Tag', 'noindex, nofollow'); next(); });
   app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
@@ -191,7 +192,19 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (['import','importClients'].includes(body.action) && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
     const conn = await pool.getConnection();
     try {
-      await conn.beginTransaction(); const db = await readDatabase(conn,true,{includeAudit:body.action==='restore'});
+      await conn.beginTransaction();
+      const incremental=['create','update','remove'].includes(body.action);
+      const [locked]=await conn.query('SELECT revision FROM em_meta WHERE id=1 FOR UPDATE');
+      // A cache hit is usable only for this exact committed revision. A cold or
+      // externally changed baseline is fully validated on this same connection;
+      // taking another pool connection here can deadlock concurrent writers.
+      const db=(incremental && await snapshots.peek(Number(locked[0].revision))) || await readDatabase(conn,false,{includeAudit:body.action==='restore'});
+      let checker;
+      if(incremental) {
+        checker=validationIndexes.get(db)||IncrementalValidation.create(db);
+        validationIndexes.set(db,checker);
+      }
+      const validate=checker ? value=>checker.validate(value) : undefined;
       const sequence=await auditSequence(conn);
       const replay = body.action === 'create' && ['Ticket','OrdenServicio','LecturaHorometro'].includes(body.entity) && body.fields?.solicitud_id && db.entities[body.entity].some(row => row.solicitud_id === body.fields.solicitud_id && row.creado_por === req.actor.id);
       // Operational writes validate their own record version and all current links
@@ -202,7 +215,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       // Resolve them against this locked snapshot before saving; never concatenate
       // every existing photo into the domain's intermediate JSON string.
       let saved = JSON.stringify(presentDatabase(db));
-      const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false,maxRows:Infinity,auditSequence:sequence});
+      const source = new LocalDataSource({getItem:key=>key===STORAGE_KEY?saved:null,setItem:(_key,value)=>{saved=value;}},{demoHistory:false,maxRows:Infinity,auditSequence:sequence,validate});
       let result;
       try {
         if (body.action==='importClients') result = source.importClients(req.actor,body.rows,db.revision);
@@ -218,7 +231,13 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       } catch (error) { if (error instanceof ValidationError) throw fail([403,409].includes(error.status) ? error.status : 400,error.message); throw error; }
       const next = JSON.parse(saved);
       await persistEquipmentMedia(conn,next,db,{actor:req.actor,uploads:body.mediaUploads,targetId:body.entity==='Equipo' ? result?.id : undefined,restore:body.action==='restore'});
-      await saveDatabase(conn,next,db); await conn.commit(); snapshots.publish(next);
+      let nextChecker;
+      await saveDatabase(conn,next,db,{validate:checker ? value=>{nextChecker=checker.check(value);} : undefined});
+      // Do not retain newly emitted audit rows in the operational baseline.
+      const published={...next,entities:{...next.entities,Bitacora:[]}};
+      if(nextChecker)nextChecker=nextChecker.check(published);
+      if(nextChecker)validationIndexes.set(published,nextChecker);
+      await snapshots.publishAfterCommit(published,()=>conn.commit());
       const publicResult = result && body.entity && req.actor.rol !== 'Administrador' ? filterVisible(req.actor,body.entity,[result],next.entities)[0] : result;
       res.json({result:body.entity === 'Equipo' && result ? presentEquipment(next.entities.Equipo.find(row => row.id === result.id)) : publicResult,database:visible(next,req.actor)});
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }

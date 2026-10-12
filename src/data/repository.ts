@@ -28,7 +28,7 @@ export interface ImportRow { id?: string; fields: Record<string, Scalar> }
 export class LocalDataSource {
   private database: Database;
   private listeners = new Set<() => void>();
-  constructor(private storage: StorageAdapter, private options: { demoHistory: boolean; maxRows?: number; auditSequence?: number } = { demoHistory: true }) {
+  constructor(private storage: StorageAdapter, private options: { demoHistory: boolean; maxRows?: number; auditSequence?: number; validate?: (value:unknown)=>void } = { demoHistory: true }) {
     const saved = storage.getItem(STORAGE_KEY);
     try {
       const data: unknown = upgradeFindingCollection(saved ? JSON.parse(saved) : createSeed());
@@ -47,7 +47,8 @@ export class LocalDataSource {
     }
   }
   private validate(value: unknown): asserts value is Database {
-    validateDatabase(value, { maxRows: this.options.maxRows ?? LOCAL_MAX_ROWS });
+    if(this.options.validate)this.options.validate(value);
+    else validateDatabase(value, { maxRows: this.options.maxRows ?? LOCAL_MAX_ROWS });
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getRevision = () => this.database.revision;

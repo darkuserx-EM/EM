@@ -313,6 +313,21 @@ test('a pending snapshot older than an observed external revision is reread',asy
   assert.equal((await b).revision,2);assert.equal(calls,2);
 });
 
+test('cache publication waits for commit acknowledgement and discards failed transactions',async()=>{
+  const old={revision:1,entities:{}},next={revision:2,entities:{}};
+  const cache=createSnapshotCache(null);cache.publish(old);
+  let finish;
+  const committed=cache.publishAfterCommit(next,()=>new Promise(resolve=>{finish=resolve;}));
+  let resolved=false;const waiting=cache.peek(2).then(value=>{resolved=true;return value;});
+  await Promise.resolve();assert.equal(resolved,false);assert.equal(await cache.peek(1),old);
+  finish();await committed;assert.equal(await waiting,next);
+  let reject;
+  const failure=cache.publishAfterCommit({revision:3,entities:{}},()=>new Promise((_resolve,failed)=>{reject=failed;}));
+  const rejected=assert.rejects(failure,/commit failed/),uncommitted=cache.peek(3);
+  reject(new Error('commit failed'));await rejected;
+  assert.equal(await uncommitted,undefined);assert.equal(await cache.peek(2),next);
+});
+
 test('cache sizing includes Unicode and JSON framing, stops early and never propagates a cache failure',async()=>{
   const db={schemaVersion:1,revision:2,entities:{Equipo:[{id:'equipo',nombre:'Grúa 🏗️',notas:'"\\\n'}],Bitacora:[]}};
   const size=Buffer.byteLength(JSON.stringify(db));
