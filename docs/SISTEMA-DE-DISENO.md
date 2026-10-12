@@ -85,9 +85,17 @@ Todos los colores y tamaños de las vistas anual, mensual y semanal, del tablero
 - Los íconos grandes de Datos y del Plan (`.large-icon.green/blue/amber`) usan los pares semánticos de fondo y texto.
 - La ilustración de los módulos próximos (ícono y número de etapa) es `aria-hidden`: repite «Etapa N» y es decorativa.
 
+## Paso 8 · Portal del cliente
+
+- `client-portal.css` y `client-shell.css` pasan a tokens con las equivalencias del paso 5 (0 colores fijos; mínimo 12 px). En `client-shell.css` se retiran las variables antiguas (`--ink`, `--paper`).
+- **Vista del operador** (`/revision/TCL-001`, la única pantalla oscura): sobre fondo casi negro, la etiqueta superior usa `--color-brand` (7.4:1) y el texto secundario `color-mix(in srgb, var(--color-text-inverse) 65%, transparent)`. Los tokens de texto están pensados para superficies claras.
+- `base.css`: la letra del espacio de trabajo en el menú lateral (`.workspace-symbol`) usa `--color-text-muted`; antes tenía 3.39:1.
+
+Con este paso todas las pantallas usan tokens. Lo único que queda bajo 12 px es el subtítulo del logotipo, exento por ser parte de la marca.
+
 ## Siguientes pasos
 
 1. ~~Base global~~ (paso 1, `base.css`).
-2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → ~~ficha del equipo~~ (paso 5) → ~~Inicio~~ (paso 6) → ~~administración~~ (paso 7) → portal del cliente.
+2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → ~~ficha del equipo~~ (paso 5) → ~~Inicio~~ (paso 6) → ~~administración~~ (paso 7) → ~~portal del cliente~~ (paso 8).
 3. **Componentes compartidos:** `Button`, `Field`, `Badge`, `Tabs`/`Steps`, `KpiCard`, `DataTable`.
 4. **Control en CI:** Stylelint contra colores y tamaños fuera de los tokens, y prueba de contraste.

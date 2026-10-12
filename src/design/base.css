@@ -20,6 +20,7 @@ small { font-size: max(var(--text-xs), .83em); }
 /* ── Menú lateral ─────────────────────────────────────────────── */
 .workspace-label strong { font-size: var(--text-sm); }
 .workspace-label small { font-size: var(--text-xs); color: var(--color-text-muted); }
+.workspace-symbol { color: var(--color-text-muted); }
 .nav-group p { font-size: var(--text-xs); color: var(--color-text-muted); letter-spacing: .08em; }
 .nav-item { font-size: var(--text-sm); color: var(--color-text-muted); }
 .nav-item:hover { color: var(--color-text); }
