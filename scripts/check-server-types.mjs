@@ -23,7 +23,7 @@ for(const source of program.getSourceFiles()) {
   const path=resolve(source.fileName);
   if(!path.startsWith(serverRoot))continue;
   const local=path.slice(serverRoot.length);
-  if(local.startsWith('generated')||source.isDeclarationFile)continue;
+  if(local.startsWith('generated'))continue;
   const visit=node=>{
     if(node.kind===ts.SyntaxKind.AnyKeyword)throw Error(`Explicit any in ${local}`);
     if(ts.isPropertyAccessExpression(node)&&node.name.text==='body'&&(checker.getTypeAtLocation(node).flags&ts.TypeFlags.Any))throw Error(`Untyped request body in ${local}:${source.getLineAndCharacterOfPosition(node.getStart()).line+1}`);
