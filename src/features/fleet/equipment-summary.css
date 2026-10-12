@@ -15,7 +15,7 @@ button.summary-kpi:hover { background: var(--color-surface-muted); border-color:
 .summary-section-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .summary-section-title > span { font-size: var(--text-xs); color: var(--color-text-muted); }
 .summary-meter { display: block; width: 100%; margin-top: 18px; overflow: visible; }
-.summary-meter text { font: 11px Inter, sans-serif; fill: var(--color-text-muted); }
+.summary-meter text { font: var(--text-xs) var(--font-body); fill: var(--color-text-muted); }
 .summary-grid-line { stroke: var(--color-border); stroke-dasharray: 4 5; }
 .summary-line { stroke: var(--color-accent); stroke-width: 2.5; }
 .summary-line.estimated { stroke: var(--color-warning-solid); stroke-dasharray: 5 5; }
