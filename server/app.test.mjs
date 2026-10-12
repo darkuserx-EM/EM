@@ -40,6 +40,7 @@ function poolFor(user, prepare = () => {}) {
         const row=db.entities.Equipo.find(item=>item.id===args[0]);
         return [row?[{payload:JSON.stringify(row)}]:[]];
       }
+      if(sql.startsWith('INSERT INTO em_audit_index')) return [{}];
       if(sql.startsWith('INSERT INTO em_records')) {
         for(let i=0;i<args.length;i+=3) {
           const [entity,id,payload]=args.slice(i,i+3); const row=JSON.parse(payload); const index=db.entities[entity].findIndex(item=>item.id===id);

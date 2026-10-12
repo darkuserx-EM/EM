@@ -1,3 +1,4 @@
+import type { AuditPage, AuditQuery } from './audit-log';
 import type { Actor, Database, EntityName, EntityRecord, Scalar } from '../domain/model';
 import { assertAdmin } from '../domain/permissions';
 import { planClientImport, type ClientImportRow } from '../domain/client-import';
@@ -118,6 +119,7 @@ export class RemoteDataSource {
       import: async (rows, revision) => { assertAdmin(actor); await this.mutate({ action: 'import', entity, rows, revision }); },
     };
   }
+  async auditLog(actor: Actor, query: AuditQuery = {}): Promise<AuditPage> { assertAdmin(actor); const params=new URLSearchParams(Object.entries(query).filter(([,v])=>v!==undefined).map(([k,v])=>[k,String(v)]));return api<AuditPage>('audit-log?'+params); }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.current()); }
   async backup(actor: Actor) { assertAdmin(actor); return api<Database>('backup'); }
   previewClientImport(actor: Actor, rows: ClientImportRow[]) {

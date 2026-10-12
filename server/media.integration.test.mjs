@@ -136,7 +136,7 @@ test('Fotografías separadas: permisos, migración, integridad y recuperación c
     const after=await readSnapshot(pool);for(const entity of Object.keys(old.entities))if(entity!=='Bitacora')assert.deepEqual(after.entities[entity],old.entities[entity]);
     assert.ok(after.entities.Bitacora.length>=beforeAudit.length);
     // A second recovery preserves the current audit and immutable file identities.
-    revision=after.revision;const r=await call('mutate',{action:'restore',database:db,revision},admin);assert.equal(r.status,200);assert.ok(r.data.database.entities.Bitacora.length>after.entities.Bitacora.length);
+    revision=after.revision;const r=await call('mutate',{action:'restore',database:db,revision},admin);assert.equal(r.status,200);assert.equal(r.data.database.entities.Bitacora.length,0);assert.ok((await readSnapshot(pool)).entities.Bitacora.length>after.entities.Bitacora.length);
     const media=backupEntries.find(x=>x.type==='media').file;
     assert.equal((await call('admin/media/restore',{file:{...media,metadata:{...media.metadata,uploaded_by:'otro'}}},admin)).status,409);
     const [stored]=await pool.query('SELECT content,sha256 FROM em_media');assert.equal(stored.length,5);for(const f of stored)assert.equal(createHash('sha256').update(f.content).digest('hex'),f.sha256);

@@ -76,3 +76,9 @@ Las cuentas de prueba vencen. Administración puede revocarlas desde Roles y acc
 ### Carga e indicadores de conexión
 
 Inicio, flota y administración se descargan al abrir su pantalla. Excel ya tenía carga diferida: se conserva y no se modifica su API. Las reglas compartidas de administración permanecen globales. El indicador muestra el resultado de la última sincronización (gris al comprobar, rojo al fallar, verde al confirmar); no garantiza disponibilidad futura. La ruta de muestra del operador solo existe en modo local. Los nombres del respaldo Excel usan la fecha de Guatemala.
+
+### Bitácora y eventos paginados
+
+La sincronización conserva una colección Bitacora vacía por compatibilidad. El historial real se consulta en /api/audit-log, solo para administración, con cursores por fecha e identificador y filtros por equipo, hallazgo, entidad, acción y fechas de Guatemala. Datos y respaldos permite cargar más; el historial específico se consulta al expandirlo. El índice em_audit_index se rellena en la migración 5 y se actualiza en la misma transacción que los registros. Los respaldos conservan toda la bitácora. La restauración sigue preservando la bitácora vigente.
+
+Roles y accesos incluye /api/admin/security-events, paginado e indexado; nunca devuelve hashes ni contraseñas. Esta mejora reduce las respuestas de sincronización, pero la validación de escrituras todavía lee el conjunto operativo (#20). Reversión: revertir el código; conservar los índices y tablas, que son auxiliares y no alteran los registros originales.
