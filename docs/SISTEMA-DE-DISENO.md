@@ -64,9 +64,16 @@ Todos los colores y tamaños de las vistas anual, mensual y semanal, del tablero
 - `base.css`: `.field-help` y la vista previa de importación con tokens; en móvil, los botones de importación ya no bajan a 9 px.
 - **Corrección del paso 1:** `base.css` había dejado en 14 px los campos de formulario en móvil. Vuelven a 16 px para evitar el zoom automático de iOS.
 
+## Paso 5 · Ficha del equipo
+
+- Los 8 archivos de la ficha (`equipment-dashboard`, `equipment-file`, `equipment-findings`, `equipment-layout-designer`, `equipment-planning`, `equipment-summary`, `imported-history`, `monthly-usage`) pasan de 286 usos de colores fijos a tokens, y sus 63 tamaños de letra menores de 12 px pasan a `--text-xs` como mínimo. Se conservan la estructura y el orden de las reglas: solo cambian los valores.
+- Equivalencias por tipo de propiedad y tono: texto oscuro → `--color-text`; texto secundario → `--color-text-muted`; verdes de acción → `--color-accent`; ámbar y rojo → `--color-warning-*` y `--color-danger-*`; fondos claros → `--color-surface*` o `--color-accent-soft`; bordes → `--color-border` o `--color-border-strong`; contornos de foco → `--color-focus`.
+- **Token nuevo `--color-warning-solid`** (`#a6752d`, de Mantenimiento): barras y líneas de gráfico en ámbar (estimado, por vencer). `--color-warning-text` es demasiado oscuro para una barra.
+- `equipment-file.css` completa los textos del historial (Reparaciones y Uso) que `styles.css` dejaba bajo AA.
+
 ## Siguientes pasos
 
 1. ~~Base global~~ (paso 1, `base.css`).
-2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → resto de la ficha → Inicio → administración → portal del cliente.
+2. **Por pantalla:** ~~Órdenes~~ (paso 2) → ~~Calendario y planificador~~ (paso 3) → ~~Flota y clientes~~ (paso 4) → ~~ficha del equipo~~ (paso 5) → Inicio → administración → portal del cliente.
 3. **Componentes compartidos:** `Button`, `Field`, `Badge`, `Tabs`/`Steps`, `KpiCard`, `DataTable`.
 4. **Control en CI:** Stylelint contra colores y tamaños fuera de los tokens, y prueba de contraste.
