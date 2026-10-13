@@ -21,6 +21,7 @@
   /* ── Color · marca y acciones ─────────────────────────────────── */
   --color-brand: #f58220;           /* SOLO decorativo: punto del título, iconos, barras · 2.6:1 (no apto para texto) */
   --color-brand-text: #a3500a;      /* naranja para texto o enlaces · 5.7:1 */
+  --color-logo: #000000;            /* logotipo oficial «EM» (negro); en fondo oscuro va en blanco */
   --color-primary: #3a3e33;         /* botón principal (actual .button-dark) · texto blanco 11.0:1 */
   --color-primary-hover: #2a2d25;
   --color-accent: #4d693d;          /* selección: pestaña activa, filtro activo · texto blanco 6.2:1 */
