@@ -10,6 +10,7 @@ import { getDataSource } from '../../data/source';
 import { ImportedReportDetails } from '../fleet/ImportedReportDetails';
 import ServiceOrderForm from './ServiceOrderForm';
 import AttachmentPanel from '../attachments/AttachmentPanel';
+import TicketPhotos from '../attachments/TicketPhotos';
 import { OperationStatus } from './OperationStatus';
 import { operationFiltersFromParams, operationFilterParams, emptyOperationFilters, equipmentLabel, isOperationalOrder, operationDateLabel, serviceLabel, serviceStates } from './operations-ui';
 import './operations.css';
@@ -79,6 +80,7 @@ export default function ServiceOrders() {
         <ImportedReportDetails report={selected} />
         {isOperationalOrder(selected) && <p className="os-help">El cierre del servicio no reemplaza la revisión del estado operativo ni de los hallazgos de seguridad del equipo.</p>}
       </article>
+      {selected.ticket_id && <TicketPhotos key={selected.id} orderId={selected.id}/>}
       {isOperationalOrder(selected) && <AttachmentPanel orderId={selected.id} onBusy={setAttachmentBusy} editable={!['Completada', 'Cancelada'].includes(String(selected.estado)) && (actor.rol === 'Administrador' || actor.rol === 'Técnico' && selected.tecnico_id === actor.tecnico_id)} />}
     </Modal>}
     {(editor || ticket || createFromLink) && <ServiceOrderForm key={editor && editor !== 'new' ? editor.id : ticket?.id || 'new'} row={editor && editor !== 'new' ? editor : undefined} ticket={editor ? undefined : ticket} onClose={() => { setEditor(null); if (ticket) setDismissedTicket(ticket.id); if (ticket || createFromLink) setParams({}); }} onSaved={row => { setEditor(null); setDismissedTicket(ticket?.id || ''); open(row.id); }} />}

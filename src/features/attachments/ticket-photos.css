@@ -1,0 +1,14 @@
+.ticket-photos{min-width:0;border-top:1px solid var(--color-border);padding-top:var(--space-4)}
+.ticket-photos h3{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;font-size:var(--text-md);color:var(--color-text)}
+.ticket-photos h3 span{font-size:var(--text-xs);font-weight:var(--weight-regular);color:var(--color-text-muted)}
+.ticket-photos input[type=file]{max-width:100%;font-size:var(--text-sm)}
+.ticket-photo-list{display:grid;gap:var(--space-2);list-style:none;margin:var(--space-3) 0;padding:0}
+.ticket-photo-list li{display:flex;align-items:center;gap:var(--space-3);min-width:0;border-bottom:1px solid var(--color-border-subtle);padding:var(--space-2) 0}
+.ticket-photo-list img{width:64px;height:64px;object-fit:cover;border-radius:var(--radius-sm)}
+.ticket-photo-list li>div{flex:1;min-width:0}
+.ticket-photo-list strong,.ticket-photo-list small{display:block;overflow-wrap:anywhere}
+.ticket-photo-list strong{font-size:var(--text-sm)}
+.ticket-photo-list small{font-size:var(--text-xs);color:var(--color-text-muted);margin-top:var(--space-1)}
+.ticket-photos .attachment-grid a{overflow-wrap:anywhere;min-width:0}
+@media(pointer:coarse){.ticket-photo-list .icon-button{min-width:var(--target-min);min-height:var(--target-min)}}
+@media print{.ticket-photos input,.ticket-photos button,.ticket-photo-list{display:none}}
