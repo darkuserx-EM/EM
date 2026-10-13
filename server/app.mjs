@@ -22,6 +22,7 @@ import { createSnapshotCache } from './snapshot-cache.mjs';
 import { registerAccountRoutes } from './account.mjs';
 import { registerAdminUserRoutes } from './admin-users.mjs';
 import { registerAttachmentRoutes } from './attachments.mjs';
+import { registerTicketAttachmentRoutes } from './ticket-attachments.mjs';
 import { registerAttachmentBackupRoutes } from './attachment-backup.mjs';
 import { registerMediaUploadRoutes, persistEquipmentMedia, hydrateEquipment } from './media.mjs';
 import { registerFullBackupRoutes } from './full-backup.mjs';
@@ -52,7 +53,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   const snapshots = createSnapshotCache(pool);
   /** @type {WeakMap<import("../src/domain/model.js").Database,import("../src/domain/incremental-validation.js").IncrementalValidation>} */
   const validationIndexes=new WeakMap();
-  app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null } } }));
+  app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null, imgSrc: ["'self'", "data:", "blob:"] } } }));
   app.use((_req, res, next) => { res.set('X-Robots-Tag', 'noindex, nofollow'); next(); });
   app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
   app.get('/api/health', async (_req,res) => { try { await pool.query('SELECT 1'); res.json({ status:'ok', database:'connected', release:'0.3.0', persistence:'optimistic-v1' }); } catch (error) {
@@ -149,13 +150,14 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.post('/api/session/activity', (_req,res) => res.json({ok:true}));
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf,mustChangePassword:req.mustChangePassword}));
   // Small authenticated requests are parsed only after session and CSRF checks.
-  app.use('/api', (req,res,next) => ['/mutate','/attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
+  app.use('/api', (req,res,next) => ['/mutate','/attachments','/ticket-attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
   registerMfaRoutes(app,{pool,key:mfaKey});
   registerAccountRoutes(app, pool);
   registerAuditRoutes(app, pool);
   registerOperationPages(app,{pool,syncToken});
   registerAdminUserRoutes(app, {pool});
   registerAttachmentRoutes(app, {pool});
+  registerTicketAttachmentRoutes(app, {pool});
   registerAttachmentBackupRoutes(app, {pool,logger});
   registerMediaUploadRoutes(app, {pool});
   registerFullBackupRoutes(app, {pool,logger});

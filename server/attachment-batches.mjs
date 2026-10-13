@@ -1,5 +1,5 @@
 import { select } from './sql.mjs';
-export const attachmentFields='id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at';
+export const attachmentFields='id,order_id,ticket_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at';
 
 // Use the same repeatable-read connection for metadata and content. A count alone
 // would allow 50 x 4 MiB to accumulate before JSON/base64 serialization.

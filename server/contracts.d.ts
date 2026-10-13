@@ -4,7 +4,7 @@ import type { EntityName, EntityRecord, Role } from '../src/domain/model.js';
 export type SqlConnection = Pool | PoolConnection;
 export interface StoredPayload { id: string; payload: string }
 export interface AttachmentMetadata {
-  id: string; order_id: string; request_id: string; category: string; name: string;
+  id: string; order_id: string; ticket_id?: string | null; request_id: string; category: string; name: string;
   mime: string; size: number; sha256: string; uploaded_by: string; created_at: number;
 }
 export interface AttachmentFile extends AttachmentMetadata { content: Buffer }

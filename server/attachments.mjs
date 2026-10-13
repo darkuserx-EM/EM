@@ -3,12 +3,13 @@ import express from 'express';
 import { randomUUID, createHash } from 'node:crypto';
 import { filterVisible } from './generated/domain.mjs';
 import { manifestPage } from './attachment-batches.mjs';
+import { authorizeTicketEvidence } from './ticket-evidence-access.mjs';
 /** @param {number} status @param {string} message */
 const fail =(status,message)=>Object.assign(new Error(message),{status,expose:true});
-const fields='id,order_id,category,name,mime,size,sha256,uploaded_by,created_at';
+const fields='id,order_id,ticket_id,category,name,mime,size,sha256,uploaded_by,created_at';
 /** @param {import("./http-contracts.js").AttachmentBody|undefined} body */
 export function decodeAttachment(body) {
-  if(!body || typeof body.category!=='string' || !['Antes','Después','Documento'].includes(body.category) || typeof body.requestId!=='string' || !/^[a-f0-9-]{36}$/i.test(body.requestId)) throw fail(400,'Adjunto inválido.');
+  if(!body || typeof body.category!=='string' || !['Antes','Después','Documento','Solicitud'].includes(body.category) || typeof body.requestId!=='string' || !/^[a-f0-9-]{36}$/i.test(body.requestId)) throw fail(400,'Adjunto inválido.');
   const name=String(body.name || '').trim();
   if(!name || name.length>160 || /[\x00-\x1f]/.test(name)) throw fail(400,'Nombre de archivo inválido.');
   if(typeof body.base64!=='string' || body.base64.length>5592408 || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.base64)) throw fail(400,'Archivo inválido o mayor a 4 MB.');
@@ -48,7 +49,9 @@ export function registerAttachmentRoutes(app,{pool}) {
   app.get('/api/attachments/:id/file',/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AttachmentReply|Buffer>} res */ async (req,res)=>{
     /** @type {Omit<import("./contracts.js").AttachmentMetadata,"request_id">[]} */
     const rows = await select(pool,`SELECT ${fields} FROM em_attachments WHERE id=?`,[req.params.id]); const file=rows[0];
-    if(!file) throw fail(404,'Archivo no disponible.'); permitted(await readOrder(pool,file.order_id),req.actor);
+    if(!file) throw fail(404,'Archivo no disponible.');
+    if(file.ticket_id) await authorizeTicketEvidence(pool,req.actor,file.ticket_id,req.query.orderId);
+    else permitted(await readOrder(pool,file.order_id),req.actor);
     /** @type {{content:Buffer}[]} */
     const contents = await select(pool,'SELECT content FROM em_attachments WHERE id=?',[file.id]);
     if(!contents[0]) throw fail(404,'Archivo no disponible.');
@@ -63,6 +66,7 @@ export function registerAttachmentRoutes(app,{pool}) {
     try {
       await conn.beginTransaction(); await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE'); const order=permitted(await readOrder(conn,req.body?.orderId),req.actor,true);
       const file=decodeAttachment(req.body);
+      if(file.category==='Solicitud') throw fail(400,'La evidencia inicial se agrega desde la solicitud.');
       /** @type {Omit<import("./contracts.js").AttachmentMetadata,"request_id">[]} */
     const existing = await select(conn,`SELECT ${fields} FROM em_attachments WHERE request_id=?`,[file.requestId]);
       if(existing.length) {

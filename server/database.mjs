@@ -25,6 +25,13 @@ export async function migrate(pool) {
     `CREATE TABLE IF NOT EXISTS em_media_migration (equipment_id VARCHAR(128) PRIMARY KEY, payload LONGTEXT NOT NULL, created_at BIGINT NOT NULL) ENGINE=InnoDB`,
   ];
   for (const statement of sql) await pool.query(statement);
+  // Additive: historical order attachments keep their bytes and original IDs.
+  /** @type {{Field:string}[]} */
+  const attachmentColumns = await selectQuery(pool,"SHOW COLUMNS FROM em_attachments LIKE 'ticket_id'");
+  if (!attachmentColumns.length) {
+    try { await pool.query('ALTER TABLE em_attachments ADD COLUMN ticket_id VARCHAR(128) NULL, ADD INDEX idx_attachment_ticket (ticket_id)'); }
+    catch (error) { if (errorCode(error) !== 'ER_DUP_FIELDNAME') throw error; }
+  }
   await ensureAuditStorage(pool);
   await ensureOperationIndex(pool);
   await pool.query('CREATE TABLE IF NOT EXISTS em_mfa_challenges (token_hash CHAR(64) PRIMARY KEY,user_id VARCHAR(128) NOT NULL,password_version CHAR(64) NOT NULL,expires_at BIGINT NOT NULL,attempts INT NOT NULL,INDEX(user_id),INDEX(expires_at),FOREIGN KEY(user_id) REFERENCES em_users(id) ON DELETE CASCADE) ENGINE=InnoDB');

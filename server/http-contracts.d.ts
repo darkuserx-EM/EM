@@ -22,7 +22,7 @@ export type PortalRequest<Body = unknown> = Request<ParamsDictionary, unknown, B
 export type PortalResponse<Body = unknown> = Response<Body>;
 export type PortalMiddleware = RequestHandler<ParamsDictionary, unknown, unknown, Record<string, unknown>>;
 export interface AttachmentBody {
-  orderId?: string; requestId?: string; category?: string; name?: unknown; base64?: unknown;
+  orderId?: string; ticketId?: string; requestId?: string; category?: string; name?: unknown; base64?: unknown;
 }
 export interface RestoreFileInput { metadata?: Partial<AttachmentMetadata>; base64?: unknown }
 export interface AttachmentRestoreBody { file?: RestoreFileInput; allowOrphan?: boolean }
