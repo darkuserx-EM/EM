@@ -6,4 +6,3 @@
 .client-shell .modal{background:var(--color-surface);color:var(--color-text)}
 .client-shell .button:not(.button-dark):not(.button-orange){color:var(--color-text)}
 .client-shell .panel{color:var(--color-text)}
-.client-shell .planning-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}

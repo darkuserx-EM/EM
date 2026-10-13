@@ -151,7 +151,7 @@ input:focus, select:focus, textarea:focus, .search-box:focus-within { outline: 2
 
 /* ── Tarjeta de indicador (componente KpiCard) ────────────────── */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
-.kpi-card { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-3); min-width: 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-text); text-align: left; }
+.kpi-card { display: grid; grid-template-columns: 1fr auto; align-content: start; gap: var(--space-1) var(--space-3); min-width: 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-text); text-align: left; }
 button.kpi-card { cursor: pointer; }
 button.kpi-card:hover { border-color: var(--color-border-strong); background: var(--color-surface-subtle); }
 .kpi-card[aria-pressed=true] { border-color: var(--color-accent); background: var(--color-accent-soft); }
@@ -159,6 +159,19 @@ button.kpi-card:hover { border-color: var(--color-border-strong); background: va
 .kpi-card-label { grid-column: 1; grid-row: 1; font-size: var(--text-sm); color: var(--color-text-muted); }
 .kpi-card-value { grid-column: 1 / -1; font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height: var(--leading-tight); font-variant-numeric: tabular-nums; }
 .kpi-card-hint { grid-column: 1 / -1; font-size: var(--text-xs); color: var(--color-text-muted); }
+/* Enlace (lleva a otra pantalla): flecha ↗ en el lugar del ícono. Alerta: cifra en rojo. */
+a.kpi-card { text-decoration: none; }
+a.kpi-card:hover { border-color: var(--color-border-strong); background: var(--color-surface-subtle); }
+.kpi-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.kpi-card-arrow { color: var(--color-text-muted); }
+a.kpi-card:hover .kpi-card-arrow { color: var(--color-text); }
+.kpi-card-alert .kpi-card-value { color: var(--color-danger-text); }
+/* Separación con lo que sigue cuando el grupo va directo en la página (no dentro de un panel). */
+.kpi-grid-page { margin-bottom: var(--space-5); }
+@media (max-width: 600px) {
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+  .kpi-card { padding: var(--space-3); }
+}
 
 /* ── Pasos de un asistente (componente Steps) ──────────────────── */
 .steps ol { display: flex; gap: 6px; margin: 0 0 17px; padding: 0 0 14px; border-bottom: 1px solid var(--color-border); list-style: none; overflow-x: auto; }

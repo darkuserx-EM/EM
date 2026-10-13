@@ -1,5 +1,6 @@
 import { useId, useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, type LinkProps } from 'react-router-dom';
+import { ArrowUpRight } from 'lucide-react';
 
 /*
  * Componentes compartidos del sistema de diseño (docs/SISTEMA-DE-DISENO.md · Componentes).
@@ -86,9 +87,19 @@ export function Tabs<T extends string>({ items, value, onChange, label, panelId,
 }
 
 /** Tarjeta de indicador. Con onClick es un botón; si además recibe pressed, actúa como filtro (aria-pressed). Sin onClick, solo informa. */
-export function KpiCard({ label, value, hint, icon, pressed, onClick }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode; pressed?: boolean; onClick?: () => void }) {
-  const content = <>{icon && <span className="kpi-card-icon" aria-hidden="true">{icon}</span>}<span className="kpi-card-label">{label}</span><strong className="kpi-card-value">{value}</strong>{hint && <small className="kpi-card-hint">{hint}</small>}</>;
-  return onClick ? <button type="button" className="kpi-card" aria-pressed={pressed} onClick={onClick}>{content}</button> : <div className="kpi-card">{content}</div>;
+/**
+ * Indicador con cifra. Cada uso tiene su señal visible:
+ * - filtro: `onClick` + `pressed` → botón con `aria-pressed` y borde de seleccionado;
+ * - enlace: `to` → lleva a otra pantalla; en lugar del ícono muestra una flecha ↗ arriba a la derecha;
+ * - informativo: sin `onClick` ni `to`.
+ * `alert` pinta la cifra en rojo (por ejemplo, citas atrasadas). Agrupar en `<div className="kpi-grid">`.
+ */
+export function KpiCard({ label, value, hint, icon, pressed, onClick, to, alert = false }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode; pressed?: boolean; onClick?: () => void; to?: LinkProps['to']; alert?: boolean }) {
+  const className = alert ? 'kpi-card kpi-card-alert' : 'kpi-card';
+  const mark = to ? <span className="kpi-card-icon kpi-card-arrow" aria-hidden="true"><ArrowUpRight size={18} /></span> : icon && <span className="kpi-card-icon" aria-hidden="true">{icon}</span>;
+  const content = <>{mark}<span className="kpi-card-label">{label}</span><strong className="kpi-card-value">{value}</strong>{hint && <small className="kpi-card-hint">{hint}</small>}</>;
+  if (to) return <Link className={className} to={to}>{content}</Link>;
+  return onClick ? <button type="button" className={className} aria-pressed={pressed} onClick={onClick}>{content}</button> : <div className={className}>{content}</div>;
 }
 
 export type StepItem = { label: ReactNode; done?: boolean; disabled?: boolean };

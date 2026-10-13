@@ -61,6 +61,14 @@ describe('componentes compartidos', () => {
     expect(html(<KpiCard label="Abiertas" value={12} onClick={() => {}} />)).toMatch(/^<button type="button" class="kpi-card">/);
     expect(html(<KpiCard label="Abiertas" value={12} pressed onClick={() => {}} />)).toMatch(/^<button type="button" class="kpi-card" aria-pressed="true">/);
   });
+
+  it('KpiCard como enlace muestra la flecha y con alert marca la cifra', () => {
+    const link = html(<KpiCard label="Citas atrasadas" value={4} to="/calendario" alert />);
+    expect(link).toMatch(/^<a class="kpi-card kpi-card-alert" href="\/calendario" data-discover="true"><span class="kpi-card-icon kpi-card-arrow" aria-hidden="true"><svg/);
+    expect(link).toContain('<span class="kpi-card-label">Citas atrasadas</span><strong class="kpi-card-value">4</strong>');
+    expect(html(<KpiCard label="Citas atrasadas" value={4} icon={<svg data-icon="" />} to="/calendario" />)).not.toContain('data-icon');
+    expect(html(<KpiCard label="Abiertas" value={12} />)).not.toContain('kpi-card-arrow');
+  });
 });
 
 describe('componentes compartidos · pasos y tablas', () => {

@@ -7,15 +7,6 @@
 .planning-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* Indicadores */
-.planning-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
-.planning-metrics > button, .planning-metrics > a { display: flex; align-items: flex-start; gap: 11px; padding: 17px; min-width: 0; text-align: left; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-text); font: inherit; }
-.planning-metrics > button { cursor: pointer; }
-.planning-metrics > button:hover, .planning-metrics > a:hover { background: var(--color-surface-subtle); border-color: var(--color-border-strong); }
-.planning-metrics > button[aria-pressed=true], .planning-metrics > .selected { background: var(--color-accent-soft); border-color: var(--color-accent); }
-.planning-metrics svg { margin-top: 2px; flex-shrink: 0; color: var(--color-accent); }
-.planning-metrics > * > span { min-width: 0; font-size: var(--text-sm); line-height: var(--leading-normal); color: var(--color-text-muted); }
-.planning-metrics strong { display: block; margin: 4px 0; font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height: var(--leading-tight); color: var(--color-text); }
-.planning-metrics small { display: block; font-size: var(--text-xs); color: var(--color-text-muted); }
 
 /* Filtros */
 .planning-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 16px; margin-bottom: 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
@@ -175,7 +166,6 @@
 @media (max-width: 1250px) {
   .planning-year { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .planning-week { grid-template-columns: repeat(7, minmax(115px, 1fr)); overflow-x: auto; }
-  .planning-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .planning-week-day { padding: 8px; }
 }
 
@@ -187,11 +177,6 @@
   .planning-toolbar .planning-search { flex-basis: 100%; }
   /* 16 px evita el zoom automático de iOS al enfocar */
   .planning-toolbar input, .planning-toolbar select, .planning-schedule-form input, .planning-schedule-form select, .planning-move-label select { font-size: 16px; }
-  .planning-metrics { gap: 8px; margin-bottom: 12px; }
-  .planning-metrics > button, .planning-metrics > a { gap: 8px; padding: 12px; }
-  .planning-metrics svg { width: 15px; }
-  .planning-metrics > * > span { font-size: var(--text-xs); }
-  .planning-metrics strong { font-size: var(--text-xl); }
   .planning-calendar-heading { gap: 12px; padding: 13px 12px; }
   .planning-date-navigation { gap: 5px; }
   .planning-date-navigation h2 { min-width: 0; font-size: var(--text-md); }
@@ -225,8 +210,6 @@
   .planning-year { grid-template-columns: 1fr; }
   .planning-mini-month { padding: 16px; }
   .planning-mini-grid > button { min-height: 37px; font-size: var(--text-sm); }
-  .planning-metrics svg { display: none; }
-  .planning-metrics > button, .planning-metrics > a { padding: 11px; }
   .planning-calendar-heading { padding: 12px 9px; }
   .planning-date-picker { max-width: 128px; }
   .planning-date-navigation .button { padding: 7px 9px; }
@@ -255,7 +238,6 @@
 .planning-legend i.ticket, .planning-dots i.ticket { background: var(--color-primary); border-radius: 0; }
 .planning-ticket-link { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px; color: var(--color-accent); font-size: var(--text-xs); }
 @media (min-width: 1251px) {
-  .planning-metrics { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
   .planning-agenda.with-pending { grid-template-columns: minmax(0, 1fr) minmax(250px, 280px); }
   .planning-agenda.with-pending:has(.planning-week) { grid-template-columns: minmax(0, 1fr); }
   .planning-agenda.with-pending .planning-week { grid-template-columns: repeat(7, minmax(130px, 1fr)); overflow-x: auto; }
