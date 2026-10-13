@@ -60,6 +60,14 @@ describe('inicio operativo', () => {
     expect(currentWork(orders, today).today.map(row => row.id)).toEqual(['today']);
     expect(currentWork(orders, today).open).toHaveLength(3);
   });
+  it('ordena las atrasadas de la más antigua a la más reciente y elige la siguiente cita sin borradores', () => {
+    const day = (offset: number) => { const value = new Date(`${today}T12:00:00Z`); value.setUTCDate(value.getUTCDate() + offset); return value.toISOString().slice(0, 10); };
+    const orders = [row('late-recent', {schema_operacion:1, fecha_programada:day(-1), estado:'Programada'}), row('late-old', {schema_operacion:1, fecha_programada:day(-5), estado:'En espera'}), row('next-draft', {schema_operacion:1, fecha_programada:day(1), estado:'Borrador'}), row('next-late-hour', {schema_operacion:1, fecha_programada:day(2), hora_programada:'15:00', estado:'Programada'}), row('next-early-hour', {schema_operacion:1, fecha_programada:day(2), hora_programada:'08:30', estado:'Programada'}), row('closed-future', {schema_operacion:1, fecha_programada:day(1), estado:'Completada'})];
+    const work = currentWork(orders, today);
+    expect(work.late.map(row => row.id)).toEqual(['late-old', 'late-recent']);
+    expect(work.next?.id).toBe('next-early-hour');
+    expect(currentWork([], today).next).toBeUndefined();
+  });
   it('elige la lectura por instante, tolera fecha inválida y conserva cero', () => {
     const readings = [row('bad', {equipo_id:'TCE-1', fecha:'n/a', valor:100}), row('zero', {equipo_id:'TCE-1', fecha:'2026-10-09T12:00:00Z', valor:0})];
     expect(latestReading(readings, 'TCE-1')?.id).toBe('zero');

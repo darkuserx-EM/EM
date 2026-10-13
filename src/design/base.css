@@ -184,6 +184,16 @@ button.steps-item:hover:not(:disabled) { border-color: var(--color-border-strong
 .brand-mark { display: block; flex-shrink: 0; width: auto; height: 22px; padding: 0; color: var(--color-logo); }
 .brand small { font-size: var(--text-xs); letter-spacing: .06em; line-height: 1.3; color: var(--color-text-muted); }
 
+/* ── Filtros plegables en el teléfono (componente FilterToggle) ───
+   Con pantalla ancha el botón no se muestra y .filter-fields no agrega caja (display: contents):
+   los campos siguen en la cuadrícula de su barra. En el teléfono quedan detrás del botón. */
+.filter-toggle { display: none; }
+.filter-fields { display: contents; }
+@media (max-width: 600px) {
+  .filter-toggle { display: inline-flex; grid-column: 1 / -1; justify-self: start; }
+  .filter-fields:not(.is-open) { display: none; }
+}
+
 /* ── Barra de filtros y formularios en línea (.ops-filters) ──────
    La usan Reportes, Roles y accesos y Adjuntos. Vive aquí, y no en la hoja de Inicio,
    para que cada pantalla la tenga aunque se abra directo (recargar o un enlace). */

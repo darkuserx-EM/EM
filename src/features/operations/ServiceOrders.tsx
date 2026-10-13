@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowUpRight, ClipboardList, Eye, EyeOff, Pencil, Plus, Printer, Search, Wrench } from 'lucide-react';
 import { useActor, useRows, useToast, useOperationPage } from '../../app/state';
 import { EmptyState, ErrorNotice, Modal, SectionTitle } from '../../components/ui';
+import { FilterToggle } from '../../components/design-system';
 import { clientDisplayName } from '../../domain/client-profile';
 import { formatNumber } from '../../domain/format';
 import type { EntityRecord } from '../../domain/model';
@@ -24,7 +25,7 @@ export default function ServiceOrders() {
   const notify = useToast(state => state.notify); const [sharing, setSharing] = useState(false); const [shareError, setShareError] = useState('');
   const equipment = useRows('Equipo', true); const clients = useRows('Cliente', true); const technicians = useRows('Tecnico', true);
   const [params, setParams] = useSearchParams(); const filters = operationFiltersFromParams(params);
-  const setFilters = (next: typeof filters) => { setParams(operationFilterParams(next, params), { replace: true }); }; const [page, setPage] = useState(1);
+  const setFilters = (next: typeof filters) => { setParams(operationFilterParams(next, params), { replace: true }); }; const [page, setPage] = useState(1); const [filtersOpen, setFiltersOpen] = useState(false);
   const [editor, setEditor] = useState<EntityRecord | 'new' | null>(null); const [dismissedTicket, setDismissedTicket] = useState(''); const [attachmentBusy, setAttachmentBusy] = useState(false);
   const orders=useOperationPage('OrdenServicio',{...filters,page});
   const detail=useOperationPage('OrdenServicio',{id:params.get('orden')||'',pageSize:1},params.has('orden'));
@@ -37,6 +38,7 @@ export default function ServiceOrders() {
   const selectedClient = clients.rows.find(row => row.id === selected?.cliente_id);
   const ticket = manager && params.get('ticket') !== dismissedTicket ? tickets.rows.find(row => row.id === params.get('ticket')) : undefined;
   const createFromLink = manager && params.get('nueva') === '1';
+  const activeFilters = (['client', 'equipment', 'technician', 'state', 'origin', 'from', 'to'] as const).filter(key => filters[key]).length;
   const change = (key: keyof typeof filters, value: string) => { setPage(1); setFilters({ ...filters, [key]: value, ...(key === 'client' ? { equipment: '' } : {}) }); };
   const open = (id: string) => { setShareError(''); const next = new URLSearchParams(params); next.delete('nueva'); next.delete('ticket'); next.set('orden', id); setParams(next); };
   const close = () => { if (!attachmentBusy && !sharing) { const next = new URLSearchParams(params); next.delete('orden'); setParams(next); } };
@@ -53,12 +55,15 @@ export default function ServiceOrders() {
     <section className="panel os-list-panel">
       <div className="os-filters">
         <label className="os-filter-search"><span><Search size={14} />Buscar reporte o equipo</span><input type="search" placeholder="Código, serie, ID del cliente o diagnóstico" value={filters.search} onChange={event => change('search', event.target.value)} /></label>
+        <FilterToggle open={filtersOpen} active={activeFilters} controls="os-filter-fields" onToggle={() => setFiltersOpen(!filtersOpen)} />
+        <div id="os-filter-fields" className={`filter-fields${filtersOpen ? ' is-open' : ''}`}>
         {actor.rol !== 'Cliente' && <label>Cliente<select value={filters.client} onChange={event => { change('client', event.target.value); }}><option value="">Todos</option>{clients.rows.map(client => <option value={client.id} key={client.id}>{clientDisplayName(client)}</option>)}</select></label>}
         <label>Equipo<select value={filters.equipment} onChange={event => change('equipment', event.target.value)}><option value="">Todos</option>{equipment.rows.filter(row => !filters.client || row.cliente_id === filters.client).map(row => <option value={row.id} key={row.id}>{row.codigo} · {row.id_interno_cliente || row.modelo}</option>)}</select></label>
         {actor.rol !== 'Técnico' && actor.rol !== 'Cliente' && <label>Técnico<select value={filters.technician} onChange={event => change('technician', event.target.value)}><option value="">Todos</option>{technicians.rows.map(row => <option value={row.id} key={row.id}>{row.nombre}</option>)}</select></label>}
         <label>Estado<select value={filters.state} onChange={event => change('state', event.target.value)}><option value="">Todos</option><option value="abiertas">Abiertas</option>{Array.from(new Set([...serviceStates, ...(orders.data?.states||[])])).filter(Boolean).map(value => <option key={value}>{value}</option>)}</select></label>
         <label>Origen<select value={filters.origin} onChange={event => change('origin', event.target.value)}><option value="">Todos</option><option value="actual">Órdenes actuales</option><option value="historico">Historial</option></select></label>
         <label>Desde<input type="date" value={filters.from} onChange={event => change('from', event.target.value)} /></label><label>Hasta<input type="date" value={filters.to} min={filters.from || undefined} onChange={event => change('to', event.target.value)} /></label>
+        </div>
       </div>
       <div className="os-result-bar"><span>{orders.ready ? total : '…'} reportes · fecha del servicio; si está pendiente, fecha programada</span><button onClick={() => { setFilters({ ...emptyOperationFilters }); setPage(1); }}>Limpiar filtros</button></div>
       <ErrorNotice message={error} />{loading ? <p className="os-loading" role="status">Cargando reportes…</p> : !visible.length ? <EmptyState title="No hay reportes en esta selección" description={manager ? 'Crea una orden o ajusta los filtros para consultar el historial.' : 'Los reportes disponibles para tu perfil aparecerán aquí.'} /> : <>
