@@ -117,8 +117,17 @@ Con este paso todas las pantallas usan tokens. Lo único que queda bajo 12 px es
 | `Steps` | `<Steps label="Pasos del reporte" current={paso} onSelect={setPaso} items={[{ label: 'Diagnóstico', done: true }, { label: 'Trabajo' }]} />` | Asistente con orden: marca el paso actual (`aria-current="step"`) y los completados (✓ y texto oculto «completado»). Sin `onSelect` solo indica el avance. Para secciones sin orden, usar `Tabs`. En móvil la barra se desplaza por dentro. |
 | `DataTable` | `<DataTable caption="Equipos" rows={equipos} rowKey={e => e.id} columns={[{ id: 'codigo', header: 'Equipo', cell: e => e.codigo }, { id: 'horas', header: 'Horómetro', numeric: true, cell: e => e.horas }]} />` | `caption` obligatorio (oculto, para lectores de pantalla); cabeceras con `scope="col"`; `numeric` alinea a la derecha con cifras tabulares; `hideHeader` para columnas como «Acciones»; mensaje `empty` cuando no hay filas. |
 | `Pagination` | `<Pagination page={pagina} pageCount={total} onChange={setPagina} summary="24 órdenes" />` | Debajo de la tabla, dentro del mismo panel. Desactiva «Anterior» y «Siguiente» en los extremos. |
+| `BrandMark` | `<BrandMark />` | Logotipo oficial «EM» en SVG. Decorativo (`aria-hidden`): el nombre va en texto al lado. Toma el color del texto (`currentColor`). Lo usa `Brand` (menú lateral, acceso, error y vista del operador). |
 
 En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-danger` y `button-orange`), `.icon-button` y el aviso de cambios sin guardar pasan a tokens. Visualmente cambia poco: borde del botón `#dddfd5` → `--color-border`, radio 7 → 8 px, y botón oscuro `#3a3a3a` → `--color-primary`. El foco de enlaces y botones usa `--color-focus`. Las tablas (`.data-table`) usan el token `--color-border-subtle` para separar filas y `--color-surface-subtle` en la cabecera y al pasar el cursor. La tabla de permisos de Accesos usa `DataTable` como ejemplo.
+
+## Marca
+
+- **Logotipo oficial:** `BrandMark` es el «EM» de Expertos en Montacargas, vectorizado del archivo de la marca (coincide en un 99 % con el original). Es recto, sin cursiva y sin subrayado. Reemplaza al «EM» que antes se escribía con texto en cursiva y una barra naranja.
+- **Color:** negro (`--color-logo`) sobre fondos claros y blanco sobre la vista oscura del operador (`.client-theme`). No usar otros colores, contornos ni sombras.
+- **Tamaño:** 22 px de alto en la marca del portal (unos 74 px de ancho). Escalar siempre con la proporción del dibujo (`width: auto`): no estirarlo ni recortarlo.
+- **Composición (`Brand`):** el logotipo a la izquierda, alineado con «Portal EM», y el lema «EXPERTOS EN MONTACARGAS» (12 px) debajo del nombre.
+- **Ícono de la pestaña** (`public/favicon.svg`): el mismo trazado en blanco sobre el cuadrado oscuro.
 
 ## Formularios en línea y casillas
 

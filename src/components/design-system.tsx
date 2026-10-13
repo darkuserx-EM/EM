@@ -31,6 +31,10 @@ export type BadgeTone = 'success' | 'info' | 'warning' | 'danger' | 'neutral';
 const badgeClass: Record<BadgeTone, string> = { success: 'green', info: 'blue', warning: 'amber', danger: 'red', neutral: 'neutral' };
 /** Tono de las etiquetas de estado de equipos y clientes (lo usa Status en ui.tsx). */
 export const statusTone = (value: string): BadgeTone => ['Operativo', 'En renta', 'Activo'].includes(value) ? 'success' : ['Disponible', 'En mantenimiento'].includes(value) ? 'info' : ['En reparación', 'Mantenimiento pendiente', 'Prospecto', 'En tránsito'].includes(value) ? 'warning' : ['No operativo', 'En taller'].includes(value) ? 'danger' : 'neutral';
+/** Logotipo oficial «EM», vectorizado del archivo de la marca. Es decorativo: el nombre va en texto al lado (Brand). Toma el color de `color`. */
+export function BrandMark({ className = 'brand-mark' }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 601.5 180" aria-hidden="true" focusable="false"><path fill="currentColor" d="M0 0H238.5V48H66.5V67H227.5V112H66.5V136H238.5V180H0ZM258.5 0H373.5L430.3 113.6L487.7 0H601.5V180H533V55.5L467.5 180H396.6L325.3 54.1V180H258.5Z" /></svg>;
+}
 /** Etiqueta de estado con tono semántico (colores en base.css · .status). */
 export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; children: ReactNode }) {
   return <span className={`status ${badgeClass[tone]}`}><i aria-hidden="true" />{children}</span>;

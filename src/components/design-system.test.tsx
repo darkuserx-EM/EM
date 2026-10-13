@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { Badge, Button, ButtonLink, DataTable, Field, IconButton, KpiCard, Pagination, Panel, Steps, Tabs, buttonClass, nextTab, statusTone } from './design-system';
+import { Badge, BrandMark, Button, ButtonLink, DataTable, Field, IconButton, KpiCard, Pagination, Panel, Steps, Tabs, buttonClass, nextTab, statusTone } from './design-system';
 
 const html = (node: ReactNode) => renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>);
 
@@ -96,6 +96,12 @@ describe('componentes compartidos · pasos y tablas', () => {
 
   it('DataTable sin filas muestra el mensaje vacío en todo el ancho', () => {
     expect(html(<DataTable caption="Equipos" columns={columns} rows={[] as Row[]} rowKey={row => row.id} empty="Sin equipos" />)).toContain('<tbody><tr><td class="data-table-empty" colSpan="3">Sin equipos</td></tr></tbody>');
+  });
+
+  it('BrandMark es el logotipo decorativo y toma el color del texto', () => {
+    const svg = html(<BrandMark />);
+    expect(svg).toMatch(/^<svg class="brand-mark" viewBox="0 0 601.5 180" aria-hidden="true" focusable="false"><path fill="currentColor" d="M0 0H238.5V48/);
+    expect(svg).not.toMatch(/<(text|title)/);
   });
 
   it('Pagination desactiva Anterior en la primera página y Siguiente en la última', () => {

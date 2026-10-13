@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, X, AlertCircle, ArrowUpRight, Forklift } from 'lucide-react';
 import { useToast } from '../app/state';
-import { Badge, statusTone } from './design-system';
+import { Badge, BrandMark, statusTone } from './design-system';
 
 export function Brand({ compact = false }: { compact?: boolean }) {
-  return <div className={`brand ${compact ? 'brand-compact' : ''}`}><div className="brand-mark">EM<span /></div><div><strong>Portal EM</strong><small>EXPERTOS EN MONTACARGAS</small></div></div>;
+  return <div className={`brand ${compact ? 'brand-compact' : ''}`}><BrandMark /><div><strong>Portal EM</strong><small>EXPERTOS EN MONTACARGAS</small></div></div>;
 }
 export function Status({ value }: { value: string }) {
   return <Badge tone={statusTone(value)}>{value}</Badge>;

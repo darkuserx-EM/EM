@@ -177,7 +177,11 @@ button.steps-item:hover:not(:disabled) { border-color: var(--color-border-strong
 }
 
 /* ── Marca (componente Brand) ────────────────────────────────────
-   El lema «EXPERTOS EN MONTACARGAS» medía 6.8 px; a 12 px ocupa dos líneas bajo «Portal EM». */
+   Logotipo oficial «EM» en SVG (BrandMark): negro sobre fondo claro; la vista oscura (.client-theme) lo pasa a blanco.
+   22 px de alto, alineado con «Portal EM»; el lema queda debajo del nombre.
+   El lema «EXPERTOS EN MONTACARGAS» medía 6.8 px; a 12 px ocupa dos líneas en el menú lateral. */
+.brand { align-items: flex-start; }
+.brand-mark { display: block; flex-shrink: 0; width: auto; height: 22px; padding: 0; color: var(--color-logo); }
 .brand small { font-size: var(--text-xs); letter-spacing: .06em; line-height: 1.3; color: var(--color-text-muted); }
 
 /* ── Barra de filtros y formularios en línea (.ops-filters) ──────
