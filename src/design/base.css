@@ -176,12 +176,16 @@ button.steps-item:hover:not(:disabled) { border-color: var(--color-border-strong
   .steps li { flex: 0 0 auto; }
 }
 
+/* ── Marca (componente Brand) ────────────────────────────────────
+   El lema «EXPERTOS EN MONTACARGAS» medía 6.8 px; a 12 px ocupa dos líneas bajo «Portal EM». */
+.brand small { font-size: var(--text-xs); letter-spacing: .06em; line-height: 1.3; color: var(--color-text-muted); }
+
 /* ── Barra de filtros y formularios en línea (.ops-filters) ──────
    La usan Reportes, Roles y accesos y Adjuntos. Vive aquí, y no en la hoja de Inicio,
    para que cada pantalla la tenga aunque se abra directo (recargar o un enlace). */
 .ops-filters { display: flex; align-items: end; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-4); }
 .ops-filters label { display: grid; gap: 6px; font-size: var(--text-xs); flex: 1; min-width: 140px; }
-.ops-filters input, .ops-filters select { width: 100%; padding: 9px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface); color: inherit; min-height: var(--control-height); }
+.ops-filters input, .ops-filters select { width: 100%; min-width: 0; padding: 9px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface); color: inherit; min-height: var(--control-height); }
 /* Casilla con texto: estos formularios apilan etiqueta y campo y estiran el campo al ancho;
    la casilla va en una sola línea, a su tamaño y centrada con los campos vecinos.
    Dos clases a propósito: así gana a «.ops-filters label» y «.account-fields label». */
@@ -213,9 +217,9 @@ button.steps-item:hover:not(:disabled) { border-color: var(--color-border-strong
   .modal-intro { font-size: var(--text-md); }
   .demo-pill { font-size: var(--text-xs); }
   .avatar { font-size: var(--text-xs); }
-  .table-toolbar select { font-size: var(--text-sm); }
-  /* 16 px evita el zoom automático de iOS al enfocar (styles.css ya lo hacía; el paso 1 lo había anulado en los formularios) */
-  .search-box input, .form-fields input, .form-fields select, .record-field input, .record-field select, .record-field textarea { font-size: 16px; }
+  /* 16 px evita el zoom automático de iOS al enfocar un campo, así que vale para todos los campos del teléfono.
+     :is() toma la especificidad de su primer selector (alta a propósito): gana a los tamaños de cada pantalla. */
+  :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]), select, textarea) { font-size: 16px; }
   .data-table th, .status, .app-footer { font-size: var(--text-xs); }
   .import-controls .button, .preview-summary { font-size: var(--text-xs); }
 }

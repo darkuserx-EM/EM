@@ -33,3 +33,8 @@
 @media (pointer: coarse) {
   .home-agenda-footer { min-height: var(--target-min); }
 }
+
+/* «Definir plan» es una acción, no un dato: se ve como enlace. */
+.home-attention-table .home-plan-action strong { color: var(--color-brand-text); text-decoration: underline; text-underline-offset: 3px; }
+/* Las fechas del gráfico no se salen de su columna en el teléfono. */
+.home-trend-filters input, .home-trend-filters select { min-width: 0; }

@@ -124,6 +124,8 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
 
 - **Estilos compartidos en `base.css`:** la barra de filtros y formularios en línea (`.ops-filters`: Reportes, Roles y accesos y Adjuntos) y los paneles `.access-accounts`, `.access-credentials`, `.ops-table-actions` y `.attachment-*` estaban en la hoja de Inicio. Al abrir Roles y accesos, Datos u Órdenes directamente (recargar o un enlace), esas pantallas quedaban sin estilos hasta pasar por Inicio. **Regla:** una clase que usan dos o más pantallas va en `base.css`, no en la hoja de una pantalla.
 - **Casilla con texto:** `<label className="check-field"><input type="checkbox" />Sin vencimiento</label>`. Dentro de `.ops-filters` y `.account-fields`, que apilan etiqueta y campo, queda en una sola línea, a 16 px y centrada con los campos vecinos.
+- **Campos en el teléfono:** hasta 600 px de ancho, todos los campos (`input`, `select` y `textarea`) usan 16 px, por una regla general de `base.css`. Con menos, iOS acerca la pantalla al enfocarlos. No hace falta repetirlo en cada pantalla.
+- **Campos de fecha en cuadrículas:** si la etiqueta es `display: grid`, el campo necesita `min-width: 0`. Si no, el ancho propio del selector de fecha lo saca de su columna en el teléfono.
 
 ## Objetivos táctiles
 
