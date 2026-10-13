@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useActor, useRows } from '../../app/state';
 import { ErrorNotice, SectionTitle } from '../../components/ui';
+import { ButtonLink } from '../../components/design-system';
 import { currentPlan, planStatusLabel, planTypes, projectPlan } from '../../domain/maintenance-plan';
 import { clientDisplayName } from '../../domain/client-profile';
 import { administrativeState } from '../../domain/equipment-status';
@@ -15,7 +16,9 @@ export default function MaintenancePage() {
   const actor = useActor(); const equipment = useRows('Equipo', true); const clients = useRows('Cliente', true); const plans = useRows('PlanPM', true); const readings = useRows('LecturaHorometro', true); const services = useRows('OrdenServicio', true);
   const [search, setSearch] = useState(''); const [filter, setFilter] = useState('Todos');
   const [clientId, setClientId] = useState('');
-  if (actor.rol !== 'Administrador') return <SectionTitle eyebrow="SERVICIO Y OPERACIÓN" title="Mantenimiento de la flota" description="La configuración y revisión de planes está disponible para administración. La agenda compartida se habilitará en la siguiente etapa." />;
+  if (actor.rol !== 'Administrador') return <SectionTitle eyebrow="SERVICIO Y OPERACIÓN" title="Mantenimiento de la flota" description="La configuración y revisión de planes está a cargo de administración. Consulta las solicitudes y visitas programadas en el calendario.">
+    <ButtonLink to="/calendario" variant="primary" icon={<CalendarDays size={17} aria-hidden="true" />}>Abrir calendario</ButtonLink>
+  </SectionTitle>;
   const queries = [equipment, clients, plans, readings, services]; const error = queries.find(query => query.error)?.error || '';
   if (error) return <ErrorNotice message={error} />;
   if (queries.some(query => !query.ready)) return <p role="status">Cargando planificación…</p>;
