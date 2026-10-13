@@ -22,7 +22,7 @@ test('SQL: planes reales, lotes por bytes y permisos',{skip:process.env.MYSQL_IN
  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jp9sAAAAASUVORK5CYII=','base64'),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
  const bytes=Buffer.concat([png,Buffer.alloc(1024)]),now=Date.now();
  for(let group=0;group<200;group++){
-  const rows=Array.from({length:20},()=>[randomUUID(),'order-'+group,randomUUID(),'Antes','qa.png','image/png',bytes.length,sha(bytes),'qa',now,bytes]);
+  const rows=Array.from({length:20},()=>[randomUUID(),'order-'+group,null,randomUUID(),'Antes','qa.png','image/png',bytes.length,sha(bytes),'qa',now,bytes]);
   await pool.query(`INSERT INTO em_attachments (${attachmentFields},content) VALUES ?`,[rows]);
  }
  const explain=async(sql,values=[])=>{const [rows]=await pool.execute('EXPLAIN '+sql,values);return rows.map(({type,key,rows,Extra})=>({type,key,rows,Extra}));};
@@ -46,7 +46,7 @@ test('SQL: planes reales, lotes por bytes y permisos',{skip:process.env.MYSQL_IN
  });
  await t.test('respaldos agrupan archivos pequeños y limitan a 8 MiB los bytes binarios del lote',async()=>{
   const big=Buffer.concat([png,Buffer.alloc(4*1024*1024-png.length)]);
-  for(let i=0;i<3;i++)await pool.execute(`INSERT INTO em_attachments (${attachmentFields},content) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,['00000000-0000-4000-8000-'+String(i+1).padStart(12,'0'),'big-order',randomUUID(),'Antes','large.png','image/png',big.length,sha(big),'qa',now,big]);
+  for(let i=0;i<3;i++)await pool.execute(`INSERT INTO em_attachments (${attachmentFields},content) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,['00000000-0000-4000-8000-'+String(i+1).padStart(12,'0'),'big-order',null,randomUUID(),'Antes','large.png','image/png',big.length,sha(big),'qa',now,big]);
   const conn=await pool.getConnection();let queries=0,total=0,maximum=0;const ids=new Set();
   try{
    await conn.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');await conn.beginTransaction();

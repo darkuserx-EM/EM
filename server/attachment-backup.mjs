@@ -9,23 +9,24 @@ import { logFailure } from './diagnostics.mjs';
 
 /** @param {number} status @param {string} message */
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
-const fields = 'id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at';
+const fields = 'id,order_id,ticket_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at';
 /** @param {unknown} value @returns {value is string} */
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 /** @param {unknown} value @returns {value is string} */
 const identifier = value => typeof value === 'string' && value.length > 0 && value.length <= 128 && !/[\x00-\x1f\x7f]/.test(value);
 /** @param {import("./contracts.js").AttachmentMetadata} row */
-const metadataOf = row => ({ id: row.id, order_id: row.order_id, request_id: row.request_id, category: row.category, name: row.name, mime: row.mime, size: Number(row.size), sha256: row.sha256, uploaded_by: row.uploaded_by, created_at: Number(row.created_at) });
+export const metadataOf = row => ({ id: row.id, order_id: row.order_id, ...(row.ticket_id ? {ticket_id:row.ticket_id} : {}), request_id: row.request_id, category: row.category, name: row.name, mime: row.mime, size: Number(row.size), sha256: row.sha256, uploaded_by: row.uploaded_by, created_at: Number(row.created_at) });
 /** @param {import("./http-contracts.js").RestoreFileInput|undefined} input */
 export function validateRestoreFile(input) {
   if (!input || typeof input !== 'object' || !input.metadata || typeof input.metadata !== 'object') throw fail(400, 'El respaldo no contiene un archivo válido.');
   const m = input.metadata;
-  if (!uuid(m.id) || !uuid(m.request_id) || !identifier(m.order_id) || !identifier(m.uploaded_by)) throw fail(400, 'La identidad o autoría del archivo no es válida.');
+  const ownerValid = m.ticket_id ? identifier(m.ticket_id) && m.order_id === '' && m.category === 'Solicitud' : identifier(m.order_id) && m.category !== 'Solicitud';
+  if (!uuid(m.id) || !uuid(m.request_id) || !ownerValid || !identifier(m.uploaded_by)) throw fail(400, 'La identidad o autoría del archivo no es válida.');
   if (typeof m.created_at !== 'number' || !Number.isSafeInteger(m.created_at) || m.created_at <= 0 || m.created_at > Date.now() + 5 * 60000) throw fail(400, 'La fecha original del archivo no es válida.');
   if (!Number.isSafeInteger(m.size) || !/^[a-f0-9]{64}$/.test(m.sha256 || '')) throw fail(400, 'La integridad del archivo no es válida.');
   const decoded = decodeAttachment({ requestId: m.request_id, category: m.category, name: m.name, base64: input.base64 });
   if (decoded.name !== m.name || decoded.mime !== m.mime || decoded.bytes.length !== m.size || decoded.sha256 !== m.sha256) throw fail(400, 'El contenido no coincide con el nombre, formato, tamaño o huella del respaldo.');
-  return { metadata: metadataOf({id:m.id,request_id:m.request_id,order_id:m.order_id,uploaded_by:m.uploaded_by,created_at:m.created_at,size:decoded.bytes.length,sha256:decoded.sha256,mime:decoded.mime,name:decoded.name,category:decoded.category}), ...decoded };
+  return { metadata: metadataOf({id:m.id,request_id:m.request_id,order_id:m.order_id || '',ticket_id:m.ticket_id,uploaded_by:m.uploaded_by,created_at:m.created_at,size:decoded.bytes.length,sha256:decoded.sha256,mime:decoded.mime,name:decoded.name,category:decoded.category}), ...decoded };
 }
 /** @param {import("./http-contracts.js").PortalResponse} res @param {unknown} value */
 export async function writeLine(res, value) {
@@ -89,15 +90,15 @@ export function registerAttachmentBackupRoutes(app, { pool, logger = console.err
       // Same lock order as a record restore/upload: the linked order cannot vanish between check and insert.
       await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE');
       /** @type {{id:string}[]} */
-    const orders = await select(conn,"SELECT id FROM em_records WHERE entity='OrdenServicio' AND id=?", [m.order_id]);
-      if (!orders.length && req.body?.allowOrphan !== true) throw fail(409, 'La orden original no existe. Restaura primero el respaldo de registros del portal.');
+    const orders = await select(conn,'SELECT id FROM em_records WHERE entity=? AND id=?', [m.ticket_id ? 'Ticket' : 'OrdenServicio',m.ticket_id || m.order_id]);
+      if (!orders.length && req.body?.allowOrphan !== true) throw fail(409, 'La solicitud u orden original no existe. Restaura primero el respaldo de registros del portal.');
       /** @type {import("./contracts.js").AttachmentFile[]} */
     const existing = await select(conn,`SELECT ${fields},content FROM em_attachments WHERE id=? OR request_id=? FOR UPDATE`, [m.id, m.request_id]);
       if (existing.length) {
         if (existing.length !== 1 || JSON.stringify(metadataOf(existing[0])) !== JSON.stringify(m) || !existing[0].content.equals(restored.bytes)) throw fail(409, 'Ya existe un archivo distinto con esa identidad. No se ha reemplazado ningún contenido.');
         await conn.commit(); return res.json({ restored: true, duplicate: true, id: m.id });
       }
-      await conn.execute('INSERT INTO em_attachments (id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [m.id, m.order_id, m.request_id, m.category, m.name, m.mime, m.size, m.sha256, m.uploaded_by, m.created_at, restored.bytes]);
+      await conn.execute('INSERT INTO em_attachments (id,order_id,ticket_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', [m.id, m.order_id, m.ticket_id || null, m.request_id, m.category, m.name, m.mime, m.size, m.sha256, m.uploaded_by, m.created_at, restored.bytes]);
       await conn.execute('INSERT INTO em_security_events (id,actor_id,target_id,action,created_at) VALUES (?,?,?,?,?)', [randomUUID(), req.actor.id, m.id, 'attachment.restored', Date.now()]);
       await conn.commit(); res.status(201).json({ restored: true, duplicate: false, id: m.id });
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
