@@ -14,7 +14,7 @@
 .os-filters { padding: 18px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
 .os-filters label { display: grid; align-content: start; gap: 7px; min-width: 0; font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--color-text-muted); }
 .os-filters label > span { display: flex; align-items: center; gap: 5px; }
-.os-filters input, .os-filters select { width: 100%; font-size: var(--text-md); font-weight: var(--weight-regular); min-height: var(--control-height); color: var(--color-text); }
+.os-filters input, .os-filters select { width: 100%; min-width: 0; font-size: var(--text-md); font-weight: var(--weight-regular); min-height: var(--control-height); color: var(--color-text); }
 .os-filter-search { grid-column: span 2; }
 .os-result-bar { padding: 10px 18px; border-top: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--color-text-muted); font-size: var(--text-sm); }
 .os-result-bar button { text-decoration: underline; color: var(--color-text); }
