@@ -111,3 +111,17 @@ Evaluación del reporte de flujos recibido el 12/10/2026:
 Pruebas del cierre: 282 pruebas de aplicación, 47 de servidor y 82 de integración con base de datos; lint, tipado y compilación correctos. Se comprobó el cierre autenticado por técnico desde la interfaz sin inventar horómetro, conservación del historial, aislamiento del cliente, concurrencia entre dos órdenes y reversión ante fallo de auditoría.
 
 No se admiten nuevas órdenes vinculadas a solicitudes resueltas o canceladas; los reintentos de altas ya confirmadas conservan su idempotencia. Se prueba también la creación concurrente de una orden durante el cierre: o la solicitud permanece abierta por el nuevo trabajo, o el alta se rechaza al encontrarla ya cerrada.
+
+### Fotografías de solicitudes · primera etapa
+
+Nueva solicitud admite hasta 10 fotografías JPG, PNG o WebP, de hasta 10 MB de entrada cada una. Se optimizan en el navegador; el servidor mantiene el máximo de 4 MiB almacenados y valida firma, decodificación y resolución. Se pueden elegir varios archivos, arrastrar o pegar imágenes; antes de enviar se muestran miniaturas y se permite quitar selecciones. Los videos quedan pendientes.
+
+El ticket se confirma primero y cada foto se envía con identidad estable. Si falla una carga, se conserva el ticket, el archivo pendiente y su identidad para reintentar. La interfaz distingue una solicitud registrada de una carga incompleta. Una huella repetida dentro del mismo ticket no crea otra copia. Un ticket cerrado conserva sus evidencias y no admite nuevas fotografías; las existentes no se editan ni eliminan desde esta pantalla.
+
+Administrador y coordinador cargan evidencia inicial; el cliente puede cargar en solicitudes abiertas de su empresa. El técnico consulta solicitudes asignadas o la evidencia inicial de una orden asignada, sin obtener acceso a otros tickets. La consulta desde una orden comprueba en servidor el enlace ticket–orden, equipo, cliente y autorización actual de la orden, también al descargar. Cambiar la asignación revoca ese acceso. Las fotos de Antes/Después del trabajo mantienen sus reglas actuales.
+
+Migración aditiva: `em_attachments.ticket_id`, nullable e indexada. Los adjuntos anteriores conservan `order_id`, identidad y contenido; los nuevos de ticket usan `ticket_id` y `order_id` vacío. No se copian archivos al crear órdenes ni se incluyen binarios en la sincronización general. Autor, fecha y huella quedan registrados; la carga y su evento de auditoría se confirman juntos.
+
+El respaldo completo y el de adjuntos incluyen el vínculo al ticket. La recuperación acepta respaldos anteriores sin `ticket_id` y preserva identidad, bytes, autoría y fecha. Para restaurar un archivo individual se exige su ticket u orden; la recuperación completa conserva la opción existente de recuperar evidencia huérfana del historial. Para respaldos con fotografías de tickets debe utilizarse esta versión o una posterior del recuperador.
+
+Costos e inventario permanecen pausados y no forman parte de esta entrega. La capacidad de fotos no se amplía a videos ni requiere proveedores externos.

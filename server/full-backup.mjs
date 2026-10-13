@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { equipmentImageFields, isEquipmentImageReference } from './generated/domain.mjs';
 import { presentEquipment } from './equipment-images.mjs';
 import { legacyMedia, mediaColumns, mediaMetadata, verifyStoredMedia } from './media.mjs';
-import { writeLine, validateRestoreFile } from './attachment-backup.mjs';
+import { writeLine, validateRestoreFile, metadataOf } from './attachment-backup.mjs';
 import { logFailure } from './diagnostics.mjs';
 
 /** @param {string} id @param {string} field @param {string} hash */
@@ -66,7 +66,7 @@ export async function* fullBackupEntries(conn) {
   }
   if (needed.size) throw Object.assign(new Error('Missing referenced equipment media'), { code: 'BACKUP_MEDIA_MISSING' });
   for await(const rows of attachmentBatches(conn)) for(const row of rows) {
-    const { content, ...metadata } = row; metadata.size = Number(metadata.size); metadata.created_at = Number(metadata.created_at);
+    const { content } = row; const metadata = metadataOf(row);
     const file = { metadata, base64: content.toString('base64') }; validateRestoreFile(file);
     yield { type: 'attachment', file };
   }

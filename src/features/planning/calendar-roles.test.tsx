@@ -10,7 +10,7 @@ import { planningEvents } from '../../domain/planning';
 import Tickets from '../operations/Tickets';
 import type { OperationQuery, PagedEntity } from '../../data/operation-page';
 
-vi.mock('../../data/source', () => ({ getDataSource: vi.fn() }));
+vi.mock('../../data/source', () => ({ getDataSource: vi.fn(), serverMode:true }));
 vi.mock('../../app/state', () => ({
   useActor: () => actor,
   useToast: () => vi.fn(),
