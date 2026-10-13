@@ -35,6 +35,13 @@ export const statusTone = (value: string): BadgeTone => ['Operativo', 'En renta'
 export function BrandMark({ className = 'brand-mark' }: { className?: string }) {
   return <svg className={className} viewBox="0 0 601.5 180" aria-hidden="true" focusable="false"><path fill="currentColor" d="M0 0H238.5V48H66.5V67H227.5V112H66.5V136H238.5V180H0ZM258.5 0H373.5L430.3 113.6L487.7 0H601.5V180H533V55.5L467.5 180H396.6L325.3 54.1V180H258.5Z" /></svg>;
 }
+/**
+ * En el teléfono pliega los filtros secundarios detrás de este botón, que dice cuántos están activos.
+ * Con pantalla ancha el botón no se muestra y los filtros se ven siempre. `controls` es el id del contenedor `.filter-fields`.
+ */
+export function FilterToggle({ open, active, controls, onToggle }: { open: boolean; active: number; controls: string; onToggle: () => void }) {
+  return <button type="button" className="button filter-toggle" aria-expanded={open} aria-controls={controls} onClick={onToggle}>{open ? 'Ocultar filtros' : 'Más filtros'}{active > 0 && ` (${active} ${active === 1 ? 'activo' : 'activos'})`}</button>;
+}
 /** Etiqueta de estado con tono semántico (colores en base.css · .status). */
 export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; children: ReactNode }) {
   return <span className={`status ${badgeClass[tone]}`}><i aria-hidden="true" />{children}</span>;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { Badge, BrandMark, Button, ButtonLink, DataTable, Field, IconButton, KpiCard, Pagination, Panel, Steps, Tabs, buttonClass, nextTab, statusTone } from './design-system';
+import { Badge, BrandMark, Button, ButtonLink, DataTable, FilterToggle, Field, IconButton, KpiCard, Pagination, Panel, Steps, Tabs, buttonClass, nextTab, statusTone } from './design-system';
 
 const html = (node: ReactNode) => renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>);
 
@@ -102,6 +102,12 @@ describe('componentes compartidos · pasos y tablas', () => {
     const svg = html(<BrandMark />);
     expect(svg).toMatch(/^<svg class="brand-mark" viewBox="0 0 601.5 180" aria-hidden="true" focusable="false"><path fill="currentColor" d="M0 0H238.5V48/);
     expect(svg).not.toMatch(/<(text|title)/);
+  });
+
+  it('FilterToggle indica si los filtros están abiertos y cuántos hay activos', () => {
+    expect(html(<FilterToggle open={false} active={0} controls="f" onToggle={() => {}} />)).toBe('<button type="button" class="button filter-toggle" aria-expanded="false" aria-controls="f">Más filtros</button>');
+    expect(html(<FilterToggle open={false} active={1} controls="f" onToggle={() => {}} />)).toContain('>Más filtros (1 activo)</button>');
+    expect(html(<FilterToggle open active={2} controls="f" onToggle={() => {}} />)).toContain('aria-expanded="true" aria-controls="f">Ocultar filtros (2 activos)</button>');
   });
 
   it('Pagination desactiva Anterior en la primera página y Siguiente en la última', () => {

@@ -117,6 +117,7 @@ Con este paso todas las pantallas usan tokens. Lo único que queda bajo 12 px es
 | `Steps` | `<Steps label="Pasos del reporte" current={paso} onSelect={setPaso} items={[{ label: 'Diagnóstico', done: true }, { label: 'Trabajo' }]} />` | Asistente con orden: marca el paso actual (`aria-current="step"`) y los completados (✓ y texto oculto «completado»). Sin `onSelect` solo indica el avance. Para secciones sin orden, usar `Tabs`. En móvil la barra se desplaza por dentro. |
 | `DataTable` | `<DataTable caption="Equipos" rows={equipos} rowKey={e => e.id} columns={[{ id: 'codigo', header: 'Equipo', cell: e => e.codigo }, { id: 'horas', header: 'Horómetro', numeric: true, cell: e => e.horas }]} />` | `caption` obligatorio (oculto, para lectores de pantalla); cabeceras con `scope="col"`; `numeric` alinea a la derecha con cifras tabulares; `hideHeader` para columnas como «Acciones»; mensaje `empty` cuando no hay filas. |
 | `Pagination` | `<Pagination page={pagina} pageCount={total} onChange={setPagina} summary="24 órdenes" />` | Debajo de la tabla, dentro del mismo panel. Desactiva «Anterior» y «Siguiente» en los extremos. |
+| `FilterToggle` | `<FilterToggle open={abierto} active={2} controls="os-filter-fields" onToggle={…} />` seguido de `<div id="os-filter-fields" className="filter-fields">…</div>` (con la clase `is-open` cuando está abierto) | En el teléfono (hasta 600 px) pliega los filtros secundarios y dice cuántos están activos; la búsqueda queda siempre visible. Con pantalla ancha el botón no aparece y `.filter-fields` no agrega caja (`display: contents`), así que los campos siguen en su cuadrícula. Lo usan Órdenes y Solicitudes. |
 | `BrandMark` | `<BrandMark />` | Logotipo oficial «EM» en SVG. Decorativo (`aria-hidden`): el nombre va en texto al lado. Toma el color del texto (`currentColor`). Lo usa `Brand` (menú lateral, acceso, error y vista del operador). |
 
 En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-danger` y `button-orange`), `.icon-button` y el aviso de cambios sin guardar pasan a tokens. Visualmente cambia poco: borde del botón `#dddfd5` → `--color-border`, radio 7 → 8 px, y botón oscuro `#3a3a3a` → `--color-primary`. El foco de enlaces y botones usa `--color-focus`. Las tablas (`.data-table`) usan el token `--color-border-subtle` para separar filas y `--color-surface-subtle` en la cabecera y al pasar el cursor. La tabla de permisos de Accesos usa `DataTable` como ejemplo.
@@ -145,6 +146,12 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
 - **Menú del cliente:** `clientNavigation` en `Shell.tsx`. La ruta de navegación del cliente usa estos nombres, no los del personal.
 - **Inicio** es la excepción: su título saluda según el perfil («Operación», «Tu operación, bajo control», «Tu jornada, en orden»). La ruta de navegación sigue diciendo «Inicio».
 - **Módulos en preparación:** el antetítulo es el grupo del menú al que pertenecen.
+
+## Primero el trabajo
+
+- **Inicio del técnico:** la «Agenda de hoy» va primero, antes de la búsqueda y los indicadores. Arriba muestra sus citas atrasadas (hasta 3, de la más antigua a la más reciente, con enlace a todas). Si hoy no tiene servicios, muestra el siguiente servicio confirmado (`currentWork().next`, sin borradores).
+- **Agenda de hoy del coordinador y el administrador:** sigue en la columna lateral. Si hay citas atrasadas, lo dice arriba («4 citas atrasadas · Revisar atrasadas») en lugar de mostrar solo «No hay servicios programados para hoy».
+- **Listas en el teléfono:** en Órdenes y Solicitudes, la búsqueda queda visible y el resto de filtros se pliega con `FilterToggle`.
 
 ## Formularios en línea y casillas
 

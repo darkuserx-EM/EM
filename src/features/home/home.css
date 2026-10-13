@@ -38,3 +38,18 @@
 .home-attention-table .home-plan-action strong { color: var(--color-brand-text); text-decoration: underline; text-underline-offset: 3px; }
 /* Las fechas del gráfico no se salen de su columna en el teléfono. */
 .home-trend-filters input, .home-trend-filters select { min-width: 0; }
+/* Agenda de hoy: las citas atrasadas van arriba y, si hoy no hay servicios, se muestra el siguiente. En la vista del técnico la agenda va primero. */
+.home-late { margin: 0 18px 12px; padding: 12px 14px 4px; border-radius: 8px; background: var(--color-danger-bg); }
+.home-late-title { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font-size: var(--text-sm); font-weight: 600; color: var(--color-danger-text); }
+.home-late .home-agenda-list { padding: 0; }
+.home-late .text-link { color: var(--color-danger-text); margin-bottom: 8px; }
+.home-next { margin: 4px 0 12px; }
+.home-next > small { font-size: var(--text-xs); color: var(--color-text-muted); }
+/* En pantallas anchas, atrasadas y agenda del día van lado a lado (si solo hay una, ocupa todo el ancho). */
+@media (min-width: 900px) {
+  .home-agenda-top .home-agenda-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+}
+/* Objetivos táctiles: botones del aviso de pendientes (Estado, Sin lectura…) con 44 px en pantallas de dedo. Al final para ganar a las reglas de móvil. */
+@media (pointer: coarse) {
+  .home-pending-actions :is(button, a) { min-height: var(--target-min); }
+}

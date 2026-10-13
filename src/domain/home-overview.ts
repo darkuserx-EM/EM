@@ -51,14 +51,17 @@ export function equipmentAttention(equipment: EntityRecord[], readings: EntityRe
 export function filterAttention(rows: EquipmentAttention[], filter: AttentionFilter) {
   return rows.filter(row => filter === 'all' || (filter === 'attention' ? row.reasons.length > 0 : row[filter]));
 }
+const scheduled = (row: EntityRecord) => `${row.fecha_programada} ${row.hora_programada || '99'}`;
+/** Agenda de trabajo: atrasadas de la más antigua a la más reciente, citas de hoy por hora y la siguiente cita confirmada (sin borradores). */
 export function currentWork(orders: EntityRecord[], today = todayGT()) {
   const current = operationalOrders(orders);
   const open = current.filter(row => !['Completada', 'Cancelada'].includes(String(row.estado)));
   return {
     open,
-    late: open.filter(row => validDay(row.fecha_programada) && row.fecha_programada < today),
+    late: open.filter(row => validDay(row.fecha_programada) && row.fecha_programada < today).sort((a, b) => scheduled(a).localeCompare(scheduled(b))),
     today: current.filter(row => row.fecha_programada === today && !['Borrador', 'Cancelada'].includes(String(row.estado)))
       .sort((a, b) => String(a.hora_programada || '99').localeCompare(String(b.hora_programada || '99'))),
+    next: open.filter(row => validDay(row.fecha_programada) && row.fecha_programada > today && row.estado !== 'Borrador').sort((a, b) => scheduled(a).localeCompare(scheduled(b)))[0] as EntityRecord | undefined,
   };
 }
 export interface HomeActivity { id: string; title: string; detail: string; at: string; href: string }
