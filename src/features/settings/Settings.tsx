@@ -14,7 +14,7 @@ export function AccessPage() {
   const rows = [
     ['Clientes y flota', 'Completo', 'Consulta', '—', 'Su empresa', 'Un equipo por QR'],
     ['Importar y exportar Excel', 'Completo', '—', '—', '—', '—'],
-    ['Tickets y órdenes', 'Completo', 'Completo', 'Tickets asignados (consulta) y sus OT', 'Su empresa', '—'],
+    ['Solicitudes y órdenes', 'Completo', 'Completo', 'Solicitudes asignadas (consulta) y sus OT', 'Su empresa', '—'],
     ['Contratos, checklist, horas y viáticos', 'Pendiente', 'Pendiente', 'Pendiente', '—', '—'],
     ['Costos internos', 'Completo', 'Por definir', '—', '—', '—'],
     ['Configuración y respaldos', 'Completo', '—', '—', '—', '—'],
