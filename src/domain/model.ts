@@ -47,11 +47,11 @@ export const stages = [
   { id: 1, title: 'Base y diseño', detail: 'Navegación, roles de demostración, catálogos, Excel y respaldos.', modules: ['inicio', 'catalogos', 'datos', 'accesos', 'plan'] },
   { id: 2, title: 'Clientes y contratos', detail: 'Contactos, sedes, contratos, cobertura y adendas.', modules: ['clientes', 'contratos'] },
   { id: 3, title: 'Flota', detail: 'Fichas, historial de reparaciones y uso, asignación, documentos y estados.', modules: ['flota'] },
-  { id: 4, title: 'Tickets', detail: 'Solicitudes, prioridades, kanban y reglas de SLA.', modules: ['tickets'] },
+  { id: 4, title: 'Solicitudes', detail: 'Prioridades, kanban y reglas de SLA.', modules: ['tickets'] },
   { id: 5, title: 'Órdenes de servicio', detail: 'Vista del técnico, repuestos, horas, firma y reporte PDF.', modules: ['ordenes'] },
   { id: 6, title: 'Preventivos y calendario', detail: 'Frecuencias, vencimientos y agenda de servicio.', modules: ['preventivos', 'calendario'] },
   { id: 7, title: 'Checklist y horómetros', detail: 'Revisión por QR, lecturas y fallas críticas.', modules: ['checklists'] },
   { id: 8, title: 'Horas, viáticos y costos', detail: 'Gastos, liquidaciones, costos y reportes.', modules: ['horas', 'viaticos', 'costos', 'reportes'] },
   { id: 9, title: 'Portal del cliente', detail: 'Flota, solicitudes y documentos por empresa.', modules: ['portal'] },
-  { id: 10, title: 'Dashboard y publicación', detail: 'Indicadores, pruebas integrales y publicación de prueba en Hostinger.', modules: ['dashboard'] },
+  { id: 10, title: 'Indicadores y publicación', detail: 'Reportes, pruebas integrales y publicación de prueba en Hostinger.', modules: ['dashboard'] },
 ];

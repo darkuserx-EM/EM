@@ -12,17 +12,19 @@ import './client-shell.css';
 type NavItem = { module: string; title: string; icon: LucideIcon; stage?: number };
 export const navigation: { label: string; items: NavItem[] }[] = [
   { label: 'ESPACIO DE TRABAJO', items: [{ module: 'inicio', title: 'Inicio', icon: LayoutGrid }, { module: 'flota', title: 'Flota de equipos', icon: Forklift, stage: 3 }, { module: 'clientes', title: 'Clientes', icon: Building2, stage: 2 }, { module: 'contratos', title: 'Contratos', icon: FileText, stage: 2 }] },
-  { label: 'SERVICIO Y OPERACIÓN', items: [{ module: 'tickets', title: 'Tickets', icon: Ticket, stage: 4 }, { module: 'ordenes', title: 'Órdenes de servicio', icon: ClipboardList, stage: 5 }, { module: 'preventivos', title: 'Mantenimiento', icon: Wrench, stage: 6 }, { module: 'calendario', title: 'Calendario', icon: CalendarDays }, { module: 'planificador', title: 'Planificador', icon: LayoutGrid }, { module: 'checklists', title: 'Checklist diario', icon: ListChecks, stage: 7 }, { module: 'horas', title: 'Horas de técnicos', icon: Clock3, stage: 8 }, { module: 'viaticos', title: 'Viáticos', icon: Wallet, stage: 8 }, { module: 'reportes', title: 'Reportes', icon: ChartNoAxesColumn, stage: 8 }] },
+  { label: 'SERVICIO Y OPERACIÓN', items: [{ module: 'tickets', title: 'Solicitudes', icon: Ticket, stage: 4 }, { module: 'ordenes', title: 'Órdenes de servicio', icon: ClipboardList, stage: 5 }, { module: 'preventivos', title: 'Mantenimiento', icon: Wrench, stage: 6 }, { module: 'calendario', title: 'Calendario', icon: CalendarDays }, { module: 'planificador', title: 'Planificador', icon: LayoutGrid }, { module: 'checklists', title: 'Checklist diario', icon: ListChecks, stage: 7 }, { module: 'horas', title: 'Horas de técnicos', icon: Clock3, stage: 8 }, { module: 'viaticos', title: 'Viáticos', icon: Wallet, stage: 8 }, { module: 'reportes', title: 'Reportes', icon: ChartNoAxesColumn, stage: 8 }] },
   { label: 'ADMINISTRACIÓN', items: [{ module: 'catalogos', title: 'Catálogos', icon: Settings2 }, { module: 'datos', title: 'Datos y respaldos', icon: Database }, { module: 'accesos', title: 'Roles y accesos', icon: ShieldCheck }, { module: 'plan', title: 'Plan de trabajo', icon: Route }] },
 ];
+/** Menú del cliente: sus nombres también se usan en la ruta de navegación. */
+export const clientNavigation = [{ path: 'portal', label: 'Mi empresa', icon: LayoutGrid }, { path: 'tickets', label: 'Solicitudes', icon: Ticket }, { path: 'ordenes', label: 'Reportes de servicio', icon: ClipboardList }, { path: 'calendario', label: 'Agenda', icon: CalendarDays }, { path: 'reportes', label: 'Indicadores', icon: ChartNoAxesColumn }];
 export function Shell() {
   const actor = useActor(); const setUser = useSession(state => state.setUserId); const location = useLocation(); const navigate = useNavigate();
   const [menu, setMenu] = useState(false); const [roles, setRoles] = useState(false);
   const module = location.pathname.split('/')[1] || 'inicio';
-  const title = navigation.flatMap(group => group.items).find(item => item.module === module)?.title ?? 'Portal del cliente';
   const connection = useSyncExternalStore(remoteSource.subscribeConnection, remoteSource.getConnection);
   const connectionLabel = !serverMode ? 'Demostración local' : connection === 'ok' ? 'Datos sincronizados' : connection === 'error' ? 'Sin conexión confirmada: revisa tu red' : 'Comprobando conexión';
   const isClient = actor.rol === 'Cliente';
+  const title = (isClient ? clientNavigation.find(item => item.path === module)?.label : navigation.flatMap(group => group.items).find(item => item.module === module)?.title) ?? 'Portal del cliente';
   useEffect(() => setMenu(false), [location.pathname]);
   useEffect(() => { if (!canAccessModule(actor, module)) navigate(actor.rol === 'Cliente' ? '/portal' : '/inicio', { replace: true }); }, [actor, module, navigate]);
   return <div className={`app-shell ${isClient ? 'client-shell' : ''}`}>
@@ -31,7 +33,7 @@ export function Shell() {
       <NavLink to={isClient ? '/portal' : '/inicio'} className="brand-link" aria-label="Portal EM, inicio"><Brand /></NavLink>
       <div className="workspace-label"><span className="workspace-symbol">E</span><div><strong>EMSA Guatemala</strong><small>Gestión de flota y servicio</small></div><span className="online-dot" data-connection={serverMode ? connection : "local"} role="status" aria-label={connectionLabel} title={connectionLabel} /></div>
       <nav aria-label="Navegación principal">
-        {isClient ? <>{[{path:'portal',label:'Mi empresa',icon:LayoutGrid},{path:'tickets',label:'Solicitudes',icon:Ticket},{path:'ordenes',label:'Reportes de servicio',icon:ClipboardList},{path:'calendario',label:'Agenda',icon:CalendarDays},{path:'reportes',label:'Indicadores',icon:ChartNoAxesColumn}].map(item=><NavLink key={item.path} className="nav-item" to={`/${item.path}`}><item.icon size={18}/><span>{item.label}</span></NavLink>)}</> : navigation.map(group => {
+        {isClient ? <>{clientNavigation.map(item=><NavLink key={item.path} className="nav-item" to={`/${item.path}`}><item.icon size={18}/><span>{item.label}</span></NavLink>)}</> : navigation.map(group => {
           const items = group.items.filter(item => canAccessModule(actor, item.module));
           return items.length ? <div className="nav-group" key={group.label}><p>{group.label}</p>{items.map(item => <NavLink key={item.module} to={`/${item.module}`} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><item.icon size={18} strokeWidth={1.7} /><span>{item.title}</span>{['contratos','checklists','horas','viaticos'].includes(item.module) && <span className="nav-stage" title="Pendiente por alcance">—</span>}</NavLink>)}</div> : null;
         })}

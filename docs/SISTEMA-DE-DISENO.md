@@ -129,6 +129,23 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
 - **Composición (`Brand`):** el logotipo a la izquierda, alineado con «Portal EM», y el lema «EXPERTOS EN MONTACARGAS» (12 px) debajo del nombre.
 - **Ícono de la pestaña** (`public/favicon.svg`): el mismo trazado en blanco sobre el cuadrado oscuro.
 
+## Nombres de pantalla
+
+**Regla:** el menú, la ruta de navegación (arriba de cada pantalla) y el título usan el mismo nombre. El título puede agregar un complemento («Calendario» → «Calendario de mantenimiento») o, en las vistas personales, el posesivo («Mis órdenes de servicio»), pero empieza con el nombre del menú. Las rutas de las direcciones (`/tickets`, `/preventivos`) no cambian.
+
+| Menú | Título | Perfil |
+|---|---|---|
+| Solicitudes | Solicitudes de servicio | Todos (antes el menú del personal decía «Tickets») |
+| Órdenes de servicio | Órdenes de servicio · Mis órdenes de servicio (técnico) | Personal |
+| Mantenimiento | Mantenimiento de la flota (antes «Dashboard de mantenimiento») | Personal |
+| Reportes de servicio | Reportes de servicio | Cliente (`/ordenes`) |
+| Agenda | Agenda de mantenimiento | Cliente (`/calendario`) |
+| Indicadores | Indicadores de servicio | Cliente (`/reportes`) |
+
+- **Menú del cliente:** `clientNavigation` en `Shell.tsx`. La ruta de navegación del cliente usa estos nombres, no los del personal.
+- **Inicio** es la excepción: su título saluda según el perfil («Operación», «Tu operación, bajo control», «Tu jornada, en orden»). La ruta de navegación sigue diciendo «Inicio».
+- **Módulos en preparación:** el antetítulo es el grupo del menú al que pertenecen.
+
 ## Formularios en línea y casillas
 
 - **Estilos compartidos en `base.css`:** la barra de filtros y formularios en línea (`.ops-filters`: Reportes, Roles y accesos y Adjuntos) y los paneles `.access-accounts`, `.access-credentials`, `.ops-table-actions` y `.attachment-*` estaban en la hoja de Inicio. Al abrir Roles y accesos, Datos u Órdenes directamente (recargar o un enlace), esas pantallas quedaban sin estilos hasta pasar por Inicio. **Regla:** una clase que usan dos o más pantallas va en `base.css`, no en la hoja de una pantalla.
