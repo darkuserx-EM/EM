@@ -4,6 +4,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { filterVisible } from './generated/domain.mjs';
 import { manifestPage } from './attachment-batches.mjs';
 import { authorizeTicketEvidence } from './ticket-evidence-access.mjs';
+import { localFiles } from './file-storage.mjs';
 /** @param {number} status @param {string} message */
 const fail =(status,message)=>Object.assign(new Error(message),{status,expose:true});
 const fields='id,order_id,ticket_id,category,name,mime,size,sha256,uploaded_by,created_at';
@@ -39,8 +40,8 @@ async function readOrder(pool,id) {
   const order=JSON.parse(rows[0].payload);
   return order.id===id?order:undefined;
 }
-/** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool}} options */
-export function registerAttachmentRoutes(app,{pool}) {
+/** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool,files?:import('./file-storage.mjs').FileStore}} options */
+export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
   app.get('/api/attachments',/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AttachmentReply|Buffer>} res */ async (req,res)=>{
     const id=String(req.query.orderId || ''); permitted(await readOrder(pool,id),req.actor);
     /** @type {Omit<import("./contracts.js").AttachmentMetadata,"request_id">[]} */
@@ -52,21 +53,33 @@ export function registerAttachmentRoutes(app,{pool}) {
     if(!file) throw fail(404,'Archivo no disponible.');
     if(file.ticket_id) await authorizeTicketEvidence(pool,req.actor,file.ticket_id,req.query.orderId);
     else permitted(await readOrder(pool,file.order_id),req.actor);
-    /** @type {{content:Buffer}[]} */
-    const contents = await select(pool,'SELECT content FROM em_attachments WHERE id=?',[file.id]);
+    /** @type {{content:Buffer,storage_key:string|null}[]} */
+    const contents = await select(pool,'SELECT content,storage_key FROM em_attachments WHERE id=?',[file.id]);
     if(!contents[0]) throw fail(404,'Archivo no disponible.');
     res.set('Content-Disposition',`${file.mime==='application/pdf'?'attachment':'inline'}; filename*=UTF-8''${encodeURIComponent(file.name)}`);
-    res.set('Content-Security-Policy',"default-src 'none'; sandbox");res.type(file.mime).send(contents[0].content);
+    const bytes=await storage.read(pool,{...contents[0],sha256:file.sha256,size:Number(file.size)});
+    res.set('Content-Security-Policy',"default-src 'none'; sandbox");res.type(file.mime).send(bytes);
   });
   app.post('/api/attachments',(req,_res,next)=>{
     if(!['Administrador','Técnico'].includes(req.actor.rol)) return next(fail(403,'Los adjuntos se agregan por administración o el técnico asignado.'));
     next();
   },express.json({limit:'6mb'}),/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AttachmentReply|Buffer>} res */ async (req,res)=>{
+    const initialOrder=permitted(await readOrder(pool,req.body?.orderId),req.actor,true);
+    const file=decodeAttachment(req.body);
+    if(file.category==='Solicitud') throw fail(400,'La evidencia inicial se agrega desde la solicitud.');
+    /** @type {import('./contracts.js').AttachmentMetadata[]} */
+    const prior=await select(pool,`SELECT ${fields} FROM em_attachments WHERE request_id=?`,[file.requestId]);
+    if(prior.length){
+      if(prior[0].order_id!==req.body.orderId||prior[0].sha256!==file.sha256||prior[0].category!==file.category)throw fail(409,'El identificador del envío ya pertenece a otro archivo.');
+      return res.json({file:prior[0]});
+    }
+    /** @type {{n:number}[]} */
+    const totals=await select(pool,'SELECT COUNT(*) AS n FROM em_attachments WHERE order_id=?',[initialOrder.id]);
+    if(Number(totals[0].n)>=20)throw fail(400,'La orden admite hasta 20 adjuntos.');
+    const stored=await storage.prepare(file.bytes,file.mime);
     const conn=await pool.getConnection();
     try {
       await conn.beginTransaction(); await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE'); const order=permitted(await readOrder(conn,req.body?.orderId),req.actor,true);
-      const file=decodeAttachment(req.body);
-      if(file.category==='Solicitud') throw fail(400,'La evidencia inicial se agrega desde la solicitud.');
       /** @type {Omit<import("./contracts.js").AttachmentMetadata,"request_id">[]} */
     const existing = await select(conn,`SELECT ${fields} FROM em_attachments WHERE request_id=?`,[file.requestId]);
       if(existing.length) {
@@ -77,7 +90,7 @@ export function registerAttachmentRoutes(app,{pool}) {
     const count = await select(conn,'SELECT COUNT(*) AS n FROM em_attachments WHERE order_id=?',[order.id]);
       if(Number(count[0].n)>=20) throw fail(400,'La orden admite hasta 20 adjuntos.');
       const id=randomUUID(),created=Date.now();
-      await conn.execute('INSERT INTO em_attachments (id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content) VALUES (?,?,?,?,?,?,?,?,?,?,?)',[id,order.id,file.requestId,file.category,file.name,file.mime,file.bytes.length,file.sha256,req.actor.id,created,file.bytes]);
+      await conn.execute('INSERT INTO em_attachments (id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content,storage_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',[id,order.id,file.requestId,file.category,file.name,file.mime,file.bytes.length,file.sha256,req.actor.id,created,stored.content,stored.storage_key]);
       await conn.commit();res.status(201).json({file:{id,order_id:order.id,category:file.category,name:file.name,mime:file.mime,size:file.bytes.length,created_at:created}});
     } catch(error){await conn.rollback();throw error;}finally{conn.release();}
   });

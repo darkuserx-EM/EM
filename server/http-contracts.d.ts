@@ -56,6 +56,7 @@ export interface AppOptions {
   pool: import('mysql2/promise').Pool; origin:string; setupToken?:string; production?:boolean;
   dist?:string; trustProxy?:string; networkDiagnostics?:boolean; logger?:(line:string)=>void;
   sessionIdleMinutes?:string; totpEncryptionKey?:string;
+  files?:import('./file-storage.mjs').FileStore;
 }
 export type MfaReply = { ok:true; recoveryCodes?:string[] } | { secret:string; uri:string };
 export type LoginReply = { ok:true } | { needsTotp:boolean; challenge:string };

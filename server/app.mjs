@@ -26,6 +26,8 @@ import { registerTicketAttachmentRoutes } from './ticket-attachments.mjs';
 import { registerAttachmentBackupRoutes } from './attachment-backup.mjs';
 import { registerMediaUploadRoutes, persistEquipmentMedia, hydrateEquipment } from './media.mjs';
 import { registerFullBackupRoutes } from './full-backup.mjs';
+import { localFiles } from './file-storage.mjs';
+import { DriveStorageError } from './drive-storage.mjs';
 
 /** @param {number} status @param {string} message */
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
@@ -44,7 +46,7 @@ const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, clien
 /** @param {unknown} value */
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
 /** @param {import("./http-contracts.js").AppOptions} options */
-export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60', totpEncryptionKey } ) {
+export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60', totpEncryptionKey,files=localFiles } ) {
   const app = express();
   const mfaKey=encryptionKey(totpEncryptionKey);
   const idleMs=idleTimeout(sessionIdleMinutes), cookieName=production?'__Host-em_session':'em_session';
@@ -156,11 +158,11 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   registerAuditRoutes(app, pool);
   registerOperationPages(app,{pool,syncToken});
   registerAdminUserRoutes(app, {pool});
-  registerAttachmentRoutes(app, {pool});
-  registerTicketAttachmentRoutes(app, {pool});
-  registerAttachmentBackupRoutes(app, {pool,logger});
-  registerMediaUploadRoutes(app, {pool});
-  registerFullBackupRoutes(app, {pool,logger});
+  registerAttachmentRoutes(app, {pool,files});
+  registerTicketAttachmentRoutes(app, {pool,files});
+  registerAttachmentBackupRoutes(app, {pool,logger,files});
+  registerMediaUploadRoutes(app, {pool,files});
+  registerFullBackupRoutes(app, {pool,logger,files});
   app.post('/api/logout', /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").SessionBody>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); clearSessionCookies(res,production); res.json({ok:true}); });
   app.get('/api/database', /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").SessionBody>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> {
 
@@ -177,7 +179,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.get('/api/backup', /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").SessionBody>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
     const db = await readSnapshot(pool);
-    db.entities.Equipo = await hydrateEquipment(pool,db.entities.Equipo);
+    db.entities.Equipo = await hydrateEquipment(pool,db.entities.Equipo,{files});
     res.json(db);
   });
   app.post('/api/equipment-export', /** @param {import("./http-contracts.js").PortalRequest<{ids?:unknown}>} req @param {import("./http-contracts.js").PortalResponse<{rows:Record<string,import("../src/domain/model.js").Scalar>[],includesImages:boolean}>} res */ async (req,res)=> {
@@ -206,9 +208,9 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       const preview = req.query.preview === '1';
       // Select just the requested representation; a thumbnail request does not read the original BLOB.
 
-/** @type {{mime:string,bytes:Buffer,preview:number}[]} */
-    const files = await select(pool,`SELECT mime,${preview ? 'COALESCE(thumbnail,content)' : 'content'} AS bytes,${preview ? 'thumbnail IS NOT NULL' : 'FALSE'} AS preview FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id,req.params.field,req.params.hash]);
-      if (files.length) image = { type: files[0].preview ? 'image/webp' : files[0].mime, bytes: files[0].bytes };
+/** @type {{mime:string,bytes:Buffer,storage_key:string|null,preview:number}[]} */
+    const stored = await select(pool,`SELECT mime,${preview ? 'COALESCE(thumbnail,content)' : 'content'} AS bytes,${preview ? 'IF(thumbnail IS NOT NULL,thumbnail_key,storage_key)' : 'storage_key'} AS storage_key,${preview ? 'thumbnail IS NOT NULL' : 'FALSE'} AS preview FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id,req.params.field,req.params.hash]);
+      if (stored.length) image = { type: stored[0].preview ? 'image/webp' : stored[0].mime, bytes: await files.read(pool,{content:stored[0].bytes,storage_key:stored[0].storage_key}) };
     }
     if (!image) throw fail(404,'Imagen no disponible.');
     // Revalidate authorization on every request, including conditional requests.
@@ -325,6 +327,10 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.use(/** @param {unknown} error @param {import("./http-contracts.js").PortalRequest} req @param {import("./http-contracts.js").PortalResponse<{error:string,reference?:string}>} res @param {import("express").NextFunction} _next */ (error,req,res,_next)=>{
     if (errorField(error,'type') === 'entity.too.large') return res.status(413).json({error:'El envío supera el tamaño permitido. Reduce los adjuntos o el archivo.'});
     if (errorField(error,'type') === 'entity.parse.failed') return res.status(400).json({error:'La solicitud no contiene un JSON válido.'});
+    if (error instanceof DriveStorageError) {
+      const reference=logFailure(error,{event:'file.storage',method:req.method,route:req.route?.path||'(middleware)',status:503},logger);
+      return res.set('Retry-After','60').status(503).json({error:error.message,reference});
+    }
     const status=errorField(error,'status'),message=errorField(error,'message');
     if (errorField(error,'expose') === true && typeof status==='number' && Number.isInteger(status) && status >= 400 && status < 500 && typeof message==='string') return res.status(status).json({error:message});
     const reference = logFailure(error, { event:'request', method:req.method, route:req.route?.path || '(middleware)', status:500 }, logger);

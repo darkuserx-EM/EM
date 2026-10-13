@@ -9,14 +9,22 @@ import { createApp } from './app.mjs';
 import { token } from './security.mjs';
 import { migrateLegacyMedia, hydrateEquipment, cleanupMediaUploads } from './media.mjs';
 import { startMaintenance } from './maintenance.mjs';
+import { createFileStore, localFiles } from './file-storage.mjs';
+import { DriveStorageError } from './drive-storage.mjs';
 
-test('Fotografías separadas: permisos, migración, integridad y recuperación completa', { skip: process.env.MYSQL_INTEGRATION !== '1', timeout: 180000 }, async t => {
+for (const external of [false,true]) test(`Fotografías separadas (${external?'Drive privado simulado':'MySQL'}): permisos, migración, integridad y recuperación completa`, { skip: process.env.MYSQL_INTEGRATION !== '1', timeout: 180000 }, async t => {
   const host = process.env.TEST_DB_HOST || '127.0.0.1'; assert.ok(['127.0.0.1','localhost','::1'].includes(host));
   const config = { host, port: Number(process.env.TEST_DB_PORT || 3306), user: process.env.TEST_DB_USER || 'root', password: process.env.TEST_DB_PASSWORD }; assert.ok(config.password);
   const name = `em_ci_${randomUUID().replaceAll('-','')}`, control = await mysql.createConnection(config);
   await control.query(`CREATE DATABASE ${name} CHARACTER SET utf8mb4`); const pool = mysql.createPool({...config,database:name}); let server;
   t.after(async () => { if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } await pool.end(); assert.match(name,/^em_ci_[a-f0-9]{32}$/); await control.query(`DROP DATABASE ${name}`); await control.end(); });
   await migrate(pool); await migrate(pool);
+  const remote=new Map();let remoteUnavailable=false;
+  const files=external?createFileStore(pool,{
+    reserve:async()=>randomUUID(),verifyFolder:async()=>({private:true}),
+    put:async(id,bytes)=>{if(remote.has(id))assert.deepEqual(remote.get(id),bytes);remote.set(id,bytes);},
+    get:async(id,size,sha)=>{if(remoteUnavailable)throw new DriveStorageError('DRIVE_NETWORK','Drive unavailable');const bytes=remote.get(id);assert.equal(bytes.length,size);assert.equal(createHash('sha256').update(bytes).digest('hex'),sha);return bytes;},
+  }):localFiles;
   const png = await sharp({create:{width:960,height:720,channels:3,background:'#315d29'}}).png().toBuffer();
   const picture = `data:image/png;base64,${png.toString('base64')}`;
   const now = new Date().toISOString(), row = (id,codigo,fields) => ({id,codigo,creado_por:'qa-original',actualizado_por:'qa-original',fecha_creacion:now,fecha_actualizacion:now,...fields});
@@ -43,7 +51,7 @@ test('Fotografías separadas: permisos, migración, integridad y recuperación c
     for (const file of files) { assert.deepEqual(file.content,png); assert.ok(file.thumbnail.length<png.length); const thumb=await sharp(file.thumbnail).metadata(); assert.ok(thumb.width<=480 && thumb.height<=360); }
   });
   const origin='http://localhost:3000', setupToken=token(), errors=[];
-  server=createApp({pool,origin,setupToken,production:false,logger:entry=>errors.push(entry)}).listen(0,'127.0.0.1'); await once(server,'listening');
+  server=createApp({pool,origin,setupToken,production:false,files,logger:entry=>errors.push(entry)}).listen(0,'127.0.0.1'); await once(server,'listening');
   const url=`http://127.0.0.1:${server.address().port}/api/`; let serial=1;
   const headers = session => ({Origin:origin,'Content-Type':'application/json','X-Forwarded-For':`198.51.100.${serial++ % 250 + 1}`,...(session?{Cookie:session.cookie,'X-CSRF-Token':session.csrf}:{})});
   async function call(path,body,session) { const r=await fetch(url+path,{method:body===undefined?'GET':'POST',headers:headers(session),body:body===undefined?undefined:JSON.stringify(body)}); return {status:r.status,headers:r.headers,data:await r.json()}; }
@@ -103,6 +111,8 @@ test('Fotografías separadas: permisos, migración, integridad y recuperación c
     assert.equal((await mutate('update','Equipo',{foto_frontal:receipt.data.reference},'eq-b',{mediaUploads:{foto_frontal:receipt.data.uploadId}})).status,400);
     assert.equal((await mutate('update','Equipo',{foto_trasera:receipt.data.reference},'eq-a',{mediaUploads:{foto_trasera:receipt.data.uploadId}})).status,400);
     assert.deepEqual(Buffer.from(await (await fetch(url+imageUrl(current,'foto_frontal'),{headers:headers(a)})).arrayBuffer()),jpg);
+    const preview=await fetch(url+imageUrl(current,'foto_frontal',true),{headers:headers(tech)});assert.equal(preview.status,200);assert.ok((await sharp(Buffer.from(await preview.arrayBuffer())).metadata()).width<=480);
+    if(external){const [[photo]]=await pool.query("SELECT content,thumbnail,storage_key,thumbnail_key FROM em_media WHERE field='foto_frontal'");assert.equal(photo.content.length,0);assert.equal(photo.thumbnail.length,0);assert.ok(photo.storage_key&&photo.thumbnail_key);assert.equal(remote.size,2);}
     const [stored]=await pool.execute("SELECT payload FROM em_records WHERE entity='Equipo' AND id='eq-a'");assert.ok(!stored[0].payload.includes('base64'));
   });
   let archive, backupEntries;
@@ -111,12 +121,23 @@ test('Fotografías separadas: permisos, migración, integridad y recuperación c
     assert.equal((await fetch(url+imageUrl(current,'foto_frontal'),{headers:headers(a)})).status,404);
     for(const actor of [undefined,a,tech])assert.equal((await fetch(url+'admin/full-backup',{headers:headers(actor)})).status,actor?403:401);
     const uploaded=await call('attachments',{orderId:order.data.result.id,requestId:randomUUID(),category:'Antes',name:'prueba.jpg',base64:jpg.toString('base64')},admin);assert.equal(uploaded.status,201);
+    const downloaded=await fetch(url+`attachments/${uploaded.data.file.id}/file`,{headers:headers(tech)});assert.equal(downloaded.status,200);assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()),jpg);
+    if(external){const [[attachment]]=await pool.query('SELECT content,storage_key FROM em_attachments');assert.equal(attachment.content.length,0);assert.ok(attachment.storage_key);assert.equal(remote.size,2,'la misma foto de equipo y orden no se duplica en Drive');}
     const response=await fetch(url+'admin/full-backup',{headers:headers(admin)});assert.equal(response.status,200);archive=await response.text();backupEntries=archive.trimEnd().split('\n').map(JSON.parse);
     const footer=backupEntries.at(-1);assert.equal(footer.sha256,createHash('sha256').update(archive.slice(0,archive.lastIndexOf(JSON.stringify(footer)))).digest('hex'));
     assert.equal(footer.counts.media,5);assert.equal(footer.counts.attachment,1);
     assert.equal(backupEntries.filter(x=>x.type==='record').length,footer.counts.record);
     assert.ok(!JSON.stringify(backupEntries.filter(x=>x.type==='record')).includes('base64'));
     assert.equal(backupEntries.filter(x=>x.type==='media'&&x.file.metadata.field==='foto_frontal').length,1);
+  });
+  if(external)await t.test('Drive desconectado no produce respaldo válido y la recuperación materializa las copias verificadas',async()=>{
+    remoteUnavailable=true;
+    await assert.rejects(async()=>{const r=await fetch(url+'admin/full-backup',{headers:headers(admin)});await r.text();});assert.equal(errors.length,1);errors.length=0;
+    for(const entry of backupEntries.filter(x=>x.type==='media'))assert.equal((await call('admin/media/restore',{file:entry.file},admin)).status,200);
+    for(const entry of backupEntries.filter(x=>x.type==='attachment'))assert.equal((await call('admin/attachments/restore',{file:entry.file},admin)).status,200);
+    const [photos]=await pool.query('SELECT storage_key,content FROM em_media');assert.ok(photos.every(photo=>photo.storage_key===null&&photo.content.length>0));
+    const restored=await fetch(url+'admin/full-backup',{headers:headers(admin)});assert.equal(restored.status,200);assert.ok(JSON.parse((await restored.text()).trimEnd().split('\n').at(-1)).sha256);
+    remoteUnavailable=false;
   });
   await t.test('recupera en base operativa vacía, rechaza corrupción, reanuda y no pierde auditoría',async()=>{
     const old=await readSnapshot(pool),beforeAudit=old.entities.Bitacora;

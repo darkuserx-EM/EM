@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { createHash, randomUUID } from 'node:crypto';
 import { equipmentImageFields, isEquipmentImageReference, validEquipmentImage } from './generated/domain.mjs';
 import { imageReference } from './equipment-images.mjs';
+import { localFiles } from './file-storage.mjs';
 
 export const mediaColumns = 'equipment_id,field,hash,mime,size,sha256,uploaded_by,created_at';
 /** @param {number} status @param {string} message */
@@ -47,20 +48,31 @@ export async function legacyMedia(value) {
 export function verifyStoredMedia(row) {
   if (!row || !Buffer.isBuffer(row.content) || row.content.length !== Number(row.size) || createHash('sha256').update(row.content).digest('hex') !== row.sha256 || imageReference(mediaDataUrl(row)).slice(6) !== row.hash) throw fail(409, 'La integridad de una fotografía no coincide. No se modificaron sus datos.');
 }
+/** @param {import('./contracts.js').SqlConnection} conn @param {Omit<import('./contracts.js').MediaFile,'thumbnail'>} row */
+async function verifyMediaReference(conn,row) {
+  if (!row.storage_key) return verifyStoredMedia(row);
+  /** @type {{sha256:string,mime:string,size:number,ready:number}[]} */
+  const blobs=await select(conn,'SELECT sha256,mime,size,ready FROM em_drive_blobs WHERE sha256=?',[row.storage_key]);
+  const blob=blobs[0];
+  if (!blob?.ready || blob.sha256!==row.sha256 || blob.mime!==row.mime || Number(blob.size)!==Number(row.size) || row.content.length) throw fail(409,'La fotografía no tiene una carga verificada.');
+}
 /** @param {import("mysql2/promise").PoolConnection} conn @param {import("./contracts.js").MediaFile} value */
 export async function storeMedia(conn, value) {
   /** @type {Omit<import("./contracts.js").MediaFile,"thumbnail">[]} */
-    const old = await select(conn,`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [value.equipment_id, value.field, value.hash]);
+    const old = await select(conn,`SELECT ${mediaColumns},content,storage_key FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [value.equipment_id, value.field, value.hash]);
+  await verifyMediaReference(conn,value);
   if (old.length) {
-    verifyStoredMedia(old[0]);
-    if (old[0].sha256 !== value.sha256 || old[0].mime !== value.mime || !old[0].content.equals(value.content)) throw fail(409, 'Existe otra fotografía con esa identidad.');
+    await verifyMediaReference(conn,old[0]);
+    if (old[0].sha256 !== value.sha256 || old[0].mime !== value.mime || Number(old[0].size)!==Number(value.size) || (!old[0].storage_key && !value.storage_key && !old[0].content.equals(value.content))) throw fail(409, 'Existe otra fotografía con esa identidad.');
+    // Restoring a complete backup remains possible without Google credentials.
+    if (old[0].storage_key && !value.storage_key) await conn.execute('UPDATE em_media SET content=?,thumbnail=?,storage_key=NULL,thumbnail_key=NULL WHERE equipment_id=? AND field=? AND hash=?',[value.content,value.thumbnail,value.equipment_id,value.field,value.hash]);
     return false;
   }
-  await conn.execute('INSERT INTO em_media (equipment_id,field,hash,mime,size,sha256,uploaded_by,created_at,content,thumbnail) VALUES (?,?,?,?,?,?,?,?,?,?)', [value.equipment_id, value.field, value.hash, value.mime, value.size, value.sha256, value.uploaded_by, value.created_at, value.content, value.thumbnail]);
+  await conn.execute('INSERT INTO em_media (equipment_id,field,hash,mime,size,sha256,uploaded_by,created_at,content,thumbnail,storage_key,thumbnail_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', [value.equipment_id, value.field, value.hash, value.mime, value.size, value.sha256, value.uploaded_by, value.created_at, value.content, value.thumbnail,value.storage_key||null,value.thumbnail_key||null]);
   // Verify bytes before replacing any original embedded value.
   /** @type {Omit<import("./contracts.js").MediaFile,"thumbnail">[]} */
-    const saved = await select(conn,`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [value.equipment_id, value.field, value.hash]);
-  verifyStoredMedia(saved[0]);
+    const saved = await select(conn,`SELECT ${mediaColumns},content,storage_key FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [value.equipment_id, value.field, value.hash]);
+  await verifyMediaReference(conn,saved[0]);
   return true;
 }
 /** @param {import("mysql2/promise").PoolConnection} conn @param {import("../src/domain/model.js").Database} next @param {import("../src/domain/model.js").Database} previous @param {{actor?:import("../src/domain/model.js").Actor,uploads?:Record<string,string>,targetId?:string,restore?:boolean}} [options] */
@@ -102,8 +114,8 @@ export async function persistEquipmentMedia(conn, next, previous, { actor, uploa
     throw fail(400, 'No se puede adjuntar una fotografía por su referencia. Carga el archivo desde este formulario.');
   }
 }
-/** @param {import("./contracts.js").SqlConnection} conn @param {import("../src/domain/model.js").EntityRecord[]} records @param {{maxBytes?:number}} [options] */
-export async function hydrateEquipment(conn, records, { maxBytes = 24 * 1024 * 1024 } = {}) {
+/** @param {import("./contracts.js").SqlConnection} conn @param {import("../src/domain/model.js").EntityRecord[]} records @param {{maxBytes?:number,files?:import('./file-storage.mjs').FileStore}} [options] */
+export async function hydrateEquipment(conn, records, { maxBytes = 24 * 1024 * 1024,files:storage=localFiles } = {}) {
   const result = structuredClone(records);
   let bytes = 0;
   for (const row of result) for (const field of equipmentImageFields) {
@@ -118,8 +130,9 @@ export async function hydrateEquipment(conn, records, { maxBytes = 24 * 1024 * 1
     bytes += Math.ceil(Number(metadata[0].size) / 3) * 4 + 40;
     if (bytes > maxBytes) throw fail(413, 'Las fotografías superan el respaldo Excel. Descarga el respaldo completo por archivos desde Datos y respaldos.');
     /** @type {Omit<import("./contracts.js").MediaFile,"thumbnail">[]} */
-    const files = await select(conn,`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id, field, row[field].slice(6)]);
+    const files = await select(conn,`SELECT ${mediaColumns},content,storage_key FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id, field, row[field].slice(6)]);
     if (!files.length) throw fail(409, 'No se puede exportar: falta una fotografía. Revisa el respaldo completo.');
+    files[0].content=await storage.read(conn,files[0]);
     verifyStoredMedia(files[0]); row[field] = mediaDataUrl(files[0]);
   }
   return result;
@@ -172,14 +185,22 @@ export async function cleanupMediaUploads(pool, now = Date.now()) {
   }
   return removed;
 }
-/** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool}} options */
-export function registerMediaUploadRoutes(app, { pool }) {
+/** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool,files?:import('./file-storage.mjs').FileStore}} options */
+export function registerMediaUploadRoutes(app, { pool,files=localFiles }) {
   /** @type {import("./http-contracts.js").PortalMiddleware} */
   const admin = (req, _res, next) => req.actor.rol === 'Administrador' ? next() : next(fail(403, 'Solo administración puede cargar fotografías de equipos.'));
   app.post('/api/equipment-media/upload', admin, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: 2624970 }), /** @param {import("./http-contracts.js").PortalRequest<unknown>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").MediaReply>} res */ async (req,res)=> {
     const id = req.get('x-upload-id'), field = req.get('x-equipment-field');
     if (!uuid(id) || (typeof field!=='string' || !equipmentImageFields.some(value=>value===field))) throw fail(400, 'La identidad o el campo de la carga no es válido.');
     const file = await prepareMedia(req.body, req.get('content-type'));
+    /** @type {import('./contracts.js').MediaUpload[]} */
+    const prior=await select(pool,'SELECT * FROM em_media_uploads WHERE id=?',[id]);
+    if(prior.length&&(prior[0].uploaded_by!==req.actor.id||prior[0].field!==field||prior[0].hash!==file.hash||Number(prior[0].expires_at)<=Date.now()))throw fail(409,'El identificador de envío ya fue utilizado o venció.');
+    /** @type {{n:number}[]} */
+    const totals=await select(pool,'SELECT COUNT(*) AS n FROM em_media_uploads WHERE uploaded_by=? AND expires_at>? AND equipment_id IS NULL',[req.actor.id,Date.now()]);
+    if(!prior.length&&Number(totals[0].n)>=60)throw fail(429,'Hay demasiadas fotografías pendientes de guardar. Guarda los equipos antes de continuar.');
+    const stored=await files.prepare(file.content,file.mime);
+    const preview=file.thumbnail ? await files.prepare(file.thumbnail,'image/webp') : null;
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -194,7 +215,7 @@ export function registerMediaUploadRoutes(app, { pool }) {
         /** @type {{n:number}[]} */
     const count = await select(conn,'SELECT COUNT(*) AS n FROM em_media_uploads WHERE uploaded_by=? AND expires_at>? AND equipment_id IS NULL', [req.actor.id, Date.now()]);
         if (Number(count[0].n) >= 60) throw fail(429, 'Hay demasiadas fotografías pendientes de guardar. Guarda los equipos antes de continuar.');
-        await conn.execute('INSERT INTO em_media_uploads (id,field,hash,mime,size,sha256,uploaded_by,created_at,expires_at,content,thumbnail) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [id, field, file.hash, file.mime, file.size, file.sha256, req.actor.id, Date.now(), Date.now() + 86400000, file.content, file.thumbnail]);
+        await conn.execute('INSERT INTO em_media_uploads (id,field,hash,mime,size,sha256,uploaded_by,created_at,expires_at,content,thumbnail,storage_key,thumbnail_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [id, field, file.hash, file.mime, file.size, file.sha256, req.actor.id, Date.now(), Date.now() + 86400000, stored.content, preview?.content ?? null,stored.storage_key,preview?.storage_key ?? null]);
       }
       await conn.commit(); res.status(old.length ? 200 : 201).json({ uploadId: id, reference: `media:${file.hash}` });
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
