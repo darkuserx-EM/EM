@@ -17,14 +17,14 @@ export async function* attachmentBatches(conn,{maxBytes=8*1024*1024,pageSize=50,
       const ids=[];let bytes=0;
       while(offset<metadata.length) {
         const row=metadata[offset],size=Number(row.bytes);
-        if(!Number.isSafeInteger(size)||size<12||size>4*1024*1024)throw Object.assign(new Error('Invalid attachment size'),{code:'BACKUP_ATTACHMENT_SIZE'});
+        if(!Number.isSafeInteger(size)||size<12||size>25*1024*1024)throw Object.assign(new Error('Invalid attachment size'),{code:'BACKUP_ATTACHMENT_SIZE'});
         if(ids.length&&bytes+size>maxBytes)break;
         ids.push(row.id);bytes+=size;offset++;
       }
       /** @type {import('./contracts.js').AttachmentFile[]} */
       const rows=await select(conn,`SELECT ${attachmentFields},content,storage_key FROM em_attachments WHERE id IN (${ids.map(()=>'?').join(',')}) ORDER BY id`,ids);
       for (const row of rows) row.content=await files.read(conn,row);
-      if(rows.length!==ids.length||rows.reduce((sum,row)=>sum+row.content.length,0)>maxBytes)throw Object.assign(new Error('Inconsistent attachment batch'),{code:'BACKUP_ATTACHMENT_BATCH'});
+      if(rows.length!==ids.length||rows.reduce((sum,row)=>sum+row.content.length,0)>Math.max(maxBytes,rows.length===1?25*1024*1024:0))throw Object.assign(new Error('Inconsistent attachment batch'),{code:'BACKUP_ATTACHMENT_BATCH'});
       yield rows;
     }
     cursor=metadata[metadata.length-1].id;

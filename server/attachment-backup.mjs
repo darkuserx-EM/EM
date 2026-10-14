@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { decodeAttachment } from './attachments.mjs';
 import { logFailure } from './diagnostics.mjs';
 import { localFiles } from './file-storage.mjs';
+import {validateVideo} from './video-validation.mjs';
 
 /** @param {number} status @param {string} message */
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
@@ -25,7 +26,7 @@ export function validateRestoreFile(input) {
   if (!uuid(m.id) || !uuid(m.request_id) || !ownerValid || !identifier(m.uploaded_by)) throw fail(400, 'La identidad o autoría del archivo no es válida.');
   if (typeof m.created_at !== 'number' || !Number.isSafeInteger(m.created_at) || m.created_at <= 0 || m.created_at > Date.now() + 5 * 60000) throw fail(400, 'La fecha original del archivo no es válida.');
   if (!Number.isSafeInteger(m.size) || !/^[a-f0-9]{64}$/.test(m.sha256 || '')) throw fail(400, 'La integridad del archivo no es válida.');
-  const decoded = decodeAttachment({ requestId: m.request_id, category: m.category, name: m.name, base64: input.base64 });
+  const decoded = decodeAttachment({ requestId: m.request_id, category: m.category, name: m.name, base64: input.base64 },true);
   if (decoded.name !== m.name || decoded.mime !== m.mime || decoded.bytes.length !== m.size || decoded.sha256 !== m.sha256) throw fail(400, 'El contenido no coincide con el nombre, formato, tamaño o huella del respaldo.');
   return { metadata: metadataOf({id:m.id,request_id:m.request_id,order_id:m.order_id || '',ticket_id:m.ticket_id,uploaded_by:m.uploaded_by,created_at:m.created_at,size:decoded.bytes.length,sha256:decoded.sha256,mime:decoded.mime,name:decoded.name,category:decoded.category}), ...decoded };
 }
@@ -83,8 +84,13 @@ export function registerAttachmentBackupRoutes(app, { pool, logger = console.err
       } else throw error;
     } finally { conn.release(); }
   });
-  app.post('/api/admin/attachments/restore', admin, express.json({ limit: '6mb' }), /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentRestoreBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").RestoreReply>} res */ async (req,res)=> {
+  app.post('/api/admin/attachments/restore', admin, express.json({ limit: '36mb' }), /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentRestoreBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").RestoreReply>} res */ async (req,res)=> {
     const restored = validateRestoreFile(req.body?.file); const m = restored.metadata;
+    let videoStored;
+    if(m.mime==='video/mp4'){
+      if(!files.enabled)throw fail(503,'Conecta Google Drive antes de recuperar videos. El respaldo y los registros se conservan.');
+      await validateVideo(restored.bytes);videoStored=await files.prepare(restored.bytes,m.mime);
+    }
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -98,13 +104,13 @@ export function registerAttachmentBackupRoutes(app, { pool, logger = console.err
       if (existing.length) {
         if (existing.length !== 1 || JSON.stringify(metadataOf(existing[0])) !== JSON.stringify(m) || (!existing[0].storage_key && !existing[0].content.equals(restored.bytes))) throw fail(409, 'Ya existe un archivo distinto con esa identidad. No se ha reemplazado ningún contenido.');
         if (existing[0].storage_key) {
-          // The complete backup has verified bytes: recover locally even if Drive is offline.
-          await conn.execute('UPDATE em_attachments SET content=?,storage_key=NULL WHERE id=?',[restored.bytes,m.id]);
+          // Photos/PDF retain offline recovery; videos stay in Drive after checksum verification.
+          await conn.execute('UPDATE em_attachments SET content=?,storage_key=? WHERE id=?',[videoStored?.content??restored.bytes,videoStored?.storage_key??null,m.id]);
           await conn.execute('INSERT INTO em_security_events (id,actor_id,target_id,action,created_at) VALUES (?,?,?,?,?)',[randomUUID(),req.actor.id,m.id,'attachment.restored',Date.now()]);
         }
         await conn.commit(); return res.json({ restored: true, duplicate: true, id: m.id });
       }
-      await conn.execute('INSERT INTO em_attachments (id,order_id,ticket_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', [m.id, m.order_id, m.ticket_id || null, m.request_id, m.category, m.name, m.mime, m.size, m.sha256, m.uploaded_by, m.created_at, restored.bytes]);
+      await conn.execute('INSERT INTO em_attachments (id,order_id,ticket_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content,storage_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [m.id, m.order_id, m.ticket_id || null, m.request_id, m.category, m.name, m.mime, m.size, m.sha256, m.uploaded_by, m.created_at, videoStored?.content??restored.bytes,videoStored?.storage_key??null]);
       await conn.execute('INSERT INTO em_security_events (id,actor_id,target_id,action,created_at) VALUES (?,?,?,?,?)', [randomUUID(), req.actor.id, m.id, 'attachment.restored', Date.now()]);
       await conn.commit(); res.status(201).json({ restored: true, duplicate: false, id: m.id });
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }

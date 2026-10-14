@@ -28,6 +28,7 @@ import { registerMediaUploadRoutes, persistEquipmentMedia, hydrateEquipment } fr
 import { registerFullBackupRoutes } from './full-backup.mjs';
 import { localFiles } from './file-storage.mjs';
 import { DriveStorageError } from './drive-storage.mjs';
+import {registerVideoRoutes} from './videos.mjs';
 
 /** @param {number} status @param {string} message */
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
@@ -55,7 +56,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   const snapshots = createSnapshotCache(pool);
   /** @type {WeakMap<import("../src/domain/model.js").Database,import("../src/domain/incremental-validation.js").IncrementalValidation>} */
   const validationIndexes=new WeakMap();
-  app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null, imgSrc: ["'self'", "data:", "blob:"] } } }));
+  app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null, imgSrc: ["'self'", "data:", "blob:"],mediaSrc:["'self'","blob:"] } } }));
   app.use((_req, res, next) => { res.set('X-Robots-Tag', 'noindex, nofollow'); next(); });
   app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
   app.get('/api/health', async (_req,res) => { try { await pool.query('SELECT 1'); res.json({ status:'ok', database:'connected', release:'0.3.0', persistence:'optimistic-v1' }); } catch (error) {
@@ -65,7 +66,8 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.use('/api', rateLimit({ windowMs:60000, limit:240, standardHeaders:'draft-8', legacyHeaders:false, message:{error:'Demasiadas solicitudes. Intenta de nuevo en un minuto.'} }));
   app.use('/api', (req,_res,next) => {
     const imageUpload = req.method === 'POST' && req.path === '/equipment-media/upload' && ['image/png','image/jpeg','image/webp'].includes(req.get('content-type')||'');
-    if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || (!req.is('application/json') && !imageUpload))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
+    const videoUpload=req.method==='POST'&&/^\/videos\/[a-f0-9-]{36}\/chunk$/i.test(req.path)&&req.is('application/octet-stream');
+    if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || (!req.is('application/json') && !imageUpload && !videoUpload))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
     next();
   });
   const smallJson = express.json({ limit:'100kb' });
@@ -152,7 +154,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.post('/api/session/activity', (_req,res) => res.json({ok:true}));
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf,mustChangePassword:req.mustChangePassword}));
   app.use('/api',(req,res,next)=>{
-    if(production && files.organize && req.method==='POST' && ['/mutate','/attachments','/ticket-attachments'].includes(req.path))res.once('finish',()=>{
+    if(production && files.organize && req.method==='POST' && (['/mutate','/attachments','/ticket-attachments','/admin/attachments/restore'].includes(req.path)||/^\/videos\/[^/]+\/finish$/.test(req.path)))res.once('finish',()=>{
       if(res.statusCode<300)void files.organize?.().catch(error=>logFailure(error,{event:'drive.organize',status:503},logger));
     });
     next();
@@ -166,6 +168,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   registerAdminUserRoutes(app, {pool});
   registerAttachmentRoutes(app, {pool,files});
   registerTicketAttachmentRoutes(app, {pool,files});
+  registerVideoRoutes(app,{pool,files});
   registerAttachmentBackupRoutes(app, {pool,logger,files});
   registerMediaUploadRoutes(app, {pool,files});
   registerFullBackupRoutes(app, {pool,logger,files});

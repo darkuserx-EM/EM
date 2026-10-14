@@ -25,7 +25,7 @@ export default function FullBackup() {
         await new Promise(resolve => setTimeout(resolve, 350));
       }
       for await (const { entry } of archiveLines(selected.file)) if (entry.type === 'attachment') {
-        await api('admin/attachments/restore', { file: entry.file, allowOrphan: true }); attachments++; setNotice(`Evidencias recuperadas: ${attachments} de ${selected.info.counts.attachment}.`);
+        await api('admin/attachments/restore', { file: entry.file, allowOrphan: true }, {timeoutMs:180000}); attachments++; setNotice(`Evidencias recuperadas: ${attachments} de ${selected.info.counts.attachment}.`);
         await new Promise(resolve => setTimeout(resolve, 350));
       }
       await getDataSource().restore(actor, selected.info.database, selected.revision, selected.info.exportedAt); records = true;

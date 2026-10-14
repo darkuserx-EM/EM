@@ -3,6 +3,7 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 import { entityNames, type Database, type EntityName, type EntityRecord } from '../domain/model';
 import { validateDatabase } from '../domain/validation';
 import { equipmentImageFields, isEquipmentImageReference } from '../domain/equipment-images';
+import {base64Bytes} from './base64';
 
 export interface BackupFile { metadata: Record<string, string | number>; base64: string }
 export interface ArchiveEntry { type: string; version?: number; schemaVersion?: number; revision?: number; exportedAt?: string; entity?: EntityName; record?: EntityRecord; file?: BackupFile; counts?: Record<string, number>; sha256?: string }
@@ -15,10 +16,10 @@ export async function* archiveLines(file: Blob) {
       pending += value; let end: number;
       while ((end = pending.indexOf('\n')) >= 0) {
         const line = pending.slice(0, end); pending = pending.slice(end + 1);
-        if (!line || line.length > 6 * 1024 * 1024) throw new Error('El respaldo contiene una línea inválida o demasiado grande.');
+        if (!line || line.length > 36 * 1024 * 1024) throw new Error('El respaldo contiene una línea inválida o demasiado grande.');
         yield { raw: `${line}\n`, entry: JSON.parse(line) as ArchiveEntry };
       }
-      if (pending.length > 6 * 1024 * 1024) throw new Error('Una entrada excede el tamaño permitido.');
+      if (pending.length > 36 * 1024 * 1024) throw new Error('Una entrada excede el tamaño permitido.');
     }
     if (pending.length) throw new Error('El respaldo está truncado; vuelve a descargarlo.');
   } finally { await reader.cancel(); reader.releaseLock(); }
@@ -47,8 +48,8 @@ export async function inspectFullBackup(file: Blob) {
       entities[entry.entity].push(entry.record); counts.record++;
     } else if (entry.type === 'media' || entry.type === 'attachment') {
       const stored = entry.file; const m = stored?.metadata;
-      if (!m || typeof stored?.base64 !== 'string' || stored.base64.length > 5592408 || !/^[A-Za-z0-9+/]+={0,2}$/.test(stored.base64)) throw new Error('Archivo inválido en el respaldo.');
-      const bytes = Uint8Array.from(atob(stored.base64), c => c.charCodeAt(0));
+      if (!m || typeof stored?.base64 !== 'string' || stored.base64.length > (m.mime === 'video/mp4' && entry.type === 'attachment' ? 34952536 : 5592408) || !/^[A-Za-z0-9+/]+={0,2}$/.test(stored.base64)) throw new Error('Archivo inválido en el respaldo.');
+      const bytes = base64Bytes(stored.base64);
       if (bytes.length !== m.size || bytesToHex(sha256(bytes)) !== m.sha256) throw new Error('Una fotografía o evidencia no supera la verificación de integridad.');
       if (entry.type === 'media') {
         if (!equipmentImageFields.includes(m.field as typeof equipmentImageFields[number]) || bytesToHex(sha256(utf8.encode(`data:${m.mime};base64,${stored.base64}`))) !== m.hash) throw new Error('Referencia de fotografía inválida.');

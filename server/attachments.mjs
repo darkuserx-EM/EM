@@ -5,33 +5,38 @@ import { filterVisible } from './generated/domain.mjs';
 import { manifestPage } from './attachment-batches.mjs';
 import { authorizeTicketEvidence } from './ticket-evidence-access.mjs';
 import { localFiles } from './file-storage.mjs';
+import {videoRange} from './video-range.mjs';
+import {VIDEO_MAX_BYTES} from './video-validation.mjs';
 /** @param {number} status @param {string} message */
 const fail =(status,message)=>Object.assign(new Error(message),{status,expose:true});
 const fields='id,order_id,ticket_id,category,name,mime,size,sha256,uploaded_by,created_at';
-/** @param {import("./http-contracts.js").AttachmentBody|undefined} body */
-export function decodeAttachment(body) {
+/** @param {import("./http-contracts.js").AttachmentBody|undefined} body @param {boolean} [allowVideo] */
+export function decodeAttachment(body,allowVideo=false) {
   if(!body || typeof body.category!=='string' || !['Antes','Después','Documento','Solicitud'].includes(body.category) || typeof body.requestId!=='string' || !/^[a-f0-9-]{36}$/i.test(body.requestId)) throw fail(400,'Adjunto inválido.');
   const name=String(body.name || '').trim();
   if(!name || name.length>160 || /[\x00-\x1f]/.test(name)) throw fail(400,'Nombre de archivo inválido.');
-  if(typeof body.base64!=='string' || body.base64.length>5592408 || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.base64)) throw fail(400,'Archivo inválido o mayor a 4 MB.');
+  const max=allowVideo?VIDEO_MAX_BYTES:4*1024*1024;
+  if(typeof body.base64!=='string' || body.base64.length>Math.ceil(max/3)*4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.base64)) throw fail(400,'Archivo inválido o mayor al límite permitido.');
   const bytes=Buffer.from(body.base64,'base64');
-  if(bytes.length<12 || bytes.length>4*1024*1024 || bytes.toString('base64')!==body.base64) throw fail(400,'Archivo inválido o mayor a 4 MB.');
+  if(bytes.length<12 || bytes.length>max || bytes.toString('base64')!==body.base64) throw fail(400,'Archivo inválido o mayor al límite permitido.');
   let mime;
   if(bytes.subarray(0,3).equals(Buffer.from([255,216,255]))) mime='image/jpeg';
   if(bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) mime='image/png';
   if(bytes.subarray(0,4).toString()==='RIFF' && bytes.subarray(8,12).toString()==='WEBP') mime='image/webp';
   if(bytes.subarray(0,5).toString()==='%PDF-' && body.category==='Documento') mime='application/pdf';
+  if(allowVideo&&bytes.subarray(4,8).toString()==='ftyp'&&body.category!=='Documento')mime='video/mp4';
+  if(mime!=='video/mp4'&&bytes.length>4*1024*1024)throw fail(400,'La fotografía o documento supera 4 MB.');
   if(!mime) throw fail(400,'Usa JPG, PNG, WebP o un documento PDF.');
   return {name,bytes,mime,requestId:body.requestId,category:body.category,sha256:createHash('sha256').update(bytes).digest('hex')};
 }
 /** @param {import("../src/domain/model.js").EntityRecord|undefined} order @param {import("../src/domain/model.js").Actor} actor @param {boolean} [write] */
-function permitted(order,actor,write=false) {
+export function permitted(order,actor,write=false) {
   if(!order || !filterVisible(actor,'OrdenServicio',[order]).length) throw fail(404,'Orden o archivo no disponible.');
   if(write && (order.schema_operacion!==1 || ['Completada','Cancelada'].some(value=>value===order.estado) || !['Administrador','Técnico'].includes(actor.rol))) throw fail(403,'Los adjuntos se agregan a órdenes abiertas por administración o el técnico asignado.');
   return order;
 }
 /** @param {import("./contracts.js").SqlConnection} pool @param {unknown} id */
-async function readOrder(pool,id) {
+export async function readOrder(pool,id) {
   if(typeof id!=='string' || !id || id.length>128) return undefined;
   /** @type {{payload:string}[]} */
     const rows = await select(pool,"SELECT payload FROM em_records WHERE entity='OrdenServicio' AND id=?",[id]);
@@ -57,6 +62,15 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
     const contents = await select(pool,'SELECT content,storage_key FROM em_attachments WHERE id=?',[file.id]);
     if(!contents[0]) throw fail(404,'Archivo no disponible.');
     res.set('Content-Disposition',`${file.mime==='application/pdf'?'attachment':'inline'}; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+    if(file.mime==='video/mp4'){
+      const range=videoRange(req.get('range'),Number(file.size));res.set('Accept-Ranges','bytes');
+      if(range===false)return res.status(416).set('Content-Range',`bytes */${file.size}`).end();
+      if(range){
+        const stored={...contents[0],sha256:file.sha256,size:Number(file.size)};
+        const bytes=storage.range?await storage.range(pool,stored,range.start,range.end):(await storage.read(pool,stored)).subarray(range.start,range.end+1);
+        return res.status(206).set('Content-Range',`bytes ${range.start}-${range.end}/${file.size}`).type(file.mime).send(bytes);
+      }
+    }
     const bytes=await storage.read(pool,{...contents[0],sha256:file.sha256,size:Number(file.size)});
     res.set('Content-Security-Policy',"default-src 'none'; sandbox");res.type(file.mime).send(bytes);
   });
