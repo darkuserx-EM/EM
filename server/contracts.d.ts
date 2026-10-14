@@ -7,12 +7,12 @@ export interface AttachmentMetadata {
   id: string; order_id: string; ticket_id?: string | null; request_id: string; category: string; name: string;
   mime: string; size: number; sha256: string; uploaded_by: string; created_at: number;
 }
-export interface AttachmentFile extends AttachmentMetadata { content: Buffer }
+export interface AttachmentFile extends AttachmentMetadata { content: Buffer; storage_key?: string | null }
 export interface MediaMetadata {
   equipment_id: string; field: string; hash: string; mime: string; size: number;
   sha256: string; uploaded_by: string; created_at: number;
 }
-export interface MediaFile extends MediaMetadata { content: Buffer; thumbnail: Buffer | null }
+export interface MediaFile extends MediaMetadata { content: Buffer; thumbnail: Buffer | null; storage_key?: string | null; thumbnail_key?: string | null }
 export interface MediaUpload extends Omit<MediaFile, 'equipment_id'> {
   id: string; equipment_id: string | null; expires_at: number;
 }

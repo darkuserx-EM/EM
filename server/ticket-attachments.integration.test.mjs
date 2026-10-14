@@ -7,17 +7,25 @@ import sharp from 'sharp';
 import {migrate,readDatabase,readSnapshot,saveDatabase} from './database.mjs';
 import {createApp} from './app.mjs';
 import {token} from './security.mjs';
+import {createFileStore,localFiles} from './file-storage.mjs';
+import {DriveStorageError} from './drive-storage.mjs';
 
-test('Fotografías de tickets: cuatro perfiles, vínculo sin copias y recuperación',{skip:process.env.MYSQL_INTEGRATION!=='1',timeout:120000},async t=>{
+for (const external of [false,true]) test(`Fotografías de tickets (${external?'Drive privado simulado':'MySQL'}): cuatro perfiles, vínculo sin copias y recuperación`,{skip:process.env.MYSQL_INTEGRATION!=='1',timeout:120000},async t=>{
   const host=process.env.TEST_DB_HOST||'127.0.0.1';assert.ok(['127.0.0.1','localhost','::1'].includes(host));
   const config={host,port:Number(process.env.TEST_DB_PORT||3306),user:process.env.TEST_DB_USER||'root',password:process.env.TEST_DB_PASSWORD};assert.ok(config.password);
   const name=`em_ci_${randomUUID().replaceAll('-','')}`,control=await mysql.createConnection(config);await control.query(`CREATE DATABASE ${name} CHARACTER SET utf8mb4`);
   const pool=mysql.createPool({...config,database:name,connectionLimit:5});let server;
   t.after(async()=>{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await pool.end();assert.match(name,/^em_ci_[a-f0-9]{32}$/);await control.query(`DROP DATABASE ${name}`);await control.end();});
   await migrate(pool);await migrate(pool);
+  const remote=new Map(); let remoteFailure=false;
+  const storage=external?createFileStore(pool,{
+    reserve:async()=>randomUUID(),verifyFolder:async()=>({private:true}),
+    put:async(id,bytes)=>{if(remoteFailure)throw new DriveStorageError('DRIVE_NETWORK','Drive unavailable');if(remote.has(id))assert.deepEqual(remote.get(id),bytes);remote.set(id,bytes);},
+    get:async(id,size,sha)=>{const bytes=remote.get(id);assert.equal(bytes.length,size);assert.equal(createHash('sha256').update(bytes).digest('hex'),sha);return bytes;},
+  }):localFiles;
   const now=new Date().toISOString(),row=(id,codigo,fields)=>({id,codigo,creado_por:'qa',actualizado_por:'qa',fecha_creacion:now,fecha_actualizacion:now,...fields});
   const conn=await pool.getConnection();try{await conn.beginTransaction();const before=await readDatabase(conn,true),db=structuredClone(before);for(const id of ['a','b']){db.entities.Cliente.push(row(`client-${id}`,`CLI-${id}`,{nombre:`Cliente ${id} PRUEBA`,estado:'Activo'}));db.entities.Equipo.push(row(`eq-${id}`,`TCE-${id}`,{marca:'Crown',modelo:'QA',serie:`SYNTHETIC-${id}`,tipo:'Reach',propiedad:'De cliente',estado:'Disponible',cliente_id:`client-${id}`,horometro:100}));}db.revision++;await saveDatabase(conn,db,before);await conn.commit();}finally{conn.release();}
-  const origin='http://localhost:3000',setupToken=token();server=createApp({pool,origin,setupToken,production:false,logger:()=>{}}).listen(0,'127.0.0.1');await once(server,'listening');const url=`http://127.0.0.1:${server.address().port}`;let serial=0;
+  const origin='http://localhost:3000',setupToken=token();server=createApp({pool,origin,setupToken,production:false,logger:()=>{},files:storage}).listen(0,'127.0.0.1');await once(server,'listening');const url=`http://127.0.0.1:${server.address().port}`;let serial=0;
   const headers=session=>({Origin:origin,'Content-Type':'application/json','X-Forwarded-For':`198.51.${Math.floor(serial/250)}.${++serial%250+1}`,...(session?{Cookie:session.cookie,'X-CSRF-Token':session.csrf}:{})});
   async function call(path,body,session){const r=await fetch(`${url}/api/${path}`,{method:body===undefined?'GET':'POST',headers:headers(session),body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,headers:r.headers,data:(r.headers.get('content-type')||'').includes('application/json')?await r.json():Buffer.from(await r.arrayBuffer())};}
   async function login(email,password){const r=await call('login',{email,password});assert.equal(r.status,200,JSON.stringify(r.data));const s={cookie:r.headers.getSetCookie()[0].split(';')[0],csrf:''};const state=(await call('session',undefined,s)).data;s.csrf=state.csrf;if(state.mustChangePassword)assert.equal((await call('password',{currentPassword:password,newPassword:password+' changed'},s)).status,200);return s;}
@@ -36,7 +44,8 @@ test('Fotografías de tickets: cuatro perfiles, vínculo sin copias y recuperaci
     assert.deepEqual(results.map(r=>r.status).sort(),[200,201]);file=results[0].data.file;assert.equal(file.id,results[1].data.file.id);
     assert.equal((await call('ticket-attachments',{...body,requestId:randomUUID()},sessions.coordinator)).data.file.id,file.id);
     for(const [actor,r] of [[sessions.coordinator,110],[admin,120]])assert.equal((await call('ticket-attachments',{...body,requestId:randomUUID(),base64:(await photo(r)).toString('base64')},actor)).status,201);
-    const [rows]=await pool.query('SELECT * FROM em_attachments');assert.equal(rows.length,3);assert.equal(rows.find(r=>r.id===file.id).order_id,'');assert.deepEqual(rows.find(r=>r.id===file.id).content,bytes);
+    const [rows]=await pool.query('SELECT * FROM em_attachments');assert.equal(rows.length,3);assert.equal(rows.find(r=>r.id===file.id).order_id,'');assert.deepEqual(await storage.read(pool,rows.find(r=>r.id===file.id)),bytes);
+    if(external){assert.equal(remote.size,3);assert.ok(rows.every(row=>row.content.length===0&&row.storage_key===row.sha256));}
     const [events]=await pool.query("SELECT id FROM em_security_events WHERE action='ticket.photo.added'");assert.equal(events.length,3);
     assert.equal((await call('ticket-attachments',{...body,ticketId:foreign.id},admin)).status,409);
   });
@@ -106,5 +115,14 @@ test('Fotografías de tickets: cuatro perfiles, vínculo sin copias y recuperaci
     const [rows]=await pool.execute('SELECT id FROM em_attachments WHERE request_id=?',[attempt.requestId]);assert.equal(rows.length,0);
     assert.equal((await call('ticket-attachments',attempt,admin)).status,201);
     assert.equal((await call('ticket-attachments',attempt,admin)).status,200);
+  });
+  if(external)await t.test('un fallo de Drive no crea el adjunto; reintento conserva el ID remoto reservado',async()=>{
+    const target=await create('Ticket',{equipo_id:'eq-a',titulo:'Drive temporalmente sin conexión',descripcion:'Prueba sintética de recuperación'});
+    const newBytes=await photo(234),attempt={...body,ticketId:target.id,requestId:randomUUID(),base64:newBytes.toString('base64')};
+    remoteFailure=true;assert.equal((await call('ticket-attachments',attempt,admin)).status,503);remoteFailure=false;
+    const [before]=await pool.execute('SELECT * FROM em_drive_blobs WHERE sha256=?',[createHash('sha256').update(newBytes).digest('hex')]);assert.equal(before[0].ready,0);
+    const [absent]=await pool.execute('SELECT id FROM em_attachments WHERE request_id=?',[attempt.requestId]);assert.equal(absent.length,0);
+    assert.equal((await call('ticket-attachments',attempt,admin)).status,201);
+    const [after]=await pool.execute('SELECT * FROM em_drive_blobs WHERE sha256=?',[before[0].sha256]);assert.equal(after[0].file_id,before[0].file_id);assert.equal(after[0].ready,1);
   });
 });
