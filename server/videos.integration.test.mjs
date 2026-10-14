@@ -85,7 +85,7 @@ test('Videos privados: cuatro perfiles, reintentos, rangos y recuperación',{ski
     for(const actor of [sessions.foreign,sessions.otherTech])assert.equal((await call(`attachments/${file.id}/file?orderId=${order.id}`,undefined,actor)).status,404);
     assert.equal((await fetch(`${url}/api/attachments/${file.id}/file`,{headers:{...headers(admin),Range:`bytes=${bytes.length}-`}})).status,416);
     assert.equal((await call('attachments?orderId='+order.id,undefined,admin)).data.files.length,0);
-    for(const actor of [sessions.coordinator,sessions.client])assert.equal((await call('videos/start',{...body,ticketId:undefined,orderId:order.id,category:'Antes',requestId:randomUUID()},actor)).status,403);
+    for(const actor of [sessions.client])assert.equal((await call('videos/start',{...body,ticketId:undefined,orderId:order.id,category:'Antes',requestId:randomUUID()},actor)).status,403);
     const report=await upload({...body,ticketId:undefined,orderId:order.id,category:'Antes',requestId:randomUUID()},sessions.tech);
     assert.notEqual(report.id,file.id);assert.equal(report.sha256,file.sha256);
     const [blobs]=await pool.query('SELECT * FROM em_drive_blobs WHERE sha256=?',[sha256]);assert.equal(blobs.length,1,'Contenido idéntico sigue en una sola copia');

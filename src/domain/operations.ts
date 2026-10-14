@@ -105,6 +105,18 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
     if (text(input.reapertura_motivo).length < 8 || text(input.reapertura_motivo).length > 500) throw new ValidationError('Explica el motivo de reapertura (entre 8 y 500 caracteres).');
     if (Object.keys(input).some(key => !['estado', 'reapertura_motivo'].includes(key))) throw new ValidationError('Reabre primero la solicitud; después podrás revisar sus datos.');
   } else if (input.reapertura_motivo !== undefined) throw new ValidationError('El motivo se registra únicamente al reabrir una solicitud resuelta sin orden.');
+  const closedRevision = entity === 'OrdenServicio' && original?.schema_operacion === 1 && original.importado !== true && original.estado === 'Completada' && ['corregir', 'reabrir'].includes(text(input.revision_accion));
+  if (input.revision_accion !== undefined || input.revision_motivo !== undefined) {
+    if (!closedRevision || !manager) throw forbidden();
+    if (text(input.revision_motivo).length < 8 || text(input.revision_motivo).length > 500) throw new ValidationError('Explica el motivo de la revisión (entre 8 y 500 caracteres).');
+    if (input.revision_accion === 'reabrir') {
+      if (Object.keys(input).some(key => !['revision_accion', 'revision_motivo'].includes(key))) throw new ValidationError('Reabre primero la orden; después registra el trabajo pendiente.');
+      input = { ...input, estado: 'En proceso', fecha_fin: '', visible_cliente: false };
+    } else {
+      const correctable = ['revision_accion', 'revision_motivo', 'sintoma', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos'];
+      if (Object.keys(input).some(key => !correctable.includes(key))) throw new ValidationError('La corrección conserva equipo, cliente, participantes, fechas, estado y lecturas.');
+    }
+  }
   const technicianCreate = entity === 'OrdenServicio' && !original && actor.rol === 'Técnico' && !!actor.tecnico_id;
   if (technicianCreate) {
     const allowed: string[] = [...supportFields, 'solicitud_id', 'schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tipo', 'prioridad', 'estado', 'fecha_programada', 'hora_programada', 'sintoma', 'visible_cliente', 'desde_solicitud'];
@@ -182,8 +194,8 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
     if (original) {
       const transitions = entity === 'Ticket' ? ticketTransitions : orderTransitions;
       const publicationOnly = entity === 'OrdenServicio' && manager && typeof input.visible_cliente === 'boolean' && Object.keys(input).every(key => key === 'visible_cliente');
-      if (!transitions[String(original.estado)]?.length && !publicationOnly && !reopening) throw new ValidationError('La operación está cerrada; su historial se conserva. Reabre una solicitud resuelta sin orden antes de editarla.');
-      if (original.estado !== row.estado && !transitions[String(original.estado)]?.includes(text(row.estado)) && !reopening) throw new ValidationError(`Cambio de estado no permitido: ${original.estado} → ${row.estado}.`);
+      if (!transitions[String(original.estado)]?.length && !publicationOnly && !reopening && !closedRevision) throw new ValidationError('La operación está cerrada; su historial se conserva. Reabre una solicitud resuelta sin orden antes de editarla.');
+      if (original.estado !== row.estado && !transitions[String(original.estado)]?.includes(text(row.estado)) && !reopening && !closedRevision) throw new ValidationError(`Cambio de estado no permitido: ${original.estado} → ${row.estado}.`);
     } else if (!allowedOperationStates(entity as 'Ticket' | 'OrdenServicio').includes(text(row.estado))) throw new ValidationError(entity === 'Ticket' ? 'Crea la solicitud abierta antes de registrar su resolución.' : 'Crea la orden como borrador, programada o en proceso.');
   }
   const errors = operationFieldErrors(entity, row);
@@ -191,5 +203,6 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
   if (errors.length) throw new ValidationError(errors.join(' '));
   // Never copy authorship from an edited record into the write fields.
   const { id: _id, codigo: _code, creado_por: _creator, actualizado_por: _updater, fecha_creacion: _created, fecha_actualizacion: _updated, ...fields } = row;
+  delete fields.revision_accion; delete fields.revision_motivo;
   return fields;
 }

@@ -40,11 +40,23 @@ test('Ciclo de cuentas: recuperación, perfiles, contraseñas y último administ
   const revision=(await call('database',undefined,coord)).data.revision;
   const result=await call('mutate',{action:'create',entity:'OrdenServicio',revision,fields:{equipo_id:equipment.id,sintoma:'Revisión sintética',estado:'Borrador'}},coord);assert.equal(result.status,200,JSON.stringify(result.data));
  });
- await t.test('alta de técnico requiere especialidad y no crea un técnico para perfiles de gestión',async()=>{
+ await t.test('alta de técnico requiere especialidad; coordinador tiene su registro de campo',async()=>{
   assert.equal((await call('admin/users',{name:'QA',email:'missing@example.invalid',role:'Técnico'},admin)).status,400);
   const account=await create('Técnico','tech@example.invalid');tech=await login(account.email,account.password);
-  const db=await readSnapshot(pool);assert.equal(db.entities.Tecnico.length,1);assert.equal(db.entities.Tecnico[0].especialidad,'Diagnóstico eléctrico');
+  const db=await readSnapshot(pool);assert.equal(db.entities.Tecnico.length,2);assert.equal(db.entities.Tecnico.find(row=>row.id===account.technicianId).especialidad,'Diagnóstico eléctrico');
   assert.equal((await call('admin/users',undefined,tech)).status,403);
+ });
+ await t.test('coordinador con registro de campo y vinculación de cuenta anterior sin cambiar perfil',async()=>{
+  const account=await create('Coordinador','field-coord@example.invalid',{days:null});assert.ok(account.technicianId);
+  await pool.execute('UPDATE em_users SET technician_id=NULL WHERE id=?',[account.id]);
+  const before=await readSnapshot(pool);
+  const path='admin/users/'+account.id+'/technician';
+  assert.equal((await call(path,{technicianId:account.technicianId,currentPassword:password},coord)).status,403);
+  assert.equal((await call(path,{technicianId:account.technicianId},admin)).status,400);
+  assert.equal((await call(path,{technicianId:account.technicianId,currentPassword:password},admin)).status,200);
+  assert.equal((await call(path,{currentPassword:password},admin)).data.technicianId,account.technicianId);
+  const after=await readSnapshot(pool);assert.deepEqual(after.entities.Tecnico,before.entities.Tecnico);
+  const session=await login(account.email,account.password);const actor=(await call('session',undefined,session)).data.actor;assert.equal(actor.rol,'Coordinador');assert.equal(actor.tecnico_id,account.technicianId);
  });
  await t.test('renovar vencida y reactivar revocada mantiene empresa y revoca sesiones antiguas',async()=>{
   await pool.execute('UPDATE em_users SET expires_at=? WHERE id=?',[Date.now()-1000,customer.id]);
@@ -97,5 +109,7 @@ test('Ciclo de cuentas: recuperación, perfiles, contraseñas y último administ
   const backup=await call('backup',undefined,admin);assert.equal(backup.data.entities.Bitacora.filter(row=>row.id.startsWith('audit-')).length,250);
   const first=await call('admin/security-events?limit=2',undefined,admin);assert.equal(first.status,200);assert.equal(first.data.rows.length,2);assert.ok(first.data.nextCursor);const second=await call('admin/security-events?limit=2&cursor='+encodeURIComponent(first.data.nextCursor),undefined,admin);assert.ok(second.data.rows.every(row=>!first.data.rows.some(previous=>previous.id===row.id)));
  });
+
+
 
 });

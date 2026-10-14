@@ -133,3 +133,8 @@
   .os-row-link, .os-result-bar button { min-height: var(--target-min); }
   .os-row-link { min-width: var(--target-min); }
 }
+
+.order-revisions{padding:var(--space-4);margin-block:var(--space-4)}
+.order-revisions summary{cursor:pointer;font-weight:600}
+.order-revisions li{padding-block:var(--space-2);overflow-wrap:anywhere}
+.order-revisions p{margin-block:var(--space-1)}

@@ -1,3 +1,4 @@
+import {appendAudit,auditSequence} from './audit-storage.mjs';
 import { select, selectQuery } from './sql.mjs';
 import express from 'express';
 import { randomUUID, createHash } from 'node:crypto';
@@ -32,8 +33,19 @@ export function decodeAttachment(body,allowVideo=false) {
 /** @param {import("../src/domain/model.js").EntityRecord|undefined} order @param {import("../src/domain/model.js").Actor} actor @param {boolean} [write] */
 export function permitted(order,actor,write=false) {
   if(!order || !filterVisible(actor,'OrdenServicio',[order]).length) throw fail(404,'Orden o archivo no disponible.');
-  if(write && (order.schema_operacion!==1 || ['Completada','Cancelada'].some(value=>value===order.estado) || !['Administrador','Técnico'].includes(actor.rol))) throw fail(403,'Los adjuntos se agregan a órdenes abiertas por administración o el técnico asignado.');
+  if(write && (order.schema_operacion!==1 || order.importado===true || order.estado==='Cancelada' || order.estado==='Completada'&&!['Administrador','Coordinador'].includes(actor.rol) || !['Administrador','Coordinador','Técnico'].includes(actor.rol))) throw fail(403,'Los adjuntos se agregan a órdenes abiertas por administración o el técnico asignado.');
   return order;
+}
+/** @param {import('../src/domain/model.js').EntityRecord} order @param {unknown} reason */
+export function evidenceReason(order,reason) {
+  if(order.estado==='Completada'&&(typeof reason!=='string'||reason.trim().length<8||reason.trim().length>500))throw fail(400,'Explica el motivo de la evidencia posterior al cierre (8 a 500 caracteres).');
+}
+/** @param {import('mysql2/promise').PoolConnection} conn @param {import('../src/domain/model.js').Actor} actor @param {import('../src/domain/model.js').EntityRecord} order @param {string} fileId @param {string} name @param {unknown} reason */
+export async function auditEvidence(conn,actor,order,fileId,name,reason) {
+  evidenceReason(order,reason);const id=randomUUID(),now=new Date().toISOString();
+  const row={id,codigo:'LOG-'+String(await auditSequence(conn)+1).padStart(3,'0'),creado_por:actor.id,actualizado_por:actor.id,fecha_creacion:now,fecha_actualizacion:now,entidad:'OrdenServicio',accion:order.estado==='Completada'?'Evidencia posterior al cierre':'Evidencia agregada',detalle:order.codigo+' · '+name,orden_id:order.id,equipo_id:order.equipo_id,archivo_id:fileId,motivo:typeof reason==='string'?reason.trim():'',registrado_por:actor.nombre,registrado_rol:actor.rol};
+  await appendAudit(conn,[{id,payload:JSON.stringify(row)}]);
+  await conn.execute('UPDATE em_meta SET revision=revision+1 WHERE id=1');
 }
 /** @param {import("./contracts.js").SqlConnection} pool @param {unknown} id */
 export async function readOrder(pool,id) {
@@ -47,6 +59,15 @@ export async function readOrder(pool,id) {
 }
 /** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool,files?:import('./file-storage.mjs').FileStore}} options */
 export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
+  app.get('/api/orders/:id/revisions',async(req,res)=>{
+    if(!['Administrador','Coordinador'].includes(req.actor.rol))throw fail(403,'Solo administración y coordinación pueden revisar el historial.');
+    const order=permitted(await readOrder(pool,req.params.id),req.actor);
+    /** @type {{payload:string}[]} */
+    const rows=await select(pool,"SELECT payload FROM em_audit_log WHERE entity='OrdenServicio' AND equipment_id=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.orden_id'))=? ORDER BY created_at DESC,id DESC LIMIT 100",[order.equipo_id,order.id]);
+    res.json({events:rows.map(entry=>{const row=JSON.parse(entry.payload),before=JSON.parse(row.version_anterior||'{}'),after=JSON.parse(row.version_nueva||'{}');
+      const keys=['sintoma','diagnostico','causa_confirmada','trabajo_realizado','recomendaciones','pruebas_realizadas','resultado_pruebas','recibido_por','notas_seguridad','insumos','repuestos','fecha_fin','visible_cliente'];
+      return {id:row.id,action:row.accion,date:row.fecha_creacion,actor:row.registrado_por,reason:row.motivo,previous:row.estado_anterior,next:row.estado_nuevo,changes:keys.filter(key=>before[key]!==after[key]).map(key=>({field:key,before:before[key]??'',after:after[key]??''}))};})});
+  });
   app.get('/api/attachments',/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AttachmentReply|Buffer>} res */ async (req,res)=>{
     const id=String(req.query.orderId || ''); permitted(await readOrder(pool,id),req.actor);
     /** @type {Omit<import("./contracts.js").AttachmentMetadata,"request_id">[]} */
@@ -77,10 +98,11 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
     if(file.mime!=='video/mp4')res.set('Content-Security-Policy',"default-src 'none'; sandbox");res.type(file.mime).send(bytes);
   });
   app.post('/api/attachments',(req,_res,next)=>{
-    if(!['Administrador','Técnico'].includes(req.actor.rol)) return next(fail(403,'Los adjuntos se agregan por administración o el técnico asignado.'));
+    if(!['Administrador','Coordinador','Técnico'].includes(req.actor.rol)) return next(fail(403,'Los adjuntos se agregan por administración o el técnico asignado.'));
     next();
   },express.json({limit:'6mb'}),/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AttachmentReply|Buffer>} res */ async (req,res)=>{
     const initialOrder=permitted(await readOrder(pool,req.body?.orderId),req.actor,true);
+    evidenceReason(initialOrder,req.body?.reason);
     const file=decodeAttachment(req.body);
     if(file.category==='Solicitud') throw fail(400,'La evidencia inicial se agrega desde la solicitud.');
     /** @type {import('./contracts.js').AttachmentMetadata[]} */
@@ -107,6 +129,7 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
       if(Number(count[0].n)>=20) throw fail(400,'La orden admite hasta 20 adjuntos.');
       const id=randomUUID(),created=Date.now();
       await conn.execute('INSERT INTO em_attachments (id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content,storage_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',[id,order.id,file.requestId,file.category,file.name,file.mime,file.bytes.length,file.sha256,req.actor.id,created,stored.content,stored.storage_key]);
+      await auditEvidence(conn,req.actor,order,id,file.name,req.body?.reason);
       await conn.commit();res.status(201).json({file:{id,order_id:order.id,category:file.category,name:file.name,mime:file.mime,size:file.bytes.length,created_at:created}});
     } catch(error){await conn.rollback();throw error;}finally{conn.release();}
   });
