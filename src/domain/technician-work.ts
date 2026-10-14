@@ -1,4 +1,5 @@
 import type { Actor, Database, EntityRecord } from './model';
+import { retiredEquipment } from './equipment-status';
 
 export function enabledEquipment(technician?: EntityRecord): string[] {
   if (!technician?.equipos_habilitados) return [];
@@ -15,15 +16,11 @@ export function validEquipmentGrant(value: unknown) {
     return Array.isArray(ids) && ids.length <= 500 && ids.every(id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(id)) && new Set(ids).size === ids.length;
   } catch { return false; }
 }
-type WorkScope = Pick<Database['entities'], 'Ticket' | 'OrdenServicio' | 'Tecnico'>;
+type WorkScope = Pick<Database['entities'], 'Equipo' | 'Tecnico'>;
 export function technicianEquipmentIds(actor: Actor, entities: WorkScope): Set<string> {
   const technician = entities.Tecnico.find(row => row.id === actor.tecnico_id && row.activo !== false);
   if (actor.rol !== 'Técnico' || !actor.tecnico_id || !technician) return new Set();
-  return new Set([
-    ...enabledEquipment(technician),
-    ...entities.Ticket.filter(row => row.schema_operacion === 1 && !row.importado && row.responsable_id === actor.tecnico_id && !['Resuelto', 'Cancelado'].includes(String(row.estado))).map(row => String(row.equipo_id)),
-    ...entities.OrdenServicio.filter(row => row.schema_operacion === 1 && !row.importado && row.tecnico_id === actor.tecnico_id && !['Completada', 'Cancelada'].includes(String(row.estado))).map(row => String(row.equipo_id)),
-  ]);
+  return new Set(entities.Equipo.filter(row => !retiredEquipment(row) && row.activo !== false).map(row => row.id));
 }
 export function ticketHasOrder(ticket: EntityRecord, orders: EntityRecord[] = []) {
   return !!ticket.orden_id || ticket.tiene_orden === true || orders.some(order => order.ticket_id === ticket.id);

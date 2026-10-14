@@ -1,3 +1,4 @@
+import { assignedTo } from './order-team';
 import type {EntityRecord} from './model';
 import {orderDay} from './dashboard';
 export const isOperationalOrder = (row: EntityRecord) => row.schema_operacion === 1 && row.importado !== true;
@@ -10,7 +11,7 @@ export function filterOperations(rows: EntityRecord[], filters: OperationFilters
     const machine = equipment.find(item => item.id === row.equipo_id);
     const client = clients.find(item => item.id === row.cliente_id);
     return (!filters.client || row.cliente_id === filters.client) && (!filters.equipment || row.equipo_id === filters.equipment)
-      && (!filters.technician || (row.tecnico_id || row.responsable_id) === filters.technician)
+      && (!filters.technician || (row.responsable_id === filters.technician || assignedTo(row, filters.technician)))
       && (!filters.state || (filters.state === 'abiertas' ? isOperationalOrder(row) && !['Completada', 'Cancelada'].includes(String(row.estado)) : row.estado === filters.state))
       && (!filters.from || (!!day && day >= filters.from)) && (!filters.to || (!!day && day <= filters.to))
       && (!filters.origin || (filters.origin === 'actual' ? isOperationalOrder(row) : !isOperationalOrder(row)))

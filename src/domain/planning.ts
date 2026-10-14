@@ -1,3 +1,4 @@
+import { orderTechnicians } from './order-team';
 import type { Actor, EntityRecord } from './model';
 import { currentPlan, planTypes, projectPlan, validDay, addDays, todayGT } from './maintenance-plan';
 import { administrativeState } from './equipment-status';
@@ -14,6 +15,7 @@ export interface PlanningEvent {
   equipmentId: string;
   clientId: string;
   technicianId: string;
+  technicianIds?: string[];
   state: string;
   detail: string;
   href: string;
@@ -74,7 +76,7 @@ export function planningEvents(orders: EntityRecord[], equipment: EntityRecord[]
     const ticket = tickets.find(ticket => ticket.id === row.ticket_id || ticket.orden_id === row.id);
     return {
       id: `order-${row.id}`, day: String(row.fecha_programada), time: /^\d{2}:\d{2}$/.test(String(row.hora_programada)) ? String(row.hora_programada) : '', kind: 'service',
-      title: `${row.codigo} · ${row.tipo || 'Servicio'}`, equipmentId: String(row.equipo_id || ''), clientId: String(row.cliente_id || machine?.cliente_id || ''), technicianId: String(row.tecnico_id || ''),
+      title: `${row.codigo} · ${row.tipo || 'Servicio'}`, equipmentId: String(row.equipo_id || ''), clientId: String(row.cliente_id || machine?.cliente_id || ''), technicianId: String(row.tecnico_id || ''), technicianIds: orderTechnicians(row),
       state: String(row.estado), detail: planningEquipmentLabel(machine), href: `/ordenes?orden=${encodeURIComponent(row.id)}`, projected: false, priority: String(row.prioridad || ''),
       ...(ticket ? { ticketHref: `/tickets?ticket=${encodeURIComponent(ticket.id)}`, ticketCode: ticket.codigo } : {}),
     };

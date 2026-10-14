@@ -4,6 +4,8 @@ import {operationalEntities} from './operation-index.mjs';
 import {projectOperation} from './generated/domain.mjs';
 /** @param {number} status @param {string} message */
 const fail =(status,message)=>Object.assign(new Error(message),{status,expose:true});
+/** @param {string} alias */
+const teamScope = alias => `(${alias}.technician_id=? OR EXISTS (SELECT 1 FROM em_records team WHERE team.entity='OrdenServicio' AND team.id=${alias}.id AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(team.payload,'$.tecnico_apoyo_1_id'))=BINARY ? OR BINARY JSON_UNQUOTE(JSON_EXTRACT(team.payload,'$.tecnico_apoyo_2_id'))=BINARY ?)))`;
 /** @param {import("../src/domain/model.js").Actor} actor @param {import("../src/domain/model.js").EntityName} entity */
 function scope(actor,entity) {
   /** @type {string[]} */
@@ -14,11 +16,11 @@ function scope(actor,entity) {
     else{where.push('o.client_id=?');args.push(actor.cliente_id);if(entity==='OrdenServicio')where.push('o.visible_client=TRUE');}
   } else if(actor.rol==='Técnico') {
     if(!actor.tecnico_id)where.push('FALSE');
-    else if(entity==='OrdenServicio'){where.push('o.technician_id=?');args.push(actor.tecnico_id);}
+    else if(entity==='OrdenServicio'){where.push(teamScope('o'));args.push(actor.tecnico_id,actor.tecnico_id,actor.tecnico_id);}
     // The legacy shared index can contain tecnico_id on a ticket. Only the
     // ticket's actual responsable_id authorizes reading it, including old data.
     else if(entity==='Ticket'){where.push("EXISTS (SELECT 1 FROM em_records assigned_ticket WHERE assigned_ticket.entity='Ticket' AND assigned_ticket.id=o.id AND BINARY JSON_UNQUOTE(JSON_EXTRACT(assigned_ticket.payload,'$.responsable_id'))=BINARY ?)");args.push(actor.tecnico_id);}
-    else{where.push("EXISTS (SELECT 1 FROM em_operation_index assigned WHERE assigned.entity='OrdenServicio' AND assigned.equipment_id=o.equipment_id AND assigned.technician_id=?)");args.push(actor.tecnico_id);}
+    else{where.push(`EXISTS (SELECT 1 FROM em_operation_index assigned WHERE assigned.entity='OrdenServicio' AND assigned.equipment_id=o.equipment_id AND ${teamScope('assigned')})`);args.push(actor.tecnico_id,actor.tecnico_id,actor.tecnico_id);}
   } else if(!['Administrador','Coordinador'].includes(actor.rol))where.push('FALSE');
   return {where,args};
 }
@@ -41,7 +43,7 @@ export async function operationPage(conn,actor,entity,query,revision) {
   /** @type {string[]} */
   const states=[];
   for(const row of groups){const n=Number(row.n);counts.total+=n;counts[row.current_flag?'actual':'historico']+=n;counts.states[row.state]=(counts.states[row.state]||0)+n;if(row.current_flag)counts.actualStates[row.state]=(counts.actualStates[row.state]||0)+n;if(row.state&&!states.includes(row.state))states.push(row.state);}
-  for(const [key,column] of Object.entries({client:'client_id',equipment:'equipment_id',technician:'technician_id',id:'id',ticket:'ticket_id',order:'order_id'}))if(filters[key]){where.push(`o.${column}=?`);args.push(filters[key]);}
+  for(const [key,column] of Object.entries({client:'client_id',equipment:'equipment_id',technician:'technician_id',id:'id',ticket:'ticket_id',order:'order_id'}))if(filters[key]){if(key==='technician' && entity==='OrdenServicio'){where.push(teamScope('o'));args.push(filters[key],filters[key],filters[key]);}else{where.push(`o.${column}=?`);args.push(filters[key]);}}
   if(filters.state==='abiertas')where.push("o.current_flag=TRUE AND o.state NOT IN ('Completada','Cancelada')");
   else if(filters.state){where.push('BINARY o.state=BINARY ?');args.push(filters.state);}
   for(const [key,sign] of [['from','>='],['to','<=']])if(filters[key]){where.push(`o.day_value<>'' AND o.day_value${sign}?`);args.push(filters[key]);}

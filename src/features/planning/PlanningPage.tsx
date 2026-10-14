@@ -1,3 +1,4 @@
+import { assignedTo } from '../../domain/order-team';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarDays, ChevronLeft, ChevronRight, Columns3, ListFilter, Plus, RefreshCw, Ticket } from 'lucide-react';
@@ -25,21 +26,21 @@ export default function PlanningPage({ view = 'calendar' }: { view?: 'calendar' 
   const [scheduleDay, setScheduleDay] = useState(today); const [scheduleTime, setScheduleTime] = useState('08:00'); const [scheduleTechnician, setScheduleTechnician] = useState('');
   const manager = ['Administrador', 'Coordinador'].includes(actor.rol); const readonly = actor.rol === 'Cliente'; const showPlans = actor.rol === 'Administrador';
   // The repository already scopes data; keep the technician agenda constrained here as well.
-  const orders = useMemo(() => actor.rol === 'Técnico' ? ordersQuery.rows.filter(row => !!actor.tecnico_id && row.tecnico_id === actor.tecnico_id) : ordersQuery.rows, [actor.rol, actor.tecnico_id, ordersQuery.rows]);
+  const orders = useMemo(() => actor.rol === 'Técnico' ? ordersQuery.rows.filter(row => !!actor.tecnico_id && assignedTo(row, actor.tecnico_id)) : ordersQuery.rows, [actor.rol, actor.tecnico_id, ordersQuery.rows]);
   const tickets = useMemo(() => actor.rol === 'Técnico' ? ticketsQuery.rows.filter(row => !!actor.tecnico_id && row.responsable_id === actor.tecnico_id) : ticketsQuery.rows, [actor.rol, actor.tecnico_id, ticketsQuery.rows]);
   const operational = useMemo(() => operationalOrders(orders), [orders]);
   const events = useMemo(() => planningEvents(orders, equipmentQuery.rows, actor.rol === 'Técnico' ? [] : plansQuery.rows, readingsQuery.rows, today, tickets).map(event => {
     if (event.kind === 'plan') return event;
     const client = clientsQuery.rows.find(row => row.id === event.clientId);
-    const technician = techniciansQuery.rows.find(row => row.id === event.technicianId);
-    return { ...event, detail: [event.detail, client && clientDisplayName(client), technician?.nombre || (event.technicianId ? 'Equipo de operaciones' : 'Sin responsable asignado')].filter(Boolean).join(' · ') };
+    const technicianNames = (event.technicianIds || [event.technicianId]).map(id => techniciansQuery.rows.find(row => row.id === id)?.nombre).filter(Boolean).join(' · ');
+    return { ...event, detail: [event.detail, client && clientDisplayName(client), technicianNames || (event.technicianId ? 'Equipo de operaciones' : 'Sin responsable asignado')].filter(Boolean).join(' · ') };
   }), [orders, tickets, clientsQuery.rows, techniciansQuery.rows, equipmentQuery.rows, actor.rol, plansQuery.rows, readingsQuery.rows, today]);
   const searchMatches = (order: EntityRecord) => {
     const machine = equipmentQuery.rows.find(row => row.id === order.equipo_id); const client = clientsQuery.rows.find(row => row.id === order.cliente_id || row.id === machine?.cliente_id);
     return `${order.codigo} ${order.tipo || order.titulo || ''} ${planningEquipmentLabel(machine)} ${machine?.serie || ''} ${client ? clientDisplayName(client) : ''}`.toLocaleLowerCase('es').includes(search.trim().toLocaleLowerCase('es'));
   };
-  const matchingOrders = operational.filter(order => (!clientId || order.cliente_id === clientId || equipmentQuery.rows.find(row => row.id === order.equipo_id)?.cliente_id === clientId) && (!technicianId || order.tecnico_id === technicianId) && (!stateFilter || order.estado === stateFilter) && searchMatches(order));
-  const matchingEvents = events.filter(event => (!clientId || event.clientId === clientId) && (!technicianId || event.technicianId === technicianId) && matchesPlanningState(event, stateFilter) && (() => {
+  const matchingOrders = operational.filter(order => (!clientId || order.cliente_id === clientId || equipmentQuery.rows.find(row => row.id === order.equipo_id)?.cliente_id === clientId) && (!technicianId || assignedTo(order, technicianId)) && (!stateFilter || order.estado === stateFilter) && searchMatches(order));
+  const matchingEvents = events.filter(event => (!clientId || event.clientId === clientId) && (!technicianId || (event.technicianIds || [event.technicianId]).includes(technicianId)) && matchesPlanningState(event, stateFilter) && (() => {
     const machine = equipmentQuery.rows.find(row => row.id === event.equipmentId); const client = clientsQuery.rows.find(row => row.id === event.clientId);
     return `${event.title} ${event.ticketCode || ''} ${event.detail} ${machine?.serie || ''} ${client ? clientDisplayName(client) : ''}`.toLocaleLowerCase('es').includes(search.trim().toLocaleLowerCase('es'));
   })());

@@ -44,7 +44,7 @@ test('Trabajo del técnico: permisos, concurrencia, reapertura e integridad',{sk
   async function login(email,password){const r=await call('login',{email,password});assert.equal(r.status,200,JSON.stringify(r.data));const s={cookie:r.headers.getSetCookie()[0].split(';')[0],csrf:''};const state=(await call('session',undefined,s)).data;s.csrf=state.csrf;if(state.mustChangePassword)assert.equal((await call('password',{currentPassword:password,newPassword:password+' changed'},s)).status,200);return s;}
   const password='Synthetic ticket photo QA 2026!';assert.equal((await call('setup',{email:'admin@example.invalid',name:'QA Admin',password,setupToken})).status,201);const admin=await login('admin@example.invalid',password);
   const sessions={admin},accounts={};
-  for(const [id,role,clientId] of [['client','Cliente','client-a'],['foreign','Cliente','client-b'],['tech','Técnico'],['otherTech','Técnico'],['coordinator','Coordinador']]){
+  for(const [id,role,clientId] of [['client','Cliente','client-a'],['foreign','Cliente','client-b'],['tech','Técnico'],['otherTech','Técnico'],['thirdTech','Técnico'],['coordinator','Coordinador']]){
     const account=await call('admin/users',{name:id+' PRUEBA',email:id+'@example.invalid',role,clientId,currentPassword:password,specialty:"Pruebas de fotografías",days:7},admin);assert.equal(account.status,201,JSON.stringify(account.data));accounts[id]=account.data;sessions[id]=await login(account.data.email,account.data.password);
   }
   async function create(entity,fields,actor=admin){const revision=(await call('database',undefined,admin)).data.revision;const r=await call('mutate',{revision,action:'create',entity,fields},actor);assert.equal(r.status,200,JSON.stringify(r.data));return r.data.result;}
@@ -92,7 +92,7 @@ test('Trabajo del técnico: permisos, concurrencia, reapertura e integridad',{sk
   });
   await t.test('admin habilita equipos; técnico crea sin ticket y no puede ampliar sus permisos',async()=>{
     const standalone={equipo_id:'eq-b',sintoma:'Inspección autorizada',estado:'Borrador'};
-    assert.equal((await mutate('OrdenServicio','create',standalone,sessions.tech)).status,403);
+    assert.equal((await mutate('OrdenServicio','create',standalone,sessions.tech)).status,200);
     let technician=(await readSnapshot(pool)).entities.Tecnico.find(row=>row.id===tech);
     for(const actor of [sessions.tech,sessions.coordinator,sessions.client])assert.equal((await mutate('Tecnico','update',{equipos_habilitados:'["eq-b"]'},actor,tech)).status,403);
     technician=await update('Tecnico',technician,{equipos_habilitados:'["eq-b"]'});
@@ -103,8 +103,25 @@ test('Trabajo del técnico: permisos, concurrencia, reapertura e integridad',{sk
     assert.equal((await mutate('OrdenServicio','update',{tecnico_id:accounts.otherTech.technicianId},sessions.tech,own.id)).status,400);
     await update('Tecnico',technician,{equipos_habilitados:'[]'});
     own=await update('OrdenServicio',own,{estado:'Cancelada'},sessions.coordinator);
-    assert.equal((await mutate('OrdenServicio','create',standalone,sessions.tech)).status,403);
+    assert.equal((await mutate('OrdenServicio','create',standalone,sessions.tech)).status,200);
     assert.equal((await call('database',undefined,sessions.tech)).data.entities.OrdenServicio.find(row=>row.id===own.id).id,own.id,'Revocar la habilitación conserva el historial propio');
+  });
+  await t.test('tres participantes comparten orden y concurrencia sin duplicados',async()=>{
+    let shared=await create('OrdenServicio',{equipo_id:'eq-a',sintoma:'Trabajo compartido',estado:'En proceso',tecnico_apoyo_1_id:accounts.otherTech.technicianId,tecnico_apoyo_2_id:accounts.thirdTech.technicianId},sessions.tech);
+    for(const who of ['tech','otherTech','thirdTech']){
+      const page=await call('operations/OrdenServicio?id='+shared.id,undefined,sessions[who]);assert.equal(page.status,200);assert.equal(page.data.total,1);
+      const filtered=await call('operations/OrdenServicio?id='+shared.id+'&technician='+accounts[who].technicianId,undefined,sessions.coordinator);assert.equal(filtered.data.total,1);
+    }
+    const revision=(await readSnapshot(pool)).revision;
+    const writes=await Promise.all(['otherTech','thirdTech'].map(who=>call('mutate',{revision,entity:'OrdenServicio',action:'update',id:shared.id,fields:{expected_updated_at:shared.fecha_actualizacion,diagnostico:'Apoyo '+who}},sessions[who])));
+    assert.deepEqual(writes.map(r=>r.status).sort(),[200,409]);shared=writes.find(r=>r.status===200).data.result;
+    assert.equal((await mutate('OrdenServicio','update',{tecnico_apoyo_2_id:''},sessions.otherTech,shared.id)).status,400);
+    assert.equal((await call('operations/OrdenServicio?id='+shared.id,undefined,sessions.client)).data.total,0);
+    const uploadId=randomUUID();assert.equal((await call('videos/start',{orderId:shared.id,requestId:uploadId,name:'Apoyo.mp4',size:clip.length,sha256},sessions.otherTech)).status,200);
+    const uploaded=await call('videos/'+uploadId+'/finish',{},sessions.otherTech);assert.equal(uploaded.status,201,JSON.stringify(uploaded.data));
+    for(const who of ['tech','otherTech','thirdTech'])assert.deepEqual((await call('attachments/'+uploaded.data.file.id+'/file',undefined,sessions[who])).data,clip);
+    shared=await update('OrdenServicio',shared,{estado:'Completada',trabajo_realizado:'Ajuste',pruebas_realizadas:'Elevación',resultado_pruebas:'Correcto'},sessions.thirdTech);assert.equal(shared.estado,'Completada');
+    assert.equal((await readSnapshot(pool)).entities.OrdenServicio.filter(r=>r.id===shared.id).length,1);
   });
   await t.test('reapertura con motivo conserva video, autor, fecha, historial y rechaza versiones antiguas',async()=>{
     for(const actor of [admin,sessions.coordinator,sessions.tech]){
@@ -130,7 +147,7 @@ test('Trabajo del técnico: permisos, concurrencia, reapertura e integridad',{sk
     }
     const backup=await call('admin/full-backup',undefined,admin);assert.equal(backup.status,200);
     const entries=backup.data.toString().trimEnd().split('\n').map(JSON.parse);
-    assert.equal(entries.filter(row=>row.type==='attachment').length,4);
+    assert.equal(entries.filter(row=>row.type==='attachment').length,5);
     assert.ok(entries.filter(row=>row.type==='attachment').every(row=>row.file.metadata.sha256===sha256));
     const [blobs]=await pool.query('SELECT * FROM em_drive_blobs WHERE sha256=?',[sha256]);assert.equal(blobs.length,1);
   });

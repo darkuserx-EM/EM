@@ -1,3 +1,4 @@
+import { assignedTo } from '../domain/order-team';
 import {localAuditPage, type AuditQuery} from './audit-log';
 import {localOperationPage,isPagedEntity,type OperationQuery,type PagedEntity} from './operation-page';
 import { preparePlan, todayGT } from '../domain/maintenance-plan';
@@ -130,7 +131,7 @@ export class LocalDataSource {
         if (isOperationalEntity(entity)) {
           const previousRequest = fields.solicitud_id && this.database.entities[entity].find(row => row.solicitud_id === fields.solicitud_id && row.creado_por === actor.id);
           if (previousRequest) {
-            if (entity === 'OrdenServicio' && actor.rol === 'Técnico' && previousRequest.tecnico_id !== actor.tecnico_id) throw Object.assign(new ValidationError('La orden ya no está asignada a ti.'), { status: 403 });
+            if (entity === 'OrdenServicio' && actor.rol === 'Técnico' && !assignedTo(previousRequest, actor.tecnico_id)) throw Object.assign(new ValidationError('La orden ya no está asignada a ti.'), { status: 403 });
             if (previousRequest.solicitud_datos !== requestContent) throw new ValidationError('La solicitud ya se guardó con otra información. Revisa el registro antes de crear otro.');
             return structuredClone(previousRequest);
           }
