@@ -19,8 +19,11 @@ export function createConnectionServer({clientId,clientSecret,pickerKey,projectN
   const cookie=random(),csrf=random();let state,verifier,grant,busy=false,finished=false;
   const page=body=>`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Conectar PORTAL EM</title><style>body{font:16px system-ui;max-width:740px;margin:8vh auto;padding:24px;color:#243326;background:#f7f8f4}button{font:inherit;padding:12px 20px;cursor:pointer}p{line-height:1.6}</style><h1>Conectar PORTAL EM con Google Drive</h1>${body}</html>`;
   return createServer(async(req,res)=>{
-    res.setHeader('Cache-Control','no-store');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');
-    res.setHeader('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; script-src 'self' https://apis.google.com; frame-src https://docs.google.com https://drive.google.com; connect-src 'self' https://*.googleapis.com; img-src https://*.googleusercontent.com https://*.gstatic.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    // no-referrer makes ordinary form POSTs send Origin: null in browsers.
+    // Keep Origin validation and let Picker verify its restricted key from the
+    // local origin. Cross-origin referrers never contain paths or OAuth codes.
+    res.setHeader('Cache-Control','no-store');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');
+    res.setHeader('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; script-src 'self' https://apis.google.com; frame-src https://docs.google.com https://drive.google.com; connect-src 'self' https://*.googleapis.com; img-src https://*.googleusercontent.com https://*.gstatic.com; base-uri 'none'; form-action 'self' https://accounts.google.com; frame-ancestors 'none'");
     const send=(status,text)=>{res.writeHead(status,{'Content-Type':'text/html; charset=utf-8'});res.end(page(text));};
     try {
       if(req.headers.host!=='127.0.0.1:33124')return send(403,'Dirección no permitida.');

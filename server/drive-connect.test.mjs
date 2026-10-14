@@ -28,7 +28,10 @@ test('Conexión Drive local: CSRF, PKCE, un solo uso, permiso mínimo y carpeta 
   });
   assert.equal((await fetch(url)).status,403,'rechaza Host ajeno / DNS rebinding');
   const page=await call('/'),html=await page.text(),cookie=page.headers.getSetCookie()[0].split(';')[0],csrf=html.match(/name="csrf" value="([^"]+)"/)[1];
+  assert.equal(page.headers.get('referrer-policy'),'strict-origin-when-cross-origin','conserva Origin y limita el referente externo al origen, sin rutas ni códigos');
+  assert.ok(page.headers.get('content-security-policy').includes("form-action 'self' https://accounts.google.com;"),'permite únicamente el retorno de autorización a Google');
   assert.ok(!html.includes(config.clientSecret));assert.equal((await call('/picker.js')).status,403);
+  assert.equal((await call('/start',{method:'POST',headers:{Cookie:cookie,Origin:'null'},body:`csrf=${csrf}`})).status,403,'no acepta orígenes opacos como solución al formulario');
   assert.equal((await call('/start',{method:'POST',headers:{Cookie:cookie,Origin:'https://foreign.invalid'},body:`csrf=${csrf}`})).status,403);
   assert.equal(calls,0);
   const start=await call('/start',{method:'POST',headers:{Cookie:cookie,Origin:origin},body:`csrf=${csrf}`});assert.equal(start.status,303);
