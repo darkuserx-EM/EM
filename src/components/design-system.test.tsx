@@ -64,9 +64,10 @@ describe('componentes compartidos', () => {
 
   it('KpiCard como enlace muestra la flecha y con alert marca la cifra', () => {
     const link = html(<KpiCard label="Citas atrasadas" value={4} to="/calendario" alert />);
-    expect(link).toMatch(/^<a class="kpi-card kpi-card-alert" href="\/calendario" data-discover="true"><span class="kpi-card-icon kpi-card-arrow" aria-hidden="true"><svg/);
-    expect(link).toContain('<span class="kpi-card-label">Citas atrasadas</span><strong class="kpi-card-value">4</strong>');
-    expect(html(<KpiCard label="Citas atrasadas" value={4} icon={<svg data-icon="" />} to="/calendario" />)).not.toContain('data-icon');
+    expect(link).toMatch(/^<a class="kpi-card kpi-card-link kpi-card-alert" href="\/calendario" data-discover="true"><span class="kpi-card-label">Citas atrasadas<\/span><strong class="kpi-card-value">4<\/strong><span class="kpi-card-arrow" aria-hidden="true"><svg/);
+    const withIcon = html(<KpiCard label="Citas atrasadas" value={4} icon={<svg data-icon="" />} hint="Abiertas" to="/calendario" />);
+    expect(withIcon).toContain('<span class="kpi-card-icon" aria-hidden="true"><svg data-icon=""></svg></span>');
+    expect(withIcon).toContain('<small class="kpi-card-hint">Abiertas</small><span class="kpi-card-arrow"');
     expect(html(<KpiCard label="Abiertas" value={12} />)).not.toContain('kpi-card-arrow');
   });
 });

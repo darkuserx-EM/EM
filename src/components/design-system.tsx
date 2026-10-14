@@ -86,18 +86,16 @@ export function Tabs<T extends string>({ items, value, onChange, label, panelId,
   </div>;
 }
 
-/** Tarjeta de indicador. Con onClick es un botón; si además recibe pressed, actúa como filtro (aria-pressed). Sin onClick, solo informa. */
 /**
  * Indicador con cifra. Cada uso tiene su señal visible:
  * - filtro: `onClick` + `pressed` → botón con `aria-pressed` y borde de seleccionado;
- * - enlace: `to` → lleva a otra pantalla; en lugar del ícono muestra una flecha ↗ arriba a la derecha;
+ * - enlace: `to` → lleva a otra pantalla; conserva su ícono y agrega una flecha ↗ abajo a la derecha;
  * - informativo: sin `onClick` ni `to`.
  * `alert` pinta la cifra en rojo (por ejemplo, citas atrasadas). Agrupar en `<div className="kpi-grid">`.
  */
 export function KpiCard({ label, value, hint, icon, pressed, onClick, to, alert = false }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode; pressed?: boolean; onClick?: () => void; to?: LinkProps['to']; alert?: boolean }) {
-  const className = alert ? 'kpi-card kpi-card-alert' : 'kpi-card';
-  const mark = to ? <span className="kpi-card-icon kpi-card-arrow" aria-hidden="true"><ArrowUpRight size={18} /></span> : icon && <span className="kpi-card-icon" aria-hidden="true">{icon}</span>;
-  const content = <>{mark}<span className="kpi-card-label">{label}</span><strong className="kpi-card-value">{value}</strong>{hint && <small className="kpi-card-hint">{hint}</small>}</>;
+  const className = ['kpi-card', to && 'kpi-card-link', alert && 'kpi-card-alert'].filter(Boolean).join(' ');
+  const content = <>{icon && <span className="kpi-card-icon" aria-hidden="true">{icon}</span>}<span className="kpi-card-label">{label}</span><strong className="kpi-card-value">{value}</strong>{hint && <small className="kpi-card-hint">{hint}</small>}{to && <span className="kpi-card-arrow" aria-hidden="true"><ArrowUpRight size={16} /></span>}</>;
   if (to) return <Link className={className} to={to}>{content}</Link>;
   return onClick ? <button type="button" className={className} aria-pressed={pressed} onClick={onClick}>{content}</button> : <div className={className}>{content}</div>;
 }
