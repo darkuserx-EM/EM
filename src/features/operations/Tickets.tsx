@@ -27,7 +27,7 @@ function TicketForm({ row, onClose, onSaved }: { row?: EntityRecord; onClose: ()
     event.preventDefault(); if (busy || !ready) return;
     setBusy(true); setError('');
     try {
-      if (!savedTicket && photos.pending && ['Resuelto','Cancelado'].includes(values.estado)) throw new Error('Guarda las fotografías antes de cerrar la solicitud.');
+      if (!savedTicket && photos.pending && ['Resuelto','Cancelado'].includes(values.estado)) throw new Error('Guarda los archivos antes de cerrar la solicitud.');
       const machine = equipment.rows.find(item => item.id === values.equipo_id);
       if (!machine) throw new Error('Selecciona un equipo disponible para tu perfil.');
       const fields: Record<string, Scalar> = { titulo: values.titulo, descripcion: values.descripcion, cliente_id: String(machine.cliente_id || ''), equipo_id: machine.id, sede_id: String(machine.sede_id || '') };
@@ -37,7 +37,7 @@ function TicketForm({ row, onClose, onSaved }: { row?: EntityRecord; onClose: ()
       const repo = getDataSource().repository('Ticket', actor); const saved = savedTicket || (row ? await repo.update(row.id, fields) : await repo.create(fields));
       setSavedTicket(saved);
       const failed = await photos.upload(saved.id);
-      if (failed) { setError(`${saved.codigo} ya está registrada. Quedan ${failed} fotografías pendientes; vuelve a intentar sin crear otra solicitud.`); return; }
+      if (failed) { setError(`${saved.codigo} ya está registrada. Quedan ${failed} archivos pendientes; vuelve a intentar sin crear otra solicitud.`); return; }
       notify(`${saved.codigo} ${row ? 'actualizada' : 'registrada'}.`); onSaved(saved);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'No se pudo guardar. La información permanece en el formulario.'); }
     finally { setBusy(false); }
@@ -50,7 +50,7 @@ function TicketForm({ row, onClose, onSaved }: { row?: EntityRecord; onClose: ()
     <label className="os-field os-span">Descripción de lo ocurrido *<textarea required rows={5} maxLength={4000} value={values.descripcion} onChange={event => set('descripcion', event.target.value)} disabled={busy || !!savedTicket} placeholder="Indica síntomas, lugar, momento de la falla y cualquier riesgo observado." /></label>
     <div className="os-span"><TicketPhotoPicker draft={photos} busy={busy}/></div>
     {manager && <><label className="os-field">Prioridad<select value={values.prioridad} onChange={event => set('prioridad', event.target.value)} disabled={busy || !!savedTicket}>{priorities.map(value => <option key={value}>{value}</option>)}</select></label><label className="os-field">Estado<select value={values.estado} onChange={event => set('estado', event.target.value)} disabled={busy || !!savedTicket}>{allowedOperationStates('Ticket', row, actor).map(value => <option key={value}>{value}</option>)}</select></label><label className="os-field">Responsable{values.estado === 'Programado' ? ' *' : ''}<select value={values.responsable_id} onChange={event => set('responsable_id', event.target.value)} disabled={busy || !!savedTicket} required={values.estado === 'Programado'}><option value="">Sin asignar</option>{technicians.rows.map(technician => <option value={technician.id} key={technician.id}>{technician.nombre}</option>)}</select></label><label className="os-field">Fecha programada<input type="date" value={values.fecha_programada} onChange={event => set('fecha_programada', event.target.value)} disabled={busy || !!savedTicket} required={values.estado === 'Programado'} /></label></>}
-    <div className="os-span"><ErrorNotice message={error || queryError} /></div><footer className="modal-actions os-span"><button className="button" type="button" onClick={guard.requestClose} disabled={busy}>Cerrar</button><button className="button button-dark" type="submit" disabled={busy || !ready || !!queryError}><Check size={16} />{busy ? 'Guardando solicitud y fotografías…' : savedTicket ? photos.pending ? 'Reintentar fotografías pendientes' : 'Finalizar' : 'Guardar solicitud'}</button></footer>
+    <div className="os-span"><ErrorNotice message={error || queryError} /></div><footer className="modal-actions os-span"><button className="button" type="button" onClick={guard.requestClose} disabled={busy}>Cerrar</button><button className="button button-dark" type="submit" disabled={busy || !ready || !!queryError}><Check size={16} />{busy ? 'Guardando solicitud y archivos…' : savedTicket ? photos.pending ? 'Reintentar archivos pendientes' : 'Finalizar' : 'Guardar solicitud'}</button></footer>
   </form></Modal>;
 }
 

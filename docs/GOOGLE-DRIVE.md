@@ -1,10 +1,22 @@
-# Fotografías privadas en Google Drive
+# Fotografías y videos privados en Google Drive
+
+## Videos de solicitudes y reportes
+
+Se admiten MP4 no fragmentados de hasta **25 MiB y 60 segundos**, con una pista de video H.264 y audio AAC opcional. No se convierten automáticamente MOV, HEVC ni WebM; exportar a MP4 compatible antes de cargar. Los equipos mantienen sus fotografías y límites existentes.
+
+El navegador envía partes de 1 MiB al servidor autenticado; el servidor las transmite a la sesión reanudable de Drive. La sesión y el ID reservado quedan en MySQL, sin bytes de video. Cada operación comprueba sesión, CSRF, rol y alcance del registro. La URI de carga y credenciales de Google nunca salen al navegador. El reintento consulta el progreso confirmado por Google; una respuesta perdida no duplica bloques. Una interrupción o reinicio conserva el progreso durante 24 horas; después se reinicia la carga. Las sesiones temporales vencidas se retiran, sin borrar archivos ni historial.
+
+El cierre verifica SHA-256 y analiza el contenedor, códecs, duración y límites de muestras con MP4Box.js en un worker con tiempo/memoria acotados. Se permiten dos verificaciones simultáneas por proceso; las demás pueden reintentarse. Solo después se enlaza el archivo y se registra el evento de seguridad en la misma transacción. Un arrendamiento por carga impide escrituras simultáneas, sin mantener bloqueos operativos durante solicitudes a Google.
+
+Clientes, coordinación y administración agregan evidencia a solicitudes abiertas; administración y el técnico asignado agregan Antes/Después a órdenes abiertas. Se mantienen los límites de **10 adjuntos por solicitud y 20 por orden**, contando fotos y videos. Los cuatro perfiles consultan según los permisos actuales. La orden muestra el video original de su solicitud, sin copiarlo. El reproductor es privado, no inicia automáticamente ni descarga videos antes de reproducir; admite rangos autenticados para avanzar.
+
+Los respaldos completo y separado incluyen los bytes originales, metadatos y huellas de videos. Siguen leyendo archivos anteriores. Cada video se procesa individualmente; el tamaño máximo de una línea JSONL es 36 MiB, sin aumentar los límites de fotos/PDF. La recuperación de videos requiere Drive conectado y vuelve a validar el archivo, conservando IDs, autor, fecha, vínculo e historial. Si Drive falla, no se reemplazan registros. Conservar además la copia del alojamiento para cuentas/configuración. Las fotos/PDF de respaldos anteriores mantienen su recuperación local.
 
 ## Carpetas automáticas (etapa posterior a la activación)
 
 La conexión está activa en producción. Las imágenes antiguas de prueba se retiraron con autorización del titular, respaldo completo y ensayo de recuperación; no se retiraron registros, historial ni logotipos de clientes.
 
-El organizador crea `PORTAL_EM/Equipos`, `Solicitudes` y `Reportes`. Equipos usa `código_ID/Fotos` y `Miniaturas`; solicitudes y reportes agregan año de carga en Guatemala, `código_ID`, y `Fotos`, `Videos` o `Documentos` según MIME (la clasificación Videos queda preparada; cargar video requiere su etapa específica). Solo se crean subcarpetas necesarias. El ID corto evita confundir códigos históricos repetidos.
+El organizador crea `PORTAL_EM/Equipos`, `Solicitudes` y `Reportes`. Equipos usa `código_ID/Fotos` y `Miniaturas`; solicitudes y reportes agregan año de carga en Guatemala, `código_ID`, y `Fotos`, `Videos` o `Documentos` según MIME. Solo se crean subcarpetas necesarias. El ID corto evita confundir códigos históricos repetidos.
 
 Las cargas nuevas se confirman primero y se clasifican después, fuera de transacciones operativas. En producción se dispara tras guardar un registro o evidencia y también durante el mantenimiento periódico (arranque y cada 15 minutos), en lotes de hasta 20 archivos. Una interrupción deja la misma referencia accesible y el siguiente ciclo reintenta. Los recibos sin registro guardado no se clasifican ni borran.
 
@@ -16,7 +28,7 @@ El organizador también atiende archivos anteriores de Drive que ya están vincu
 
 Proveedor optativo para archivos nuevos. `FILE_STORAGE=mysql` sigue siendo el valor predeterminado. No borra ni migra archivos existentes, no cambia registros ni permisos operativos. Activar `google-drive` únicamente después de completar la conexión del propietario, probar una carga real, descargar y verificar un respaldo completo y confirmar la configuración del alojamiento.
 
-Esta etapa mantiene los formatos y límites actuales: fotografías JPEG, PNG y WebP, y documentos PDF de órdenes, hasta 4 MiB por archivo (equipos conservan su límite menor). No habilita video. Los videos necesitan después carga reanudable desde el navegador, límites propios y pruebas de reproducción y respaldo. Las imágenes siguen optimizándose según el formulario; no se promete conservar el archivo original de cámara.
+Fotografías JPEG, PNG y WebP, y documentos PDF de órdenes, conservan el límite de 4 MiB por archivo almacenado (equipos conservan su límite menor). Las imágenes siguen optimizándose según el formulario; no se promete conservar el original de cámara. Videos tienen la carga y límites propios descritos arriba; requieren `FILE_STORAGE=google-drive`.
 
 ## Cuenta propietaria y permisos
 

@@ -11,6 +11,26 @@ const config={clientId:'synthetic-client',clientSecret:'synthetic-secret',refres
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json',...headers}});
 const folder=()=>({id:folderId,name:'PORTAL_EM',mimeType:'application/vnd.google-apps.folder',trashed:false,ownedByMe:true,owners:[{emailAddress:config.ownerEmail}],permissions:[{role:'owner',type:'user'}],capabilities:{canAddChildren:true}});
 const metadata=()=>({id:fileId,size:String(bytes.length),mimeType:'image/png',sha256Checksum:sha,parents:[folderId],trashed:false});
+test('Drive video: 308 sin seguir redirecciones, reanudación y rangos privados',async()=>{
+ let offset=0,complete=false;const location='https://www.googleapis.com/upload/drive/v3/files?upload_id=video-test';
+ const drive=createDriveStorage({...config,fetch:async(url,init={})=>{
+  const target=String(url);
+  if(target.includes('oauth2.googleapis.com'))return json({access_token:'synthetic-access',expires_in:3600});
+  assert.equal(init.redirect,'manual');
+  if(target.includes(`/files/${folderId}?`))return json(folder());
+  if(target.includes(`/files/${fileId}?fields=`))return complete?json({...metadata(),mimeType:'video/mp4'}):json({},404);
+  if(target.includes('uploadType=resumable'))return new Response(null,{headers:{Location:location}});
+  if(target===location){if(init.body){offset+=init.body.length;complete=offset===bytes.length;}return complete?json({id:fileId}):new Response(null,{status:308,headers:{Location:location,...(offset?{Range:`bytes=0-${offset-1}`}:{})}});}
+  if(target.includes('alt=media')){assert.equal(init.headers.Range,'bytes=2-7');return new Response(bytes.subarray(2,8),{status:206,headers:{'Content-Range':`bytes 2-7/${bytes.length}`}});}
+  throw Error('Unexpected request');
+ }});
+ assert.deepEqual(await drive.video.start(fileId,bytes.length,sha),{location,offset:0});
+ assert.equal(await drive.video.progress(fileId,location,bytes.length,sha),0);
+ assert.equal(await drive.video.chunk(location,0,bytes.length,bytes),bytes.length);
+ assert.equal(await drive.video.progress(fileId,location,bytes.length,sha),bytes.length);
+ assert.deepEqual(await drive.range(fileId,bytes.length,sha,2,7),bytes.subarray(2,8));
+ assert.deepEqual(await drive.video.start(fileId,bytes.length,sha),{location:'',offset:bytes.length});
+});
 function mock(options={}) {
   let stored=options.exists||false,tokens=0,uploads=0;const calls=[];
   const request=async(url,init={})=>{
@@ -19,7 +39,7 @@ function mock(options={}) {
       tokens++;assert.equal(init.redirect,'error');assert.equal(new URLSearchParams(init.body).get('grant_type'),'refresh_token');
       return options.authFailure?json({error:'invalid_grant',sensitive:config.refreshToken},400):json({access_token:'synthetic-access',expires_in:3600});
     }
-    assert.equal(init.headers.Authorization,'Bearer synthetic-access');assert.equal(init.redirect,'error');
+    assert.equal(init.headers.Authorization,'Bearer synthetic-access');assert.equal(init.redirect,'manual');
     if(target.includes('/files/generateIds'))return json({ids:[fileId]});
     if(target.includes(`/files/${folderId}?`))return json(options.folder||folder());
     if(target.includes(`/files/${fileId}?alt=media`))return new Response(options.download||bytes);
@@ -60,9 +80,9 @@ test('Drive: revocación y configuración no exponen secretos ni simulan un guar
   await assert.rejects(localFiles.read({}, {content:Buffer.alloc(0),storage_key:sha}),error=>error.code==='DRIVE_NOT_CONFIGURED');
   assert.equal(fileStoreFromEnv({},{}),localFiles);assert.throws(()=>fileStoreFromEnv({},{FILE_STORAGE:'google-drive'}));
 });
-test('Drive: conserva los bytes locales y mantiene fuera de alcance el video',async()=>{
+test('Drive: conserva los bytes locales y rechaza formatos de video no habilitados',async()=>{
   assert.deepEqual(await localFiles.read({},await localFiles.prepare(bytes,'image/png')),bytes);
-  const {drive,calls}=mock();await assert.rejects(drive.put(fileId,bytes,'video/mp4'));assert.equal(calls.length,0);
+  const {drive,calls}=mock();await assert.rejects(drive.put(fileId,bytes,'video/webm'));assert.equal(calls.length,0);
 });
 
 test('Drive: organiza sin copiar, admite reintentos y rechaza carpetas compartidas o externas',async()=>{

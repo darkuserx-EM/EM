@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import {VIDEO_MAX_BYTES,VIDEO_CHUNK_BYTES} from './video-validation.mjs';
 
 const api = 'https://www.googleapis.com/drive/v3';
 const maxBytes = 4 * 1024 * 1024;
@@ -61,7 +62,7 @@ export function createDriveStorage({clientId,clientSecret,refreshToken,folderId,
     const target = new URL(url);
     if (target.protocol !== 'https:' || target.hostname !== 'www.googleapis.com' || !/^\/(drive\/v3\/|upload\/drive\/v3\/)/.test(target.pathname) || target.username || target.password || target.port) throw unavailable('DRIVE_ENDPOINT', 'La dirección del almacenamiento no es válida.');
     try {
-      const response = await request(target,{...init,redirect:'error',signal:AbortSignal.timeout(45000),headers:{...init.headers,Authorization:`Bearer ${await token()}`}});
+      const response = await request(target,{...init,redirect:'manual',signal:AbortSignal.timeout(45000),headers:{...init.headers,Authorization:`Bearer ${await token()}`}});
       if (response.status === 401) { access = ''; expires = 0; }
       return response;
     } catch (error) {
@@ -99,9 +100,57 @@ export function createDriveStorage({clientId,clientSecret,refreshToken,folderId,
     }
     throw unavailable('DRIVE_FOLDER_PRIVATE','La carpeta no pertenece a PORTAL_EM.');
   }
+  /** @param {string} id @param {number} size @param {string} sha256 */
+  async function videoMetadata(id,size,sha256) {
+    if(!idPattern.test(id)||!Number.isSafeInteger(size)||size<32||size>VIDEO_MAX_BYTES||!/^[a-f0-9]{64}$/.test(sha256))throw unavailable('DRIVE_INPUT','Video inválido.');
+    const response=await call(`${api}/files/${id}?fields=id,size,mimeType,sha256Checksum,parents,trashed`);
+    if(response.status===404)return false;
+    check(response);const data=object(await response.json());
+    if(data.id!==id||Number(data.size)!==size||data.mimeType!=='video/mp4'||data.sha256Checksum!==sha256||data.trashed!==false||!Array.isArray(data.parents)||data.parents.length!==1||typeof data.parents[0]!=='string')throw unavailable('DRIVE_INTEGRITY','El video no coincide con su registro.');
+    await verifyTree(data.parents[0]);return true;
+  }
+  /** @param {Response} response @param {number} size */
+  function acknowledged(response,size) {
+    if(response.ok)return size;
+    if(response.status===404||response.status===410)return -1;
+    if(response.status!==308)check(response);
+    const range=response.headers.get('range');
+    if(!range)return 0;
+    const match=/^bytes=0-(\d+)$/.exec(range),offset=match?Number(match[1])+1:NaN;
+    if(!Number.isSafeInteger(offset)||offset<0||offset>size)throw unavailable('DRIVE_RESPONSE','No se pudo confirmar el progreso del video.');
+    return offset;
+  }
   return {
     rootId:folderId,
     verifyFolder,
+    video:{
+      /** @param {string} id @param {number} size @param {string} sha256 */
+      async start(id,size,sha256) {
+        if(await videoMetadata(id,size,sha256))return {location:'',offset:size};
+        await verifyFolder();
+        const response=await call('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',{method:'POST',headers:{'Content-Type':'application/json','X-Upload-Content-Type':'video/mp4','X-Upload-Content-Length':String(size)},body:JSON.stringify({id,name:`${sha256}.mp4`,mimeType:'video/mp4',parents:[folderId]})});
+        if(response.status===409&&await videoMetadata(id,size,sha256))return {location:'',offset:size};
+        check(response);const location=response.headers.get('location');if(!location)throw unavailable('DRIVE_RESPONSE','No se pudo iniciar el video.');return {location,offset:0};
+      },
+      /** @param {string} id @param {string} location @param {number} size @param {string} sha256 */
+      async progress(id,location,size,sha256) {
+        if(await videoMetadata(id,size,sha256))return size;
+        if(!location)return -1;
+        return acknowledged(await call(location,{method:'PUT',headers:{'Content-Length':'0','Content-Range':`bytes */${size}`}}),size);
+      },
+      /** @param {string} location @param {number} offset @param {number} size @param {Buffer} bytes */
+      async chunk(location,offset,size,bytes) {
+        if(!Number.isSafeInteger(offset)||offset<0||offset%262144||!bytes.length||bytes.length>VIDEO_CHUNK_BYTES||offset+bytes.length>size||(offset+bytes.length<size&&bytes.length%262144))throw unavailable('DRIVE_INPUT','El bloque de video no es válido.');
+        return acknowledged(await call(location,{method:'PUT',headers:{'Content-Type':'video/mp4','Content-Length':String(bytes.length),'Content-Range':`bytes ${offset}-${offset+bytes.length-1}/${size}`},body:new Uint8Array(bytes)}),size);
+      },
+    },
+    /** @param {string} id @param {number} size @param {string} sha256 @param {number} start @param {number} end */
+    async range(id,size,sha256,start,end) {
+      if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<start||end>=size||!await videoMetadata(id,size,sha256))throw unavailable('DRIVE_INTEGRITY','El video no está disponible.');
+      const response=await call(`${api}/files/${id}?alt=media`,{headers:{Range:`bytes=${start}-${end}`}});check(response);
+      if(response.status!==206||response.headers.get('content-range')!==`bytes ${start}-${end}/${size}`)throw unavailable('DRIVE_INTEGRITY','La lectura del video no coincide.');
+      const bytes=await boundedBytes(response,end-start+1);if(bytes.length!==end-start+1)throw unavailable('DRIVE_INTEGRITY','El video está incompleto.');return bytes;
+    },
     /** @param {string} id @param {string} name @param {string} parent */
     async folder(id,name,parent) {
       if(!idPattern.test(id)||!name||name.length>100||/[\x00-\x1f/\\]/.test(name))throw unavailable('DRIVE_INPUT','La carpeta no es válida.');
@@ -135,7 +184,7 @@ export function createDriveStorage({clientId,clientSecret,refreshToken,folderId,
     },
     /** @param {string} id @param {Buffer} bytes @param {string} mime */
     async put(id, bytes, mime) {
-      if (!idPattern.test(id) || !Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > maxBytes || !['image/jpeg','image/png','image/webp','application/pdf'].includes(mime)) throw unavailable('DRIVE_INPUT', 'El archivo no tiene un formato o tamaño permitido.');
+      if (!idPattern.test(id) || !Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > (mime==='video/mp4'?VIDEO_MAX_BYTES:maxBytes) || !['image/jpeg','image/png','image/webp','application/pdf','video/mp4'].includes(mime)) throw unavailable('DRIVE_INPUT', 'El archivo no tiene un formato o tamaño permitido.');
       await verifyFolder();
       const sha256 = createHash('sha256').update(bytes).digest('hex');
       const metadataUrl = `${api}/files/${id}?fields=id,size,mimeType,sha256Checksum,parents,trashed`;
@@ -148,7 +197,7 @@ export function createDriveStorage({clientId,clientSecret,refreshToken,folderId,
       const old = await call(metadataUrl);
       if (old.ok) { await verify(old); return; }
       if (old.status !== 404) check(old);
-      const extension = { 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','application/pdf':'pdf' }[mime];
+      const extension = { 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','application/pdf':'pdf','video/mp4':'mp4' }[mime];
       const start = await call('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {method:'POST',headers:{'Content-Type':'application/json','X-Upload-Content-Type':mime,'X-Upload-Content-Length':String(bytes.length)},body:JSON.stringify({id,name:`${sha256}.${extension}`,mimeType:mime,parents:[folderId]})});
       if (start.status === 409) { await verify(await call(metadataUrl)); return; }
       check(start); const location = start.headers.get('location');
@@ -160,7 +209,7 @@ export function createDriveStorage({clientId,clientSecret,refreshToken,folderId,
     },
     /** @param {string} id @param {number} size @param {string} sha256 */
     async get(id, size, sha256) {
-      if (!idPattern.test(id) || !Number.isSafeInteger(size) || size < 1 || size > maxBytes || !/^[a-f0-9]{64}$/.test(sha256)) throw unavailable('DRIVE_METADATA', 'Los datos del archivo no son válidos.');
+      if (!idPattern.test(id) || !Number.isSafeInteger(size) || size < 1 || size > VIDEO_MAX_BYTES || !/^[a-f0-9]{64}$/.test(sha256)) throw unavailable('DRIVE_METADATA', 'Los datos del archivo no son válidos.');
       const response = await call(`${api}/files/${id}?alt=media`); check(response);
       const bytes = await boundedBytes(response,size);
       if (bytes.length !== size || createHash('sha256').update(bytes).digest('hex') !== sha256) throw unavailable('DRIVE_INTEGRITY', 'La integridad del archivo no coincide con su registro.');

@@ -12,3 +12,5 @@
 .ticket-photos .attachment-grid a{overflow-wrap:anywhere;min-width:0}
 @media(pointer:coarse){.ticket-photo-list .icon-button{min-width:var(--target-min);min-height:var(--target-min)}}
 @media print{.ticket-photos input,.ticket-photos button,.ticket-photo-list{display:none}}
+
+.ticket-photo-list video { width: 96px; height: 72px; object-fit: contain; }

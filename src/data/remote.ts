@@ -12,6 +12,11 @@ let csrf = '';
 let authEpoch = 0;
 type SyncedDatabase = Database & { syncToken?: string; access?: Actor; pagedEntities?:string[]; counts?:Record<string,number> };
 export function setCsrf(value: string) { csrf = value; authEpoch++; }
+export async function videoChunk(id:string,offset:number,bytes:Blob):Promise<{offset:number}> {
+  const response=await fetch(`/api/videos/${encodeURIComponent(id)}/chunk?offset=${offset}`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/octet-stream','X-CSRF-Token':csrf},body:bytes,signal:AbortSignal.timeout(90000)});
+  if(response.status===401)window.dispatchEvent(new Event('portal-session-expired'));
+  const data=await response.json();if(!response.ok)throw new Error(data.error||'No se pudo enviar esta parte del video. Conserva el archivo y reintenta.');return data;
+}
 async function uploadEquipmentFields(fields: Record<string, Scalar>) {
   const values = { ...fields }; const uploads: Record<string, string> = {};
   for (const field of equipmentImageFields) {
@@ -29,9 +34,9 @@ async function uploadEquipmentFields(fields: Record<string, Scalar>) {
   }
   return { fields: values, mediaUploads: uploads };
 }
-export async function api<T>(path: string, body?: unknown, options: {poll?:boolean} = {}): Promise<T> {
+export async function api<T>(path: string, body?: unknown, options: {poll?:boolean;timeoutMs?:number} = {}): Promise<T> {
   const epoch = authEpoch;
-  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(),30000);
+  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(),options.timeoutMs??30000);
   let response: Response; let data: unknown;
   try {
     response = await fetch(`/api/${path}`, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: body === undefined ? (options.poll ? {'X-Portal-Poll':'1'} : {}) : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: body === undefined ? undefined : JSON.stringify(body),signal:controller.signal });

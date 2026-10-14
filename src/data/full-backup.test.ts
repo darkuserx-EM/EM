@@ -24,6 +24,12 @@ function fixture() {
 }
 
 describe('respaldo completo por archivos', () => {
+  it('conserva videos mayores a 4 MB sin aumentar el límite de fotografías',async()=>{
+    const {entries}=fixture(),bytes=new Uint8Array(5*1024*1024);const base64=Buffer.from(bytes).toString('base64');
+    const entry:ArchiveEntry={type:'attachment',file:{metadata:{id:'video',mime:'video/mp4',size:bytes.length,sha256:bytesToHex(sha256(bytes))},base64}};
+    expect((await inspectFullBackup(new Blob([archive([...entries,entry])]))).counts.attachment).toBe(1);
+    entry.file!.metadata.mime='image/png';await expect(inspectFullBackup(new Blob([archive([...entries,entry])]))).rejects.toThrow('Archivo inválido');
+  },20000);
   it('verifica registros, referencias y bytes antes de recuperar', async () => {
     const { entries, database } = fixture();
     const result = await inspectFullBackup(new Blob([archive(entries)]));
