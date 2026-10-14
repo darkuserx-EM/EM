@@ -194,4 +194,4 @@ Una orden conserva `tecnico_id` como responsable y admite `tecnico_apoyo_1_id` y
 
 Cada participante consulta la misma orden en Inicio, Órdenes, Calendario y Planificador. La paginación y los filtros del servidor aplican la pertenencia al equipo de trabajo sin multiplicar registros. Las fotos y videos se autorizan contra la orden compartida y conservan sus referencias originales. Las ediciones conservan autoría y versión; un guardado desactualizado se rechaza.
 
-El alta en estado «En proceso» registra el inicio actual en Guatemala. No cambia automáticamente el estado operativo del equipo. No se modifican registros históricos ni archivos al desplegar; las órdenes anteriores sin apoyos siguen funcionando.
+El alta en estado «En proceso» registra el inicio actual en Guatemala. No cambia automáticamente el estado operativo del equipo. La migración 11 agrega los apoyos al índice operativo y reconstruye esa proyección por lotes reanudables, sin modificar los registros originales, el historial ni los archivos; las órdenes anteriores sin apoyos siguen funcionando.

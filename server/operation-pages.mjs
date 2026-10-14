@@ -5,7 +5,7 @@ import {projectOperation} from './generated/domain.mjs';
 /** @param {number} status @param {string} message */
 const fail =(status,message)=>Object.assign(new Error(message),{status,expose:true});
 /** @param {string} alias */
-const teamScope = alias => `(${alias}.technician_id=? OR EXISTS (SELECT 1 FROM em_records team WHERE team.entity='OrdenServicio' AND team.id=${alias}.id AND (BINARY JSON_UNQUOTE(JSON_EXTRACT(team.payload,'$.tecnico_apoyo_1_id'))=BINARY ? OR BINARY JSON_UNQUOTE(JSON_EXTRACT(team.payload,'$.tecnico_apoyo_2_id'))=BINARY ?)))`;
+const teamScope = alias => `(${alias}.technician_id=? OR ${alias}.support_1_id=? OR ${alias}.support_2_id=?)`;
 /** @param {import("../src/domain/model.js").Actor} actor @param {import("../src/domain/model.js").EntityName} entity */
 function scope(actor,entity) {
   /** @type {string[]} */
