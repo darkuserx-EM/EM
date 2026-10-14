@@ -13,6 +13,7 @@ import { assertAdmin } from '../../domain/permissions';
 import { ClipboardList, LayoutDashboard, PanelsTopLeft, Camera, ArrowLeft, ChevronDown, Download, Gauge, MapPin, Wrench, Clock3, Package, SlidersHorizontal, TrendingUp, Pencil } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
 import { EmptyState, ErrorNotice, Status } from '../../components/ui';
+import { Badge } from '../../components/design-system';
 import { equipmentHistory, latestEquipmentReading } from '../../domain/equipment-history';
 import { formatDate, formatHourMeter, formatMoney, formatNumber, formatTime } from '../../domain/format';
 import type { EntityRecord } from '../../domain/model';
@@ -75,7 +76,7 @@ export function EquipmentDetail({ equipment, clients, onBack, onEdit, initialVie
         <button className="button equipment-data-trigger" aria-haspopup="dialog" aria-expanded={dataOpen} onClick={() => setDataOpen(true)}><ClipboardList size={16} />Datos del equipo</button>
       </div>
     </header>
-    {!serverMode && <div className="history-demo-note"><span className="plain-tag">DATOS FICTICIOS</span></div>}
+    {!serverMode && <div className="history-demo-note"><Badge>DATOS FICTICIOS</Badge></div>}
     {admin ? <details className="dashboard-state-disclosure"><summary>Estado y mantenimiento · {maintenanceState(equipment)}</summary>{statePanel}</details> : statePanel}
     <div className="history-layout"><div className="history-main">
       <div className="history-switch" aria-label="Historial del equipo">{admin && <button aria-pressed={view === 'summary'} onClick={() => setView('summary')}><LayoutDashboard size={17} />Resumen</button>}{admin && <button aria-pressed={view === 'maintenance'} onClick={() => setView('maintenance')}><Wrench size={17} />Mantenimiento</button>}{admin && <button aria-pressed={view === 'findings'} onClick={() => setView('findings')}><ClipboardList size={17} />Hallazgos y notas</button>}<button aria-pressed={view === 'repairs'} onClick={() => setView('repairs')}><Wrench size={17} />Reparaciones y servicios</button><button aria-pressed={view === 'usage'} onClick={() => setView('usage')}><Gauge size={17} />Uso y horómetro</button><button aria-pressed={view === 'images'} onClick={() => setView('images')}><Camera size={17} />Fotografías y placa</button></div>

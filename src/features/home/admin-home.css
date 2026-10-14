@@ -4,7 +4,6 @@
   --home-line: var(--color-border);
   --home-accent: var(--color-accent);
   --home-soft: var(--color-surface-muted);
-  --home-radius: 4px;
   gap: 24px;
   color: var(--home-ink);
   font-variant-numeric: tabular-nums;
@@ -16,9 +15,6 @@
 .admin-home .table-scroll { scrollbar-color: var(--color-border-strong) var(--home-soft); }
 .admin-home .home-heading { padding: 0; }
 .admin-home .home-heading h1 { margin: 0 0 8px; letter-spacing: -.025em; }
-.admin-home .button, .admin-home select, .admin-home input, .admin-home .icon-button {
-  border-radius: var(--home-radius);
-}
 .admin-home .button { min-height: 44px; font-size: var(--text-xs); }
 .admin-home .text-link { color: var(--home-accent); min-height: 44px; }
 .admin-home :is(button, a):focus-visible { outline: 2px solid var(--home-accent); outline-offset: 3px; }
@@ -68,7 +64,6 @@
 .admin-home .home-pending-actions :is(button, a) {
   background: transparent;
   border: 0;
-  border-radius: var(--home-radius);
   min-height: 44px;
   padding: 8px;
   font-size: var(--text-xs);
@@ -79,7 +74,6 @@
 .admin-home .home-pending-actions :is(button, a):hover { background: var(--color-warning-bg); }
 
 .admin-home .home-main-grid { grid-template-columns: minmax(0, 2.6fr) minmax(260px, 1fr); gap: 32px; }
-.admin-home .home-equipment { border-radius: var(--home-radius); }
 .admin-home .panel-heading h2 { font-size: 18px; letter-spacing: -.02em; }
 .admin-home .home-table-toolbar { padding-bottom: 16px; font-size: var(--text-xs); }
 .admin-home .home-table-toolbar select { min-height: 44px; font-size: var(--text-xs); }

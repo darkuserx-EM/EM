@@ -6,7 +6,7 @@ import type { EntityRecord } from '../../domain/model';
 import { currentPlan, planStatusLabel, planTypes, projectPlan } from '../../domain/maintenance-plan';
 import { findingSummary } from '../../domain/equipment-findings';
 import { formatNumber } from '../../domain/format';
-import { PlanCycle, remainingLabel } from './PlanCycle';
+import { PlanCycle, PlanStatus, remainingLabel } from './PlanCycle';
 import './equipment-dashboard.css';
 
 export type DashboardBlocks = { indicators: ReactNode; planning: ReactNode; followUp: ReactNode };
@@ -28,7 +28,7 @@ export function EquipmentDashboard({ equipment, services, readings, findings, fi
     </div>;
   const planning = <section className="dashboard-next panel" aria-label="Próximo servicio">
       <header><div><h2>Próximo servicio</h2></div><button className="button button-dark" onClick={onPlan}>Configurar planes<ArrowUpRight size={16} /></button></header>
-      {plans.error ? <ErrorNotice message={plans.error} /> : !plans.ready ? <p role="status">Cargando planes…</p> : <div className="dashboard-cycle-grid">{cycles.map(({type, plan, projection}) => <article className="dashboard-cycle" key={type}><div className="pm-card-title"><h3>{type === 'Mayor' ? 'Mantenimiento mayor' : 'Preventivo periódico'}</h3><span className={`pm-status ${projection.tone}`}>{planStatusLabel(projection)}</span></div><p className="pm-interval">{plan ? `Cada ${formatNumber(Number(plan.intervalo))} ${plan.criterio === 'Horas' ? 'horas' : 'días'}` : type === 'Mayor' ? 'Ciclo recomendado de 2,000 horas' : '250 horas o 30 / 60 / 90 días'}</p><PlanCycle plan={plan} projection={projection} compact />{!plan && <button className="summary-link" onClick={onPlan}>Definir la base y el intervalo<ArrowUpRight size={15} /></button>}</article>)}</div>}
+      {plans.error ? <ErrorNotice message={plans.error} /> : !plans.ready ? <p role="status">Cargando planes…</p> : <div className="dashboard-cycle-grid">{cycles.map(({type, plan, projection}) => <article className="dashboard-cycle" key={type}><div className="pm-card-title"><h3>{type === 'Mayor' ? 'Mantenimiento mayor' : 'Preventivo periódico'}</h3><PlanStatus projection={projection} /></div><p className="pm-interval">{plan ? `Cada ${formatNumber(Number(plan.intervalo))} ${plan.criterio === 'Horas' ? 'horas' : 'días'}` : type === 'Mayor' ? 'Ciclo recomendado de 2,000 horas' : '250 horas o 30 / 60 / 90 días'}</p><PlanCycle plan={plan} projection={projection} compact />{!plan && <button className="summary-link" onClick={onPlan}>Definir la base y el intervalo<ArrowUpRight size={15} /></button>}</article>)}</div>}
       <p className="dashboard-caption">Planes independientes del filtro de fechas · las fechas proyectadas requieren confirmación.</p>
     </section>;
   return render ? render({ indicators, planning, followUp }) : <div className="equipment-dashboard-overview">{indicators}<div className="dashboard-priorities">{planning}{followUp}</div></div>;

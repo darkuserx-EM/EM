@@ -1,22 +1,15 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Building2, CalendarDays, ChartNoAxesColumn, ChevronDown, ChevronRight, ClipboardList, Clock3, Database, FileText, Forklift, LayoutGrid, ListChecks, Menu, Route, Settings2, ShieldCheck, Ticket, Wallet, Wrench, type LucideIcon } from 'lucide-react';
+import { ArrowUpRight, Building2, ChevronDown, ChevronRight, Menu, ShieldCheck } from 'lucide-react';
 import { Brand, Modal, Toast } from './ui';
 import { demoUsers } from '../data/seed';
 import { useActor, useSession } from '../app/state';
 import { remoteSource, serverMode } from '../data/source';
 import { AccountDialog } from '../features/settings/AccountDialog';
 import { canAccessModule } from '../domain/permissions';
+import { clientNavigation, navigation, upcomingItems, type NavItem } from './navigation';
 import './client-shell.css';
 
-type NavItem = { module: string; title: string; icon: LucideIcon; stage?: number };
-export const navigation: { label: string; items: NavItem[] }[] = [
-  { label: 'ESPACIO DE TRABAJO', items: [{ module: 'inicio', title: 'Inicio', icon: LayoutGrid }, { module: 'flota', title: 'Flota de equipos', icon: Forklift, stage: 3 }, { module: 'clientes', title: 'Clientes', icon: Building2, stage: 2 }, { module: 'contratos', title: 'Contratos', icon: FileText, stage: 2 }] },
-  { label: 'SERVICIO Y OPERACIÓN', items: [{ module: 'tickets', title: 'Solicitudes', icon: Ticket, stage: 4 }, { module: 'ordenes', title: 'Órdenes de servicio', icon: ClipboardList, stage: 5 }, { module: 'preventivos', title: 'Mantenimiento', icon: Wrench, stage: 6 }, { module: 'calendario', title: 'Calendario', icon: CalendarDays }, { module: 'planificador', title: 'Planificador', icon: LayoutGrid }, { module: 'checklists', title: 'Checklist diario', icon: ListChecks, stage: 7 }, { module: 'horas', title: 'Horas de técnicos', icon: Clock3, stage: 8 }, { module: 'viaticos', title: 'Viáticos', icon: Wallet, stage: 8 }, { module: 'reportes', title: 'Reportes', icon: ChartNoAxesColumn, stage: 8 }] },
-  { label: 'ADMINISTRACIÓN', items: [{ module: 'catalogos', title: 'Catálogos', icon: Settings2 }, { module: 'datos', title: 'Datos y respaldos', icon: Database }, { module: 'accesos', title: 'Roles y accesos', icon: ShieldCheck }, { module: 'plan', title: 'Plan de trabajo', icon: Route }] },
-];
-/** Menú del cliente: sus nombres también se usan en la ruta de navegación. */
-export const clientNavigation = [{ path: 'portal', label: 'Mi empresa', icon: LayoutGrid }, { path: 'tickets', label: 'Solicitudes', icon: Ticket }, { path: 'ordenes', label: 'Reportes de servicio', icon: ClipboardList }, { path: 'calendario', label: 'Agenda', icon: CalendarDays }, { path: 'reportes', label: 'Indicadores', icon: ChartNoAxesColumn }];
 export function Shell() {
   const actor = useActor(); const setUser = useSession(state => state.setUserId); const location = useLocation(); const navigate = useNavigate();
   const [menu, setMenu] = useState(false); const [roles, setRoles] = useState(false);
@@ -24,6 +17,12 @@ export function Shell() {
   const connection = useSyncExternalStore(remoteSource.subscribeConnection, remoteSource.getConnection);
   const connectionLabel = !serverMode ? 'Demostración local' : connection === 'ok' ? 'Datos sincronizados' : connection === 'error' ? 'Sin conexión confirmada: revisa tu red' : 'Comprobando conexión';
   const isClient = actor.rol === 'Cliente';
+  const upcoming = upcomingItems(actor);
+  const [upcomingOpen, setUpcomingOpen] = useState(false);
+  // Si se entra a un módulo próximo (por enlace o dirección), la sección se abre para mostrarlo marcado.
+  const onUpcoming = upcoming.some(item => item.module === module);
+  useEffect(() => { if (onUpcoming) setUpcomingOpen(true); }, [onUpcoming]);
+  const navItem = (item: NavItem) => <NavLink key={item.module} to={`/${item.module}`} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><item.icon size={18} strokeWidth={1.7} /><span>{item.title}</span></NavLink>;
   const title = (isClient ? clientNavigation.find(item => item.path === module)?.label : navigation.flatMap(group => group.items).find(item => item.module === module)?.title) ?? 'Portal del cliente';
   useEffect(() => setMenu(false), [location.pathname]);
   useEffect(() => { if (!canAccessModule(actor, module)) navigate(actor.rol === 'Cliente' ? '/portal' : '/inicio', { replace: true }); }, [actor, module, navigate]);
@@ -34,9 +33,10 @@ export function Shell() {
       <div className="workspace-label"><span className="workspace-symbol">E</span><div><strong>EMSA Guatemala</strong><small>Gestión de flota y servicio</small></div><span className="online-dot" data-connection={serverMode ? connection : "local"} role="status" aria-label={connectionLabel} title={connectionLabel} /></div>
       <nav aria-label="Navegación principal">
         {isClient ? <>{clientNavigation.map(item=><NavLink key={item.path} className="nav-item" to={`/${item.path}`}><item.icon size={18}/><span>{item.label}</span></NavLink>)}</> : navigation.map(group => {
-          const items = group.items.filter(item => canAccessModule(actor, item.module));
-          return items.length ? <div className="nav-group" key={group.label}><p>{group.label}</p>{items.map(item => <NavLink key={item.module} to={`/${item.module}`} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><item.icon size={18} strokeWidth={1.7} /><span>{item.title}</span>{['contratos','checklists','horas','viaticos'].includes(item.module) && <span className="nav-stage" title="Pendiente por alcance">—</span>}</NavLink>)}</div> : null;
+          const items = group.items.filter(item => !item.upcoming && canAccessModule(actor, item.module));
+          return items.length ? <div className="nav-group" key={group.label}><p>{group.label}</p>{items.map(navItem)}</div> : null;
         })}
+        {upcoming.length > 0 && <div className="nav-group"><button type="button" className="nav-group-toggle" aria-expanded={upcomingOpen} aria-controls="nav-proximamente" onClick={() => setUpcomingOpen(open => !open)}>PRÓXIMAMENTE<span className="nav-group-count">{upcoming.length}</span><ChevronDown size={14} aria-hidden="true" /></button><div id="nav-proximamente" hidden={!upcomingOpen}>{upcoming.map(navItem)}</div></div>}
       </nav>
       <div className="sidebar-bottom"><span className="small-square"><ShieldCheck size={17} /></span><div><strong>{serverMode ? 'Pruebas en línea' : 'Espacio de demostración'}</strong><small>{serverMode ? 'Datos compartidos · MySQL' : 'Datos ficticios · versión 0.1'}</small></div></div>
     </aside>
