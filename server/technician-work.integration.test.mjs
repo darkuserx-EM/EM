@@ -90,7 +90,7 @@ test('Trabajo del técnico: permisos, concurrencia, reapertura e integridad',{sk
     assert.equal((await mutate('Ticket','update',{estado:'En revisión',reapertura_motivo:'Cierre accidental sin orden'},admin,ticket.id)).status,403);
     assert.deepEqual((await call(`attachments/${file.id}/file?orderId=${order.id}`,undefined,sessions.tech)).data,clip);
   });
-  await t.test('admin habilita equipos; técnico crea sin ticket y no puede ampliar sus permisos',async()=>{
+  await t.test('habilitaciones antiguas no limitan la creación; conserva el historial y los demás permisos',async()=>{
     const standalone={equipo_id:'eq-b',sintoma:'Inspección autorizada',estado:'Borrador'};
     assert.equal((await mutate('OrdenServicio','create',standalone,sessions.tech)).status,200);
     let technician=(await readSnapshot(pool)).entities.Tecnico.find(row=>row.id===tech);
@@ -117,9 +117,13 @@ test('Trabajo del técnico: permisos, concurrencia, reapertura e integridad',{sk
     assert.deepEqual(writes.map(r=>r.status).sort(),[200,409]);shared=writes.find(r=>r.status===200).data.result;
     assert.equal((await mutate('OrdenServicio','update',{tecnico_apoyo_2_id:''},sessions.otherTech,shared.id)).status,400);
     assert.equal((await call('operations/OrdenServicio?id='+shared.id,undefined,sessions.client)).data.total,0);
-    const uploadId=randomUUID();assert.equal((await call('videos/start',{orderId:shared.id,requestId:uploadId,name:'Apoyo.mp4',size:clip.length,sha256},sessions.otherTech)).status,200);
+    const uploadId=randomUUID();assert.equal((await call('videos/start',{orderId:shared.id,category:'Antes',requestId:uploadId,name:'Apoyo.mp4',size:clip.length,sha256},sessions.otherTech)).status,200);
     const uploaded=await call('videos/'+uploadId+'/finish',{},sessions.otherTech);assert.equal(uploaded.status,201,JSON.stringify(uploaded.data));
     for(const who of ['tech','otherTech','thirdTech'])assert.deepEqual((await call('attachments/'+uploaded.data.file.id+'/file',undefined,sessions[who])).data,clip);
+    shared=await update('OrdenServicio',shared,{tecnico_apoyo_2_id:''},sessions.tech);
+    assert.equal((await call('operations/OrdenServicio?id='+shared.id,undefined,sessions.thirdTech)).data.total,0);
+    assert.equal((await call('attachments/'+uploaded.data.file.id+'/file',undefined,sessions.thirdTech)).status,404);
+    shared=await update('OrdenServicio',shared,{tecnico_apoyo_2_id:accounts.thirdTech.technicianId},sessions.coordinator);
     shared=await update('OrdenServicio',shared,{estado:'Completada',trabajo_realizado:'Ajuste',pruebas_realizadas:'Elevación',resultado_pruebas:'Correcto'},sessions.thirdTech);assert.equal(shared.estado,'Completada');
     assert.equal((await readSnapshot(pool)).entities.OrdenServicio.filter(r=>r.id===shared.id).length,1);
   });
