@@ -1,10 +1,10 @@
 import { assignedTo, orderTeamLabel } from '../../domain/order-team';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowUpRight, ClipboardList, Eye, EyeOff, Pencil, Plus, Printer, Search, Wrench } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, ClipboardList, Eye, EyeOff, History, Pencil, Plus, Printer, Search, Wrench } from 'lucide-react';
 import { useActor, useRows, useToast, useOperationPage } from '../../app/state';
 import { EmptyState, ErrorNotice, Modal, SectionTitle } from '../../components/ui';
-import { FilterToggle } from '../../components/design-system';
+import { FilterToggle, KpiCard } from '../../components/design-system';
 import { clientDisplayName } from '../../domain/client-profile';
 import { formatNumber } from '../../domain/format';
 import type { EntityRecord } from '../../domain/model';
@@ -41,6 +41,12 @@ export default function ServiceOrders() {
   const ticket = canCreate && params.get('ticket') !== dismissedTicket ? tickets.rows.find(row => row.id === params.get('ticket') && canCreateTicketOrder(actor, row)) : undefined;
   const createFromLink = canCreate && params.get('nueva') === '1';
   const activeFilters = (['client', 'equipment', 'technician', 'state', 'origin', 'from', 'to'] as const).filter(key => filters[key]).length;
+  const counters = [
+    { label: 'Órdenes actuales', icon: <ClipboardList size={18} />, origin: 'actual', state: '', value: orders.data?.counts.actual },
+    { label: 'Programadas', icon: <CalendarDays size={18} />, origin: 'actual', state: 'Programada', value: orders.data?.counts.actualStates.Programada ?? (orders.data ? 0 : undefined) },
+    { label: 'En proceso', icon: <Wrench size={18} />, origin: 'actual', state: 'En proceso', value: orders.data?.counts.actualStates['En proceso'] ?? (orders.data ? 0 : undefined) },
+    { label: 'Reportes históricos', icon: <History size={18} />, origin: 'historico', state: '', value: orders.data?.counts.historico },
+  ];
   const change = (key: keyof typeof filters, value: string) => { setPage(1); setFilters({ ...filters, [key]: value, ...(key === 'client' ? { equipment: '' } : {}) }); };
   const open = (id: string) => { setShareError(''); const next = new URLSearchParams(params); next.delete('nueva'); next.delete('ticket'); next.set('orden', id); setParams(next); };
   const close = () => { if (!attachmentBusy && !sharing) { const next = new URLSearchParams(params); next.delete('orden'); setParams(next); } };
@@ -53,7 +59,7 @@ export default function ServiceOrders() {
   }
   return <div className="operations-page">
     <SectionTitle eyebrow={actor.rol === 'Técnico' ? 'MI TRABAJO' : actor.rol === 'Cliente' ? 'MI FLOTA' : 'SERVICIO Y OPERACIÓN'} title={actor.rol === 'Técnico' ? 'Mis órdenes de servicio' : actor.rol === 'Cliente' ? 'Reportes de servicio' : 'Órdenes de servicio'} description={actor.rol === 'Técnico' ? 'Tus visitas asignadas, diagnóstico, trabajo realizado y pruebas de cierre.' : actor.rol === 'Cliente' ? 'Los servicios realizados en tus equipos, con su reporte.' : 'Consulta cada servicio por cliente y equipo. El historial importado conserva su información de origen.'}>{canCreate && <button className="button button-dark" onClick={() => setEditor('new')}><Plus size={16} />Nueva orden</button>}</SectionTitle>
-    <div className="os-counters" aria-label="Filtrar órdenes"><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'actual' }); setPage(1); }}><ClipboardList size={18} /><strong>{orders.data?.counts.actual ?? '—'}</strong><span>Órdenes actuales</span></button><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'actual', state: 'Programada' }); setPage(1); }}><strong>{orders.data ? orders.data.counts.actualStates.Programada||0 : '—'}</strong><span>Programadas</span></button><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'actual', state: 'En proceso' }); setPage(1); }}><Wrench size={18} /><strong>{orders.data ? orders.data.counts.actualStates['En proceso']||0 : '—'}</strong><span>En proceso</span></button><button onClick={() => { setFilters({ ...emptyOperationFilters, origin: 'historico' }); setPage(1); }}><strong>{orders.data?.counts.historico ?? '—'}</strong><span>Reportes históricos</span></button></div>
+    <div className="kpi-grid kpi-grid-page" role="group" aria-label="Filtrar órdenes">{counters.map(item => { const pressed = filters.origin === item.origin && filters.state === item.state; return <KpiCard key={item.label} icon={item.icon} label={item.label} value={item.value ?? '—'} pressed={pressed} onClick={() => { setFilters(pressed ? { ...emptyOperationFilters } : { ...emptyOperationFilters, origin: item.origin, state: item.state }); setPage(1); }} />; })}</div>
     <section className="panel os-list-panel">
       <div className="os-filters">
         <label className="os-filter-search"><span><Search size={14} />Buscar reporte o equipo</span><input type="search" placeholder="Código, serie, ID del cliente o diagnóstico" value={filters.search} onChange={event => change('search', event.target.value)} /></label>

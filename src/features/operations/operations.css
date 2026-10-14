@@ -2,13 +2,6 @@
 .operations-page { min-width: 0; }
 
 /* Contadores */
-.os-counters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
-.os-counters > button { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; text-align: left; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); padding: 16px 18px; color: var(--color-text); }
-.os-counters > button:hover, .os-counters > button[aria-pressed=true] { border-color: var(--color-border-strong); background: var(--color-surface-subtle); }
-.os-counters > button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.os-counters strong { font-size: var(--text-2xl); letter-spacing: -.8px; grid-row: 1; grid-column: 1; }
-.os-counters svg { grid-column: 2; grid-row: 1; color: var(--color-text-muted); align-self: center; }
-.os-counters span { color: var(--color-text-muted); font-size: var(--text-sm); grid-column: 1 / -1; }
 
 /* Filtros y resultados */
 .os-filters { padding: 18px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
@@ -86,14 +79,11 @@
 }
 @media (max-width: 850px) {
   .os-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .os-counters { gap: 9px; }
-  .os-counters > button { padding: 14px; }
   .os-report-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .os-steps button { padding: 8px; }
   .os-steps { gap: 5px; }
 }
 @media (max-width: 580px) {
-  .os-counters { grid-template-columns: 1fr 1fr; }
   .os-filters { padding: 14px; gap: 12px; }
   .os-filter-search { grid-column: 1 / -1; }
   .os-filters input, .os-filters select { font-size: 16px; } /* 16 px evita el zoom automático de iOS */
