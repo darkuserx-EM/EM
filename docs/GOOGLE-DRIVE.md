@@ -1,5 +1,17 @@
 # Fotografías privadas en Google Drive
 
+## Carpetas automáticas (etapa posterior a la activación)
+
+La conexión está activa en producción. Las imágenes antiguas de prueba se retiraron con autorización del titular, respaldo completo y ensayo de recuperación; no se retiraron registros, historial ni logotipos de clientes.
+
+El organizador crea `PORTAL_EM/Equipos`, `Solicitudes` y `Reportes`. Equipos usa `código_ID/Fotos` y `Miniaturas`; solicitudes y reportes agregan año de carga en Guatemala, `código_ID`, y `Fotos`, `Videos` o `Documentos` según MIME (la clasificación Videos queda preparada; cargar video requiere su etapa específica). Solo se crean subcarpetas necesarias. El ID corto evita confundir códigos históricos repetidos.
+
+Las cargas nuevas se confirman primero y se clasifican después, fuera de transacciones operativas. En producción se dispara tras guardar un registro o evidencia y también durante el mantenimiento periódico (arranque y cada 15 minutos), en lotes de hasta 20 archivos. Una interrupción deja la misma referencia accesible y el siguiente ciclo reintenta. Los recibos sin registro guardado no se clasifican ni borran.
+
+`em_drive_folders` reserva una única identidad por ruta; `em_drive_blobs.folder_id` registra la clasificación confirmada. Se mueve el archivo conservando su ID, contenido y checksum; no cambia fechas/autores de evidencia, permisos operativos, bitácora ni respaldo portable. El contenido reutilizado conserva su primer origen registrado: la orden enlazada no crea una copia del archivo del ticket. No reclasificar manualmente ni compartir estas carpetas. Antes de crear o mover, se valida que todos los padres pertenezcan a la carpeta privada del propietario; los reintentos de carga aceptan los originales ya clasificados.
+
+El organizador también atiende archivos anteriores de Drive que ya están vinculados a registros. No convierte ni elimina los binarios locales, no toca AppSheet y no purga archivos históricos. Si Google falla, la clasificación queda pendiente, se registra un error seguro y el registro sigue guardado. Desactivar nuevas cargas a Drive detiene el organizador; los ID existentes continúan sirviendo para lectura.
+
 ## Alcance y activación
 
 Proveedor optativo para archivos nuevos. `FILE_STORAGE=mysql` sigue siendo el valor predeterminado. No borra ni migra archivos existentes, no cambia registros ni permisos operativos. Activar `google-drive` únicamente después de completar la conexión del propietario, probar una carga real, descargar y verificar un respaldo completo y confirmar la configuración del alojamiento.

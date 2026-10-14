@@ -64,3 +64,33 @@ test('Drive: conserva los bytes locales y mantiene fuera de alcance el video',as
   assert.deepEqual(await localFiles.read({},await localFiles.prepare(bytes,'image/png')),bytes);
   const {drive,calls}=mock();await assert.rejects(drive.put(fileId,bytes,'video/mp4'));assert.equal(calls.length,0);
 });
+
+test('Drive: organiza sin copiar, admite reintentos y rechaza carpetas compartidas o externas',async()=>{
+  const child='child_private_portal_12345',outside='outside_private_portal_12345';
+  const folders=new Map([[folderId,folder()]]);let parent=folderId,moves=0,creates=0,lost=false;
+  const request=async(url,init={})=>{
+    const u=new URL(url),id=u.pathname.split('/').at(-1);
+    if(u.hostname==='oauth2.googleapis.com')return json({access_token:'synthetic',expires_in:3600});
+    if(init.method==='POST'&&u.pathname==='/drive/v3/files'){
+      const data=JSON.parse(init.body);creates++;folders.set(data.id,{...folder(),...data});return json({id:data.id});
+    }
+    if(id===fileId){
+      if(init.method==='PATCH'){assert.equal(u.searchParams.get('removeParents'),parent);parent=u.searchParams.get('addParents');moves++;if(lost){lost=false;throw Error('Lost move response');}}
+      return json({...metadata(),parents:[parent]});
+    }
+    if(folders.has(id))return json(folders.get(id));
+    return json({},404);
+  };
+  const drive=createDriveStorage({...config,fetch:request});
+  await drive.folder(child,'Solicitudes',folderId);await drive.folder(child,'Solicitudes',folderId);assert.equal(creates,1);
+  lost=true;await assert.rejects(drive.move(fileId,child,{sha256:sha,mime:'image/png',size:bytes.length}),e=>e.code==='DRIVE_NETWORK');
+  await drive.move(fileId,child,{sha256:sha,mime:'image/png',size:bytes.length});assert.equal(moves,1);
+  await drive.put(fileId,bytes,'image/png');assert.equal(moves,1,'Reutilizar la foto no cambia su ubicación');
+  const privateChild={...folders.get(child)};
+  folders.set(child,{...privateChild,permissions:[{role:'owner'},{role:'reader'}]});
+  await assert.rejects(drive.put(fileId,bytes,'image/png'),e=>e.code==='DRIVE_FOLDER_PRIVATE');
+  folders.set(child,{...privateChild,parents:[outside]});folders.set(outside,{...folder(),id:outside,parents:[]});
+  await assert.rejects(drive.put(fileId,bytes,'image/png'),e=>e.code==='DRIVE_FOLDER_PRIVATE');
+  folders.set(child,privateChild);
+  await assert.rejects(drive.move(fileId,folderId,{sha256:'0'.repeat(64),mime:'image/png',size:bytes.length}),e=>e.code==='DRIVE_INTEGRITY');assert.equal(moves,1);
+});

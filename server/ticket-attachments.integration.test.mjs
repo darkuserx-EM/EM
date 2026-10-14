@@ -17,9 +17,12 @@ for (const external of [false,true]) test(`Fotografías de tickets (${external?'
   const pool=mysql.createPool({...config,database:name,connectionLimit:5});let server;
   t.after(async()=>{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await pool.end();assert.match(name,/^em_ci_[a-f0-9]{32}$/);await control.query(`DROP DATABASE ${name}`);await control.end();});
   await migrate(pool);await migrate(pool);
-  const remote=new Map(); let remoteFailure=false;
+  const remote=new Map(),folders=new Map(),locations=new Map(); let remoteFailure=false;
   const storage=external?createFileStore(pool,{
     reserve:async()=>randomUUID(),verifyFolder:async()=>({private:true}),
+    rootId:'synthetic-private-root',
+    folder:async(id,name,parent)=>{if(folders.has(id))assert.deepEqual(folders.get(id),{name,parent});folders.set(id,{name,parent});},
+    move:async(id,destination,expected)=>{assert.ok(folders.has(destination));assert.equal(createHash('sha256').update(remote.get(id)).digest('hex'),expected.sha256);locations.set(id,destination);},
     put:async(id,bytes)=>{if(remoteFailure)throw new DriveStorageError('DRIVE_NETWORK','Drive unavailable');if(remote.has(id))assert.deepEqual(remote.get(id),bytes);remote.set(id,bytes);},
     get:async(id,size,sha)=>{const bytes=remote.get(id);assert.equal(bytes.length,size);assert.equal(createHash('sha256').update(bytes).digest('hex'),sha);return bytes;},
   }):localFiles;
@@ -75,6 +78,7 @@ for (const external of [false,true]) test(`Fotografías de tickets (${external?'
     const [rows]=await pool.query('SELECT COUNT(*) AS n FROM em_attachments');assert.equal(rows[0].n,3);
   });
   await t.test('límite concurrente, cierre sin borrado y revocación de asignación',async()=>{
+    if(external){await storage.organize();await storage.organize();assert.equal(locations.size,3);for(const destination of locations.values()){let folder=folders.get(destination);while(folder.parent!=='synthetic-private-root')folder=folders.get(folder.parent);assert.equal(folder.name,'Solicitudes','La orden consulta el original de la solicitud');}}
     for(let n=0;n<6;n++)assert.equal((await call('ticket-attachments',{...body,requestId:randomUUID(),base64:(await photo(130+n)).toString('base64')},admin)).status,201);
     const lastSlot=await Promise.all([148,149].map(async r=>call('ticket-attachments',{...body,requestId:randomUUID(),base64:(await photo(r)).toString('base64')},admin)));
     assert.deepEqual(lastSlot.map(r=>r.status).sort(),[201,400]);
