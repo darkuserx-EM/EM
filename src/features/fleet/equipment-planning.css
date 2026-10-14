@@ -20,9 +20,8 @@
 .pm-history { border-top:1px solid var(--color-border); padding-top:16px; margin-top:20px; font-size:var(--text-xs); color:var(--color-text-muted); line-height:1.8; }.pm-history summary { cursor:pointer; }.pm-history summary svg { vertical-align:middle; margin-right:6px; }.pm-history li { margin:15px 0; }.pm-history p { overflow-wrap:anywhere; }
 .pm-footnote { font-size:var(--text-xs); line-height:1.9; color:var(--color-text-muted); margin-top:20px; }
 .pm-form { display:grid; grid-template-columns:1fr 1fr; gap:18px 22px; }.pm-full { grid-column:1 / -1; }.pm-form label { display:grid; gap:8px; font-size:var(--text-xs); color:var(--color-text-muted); }.pm-form input,.pm-form select,.pm-form textarea { width:100%; font-size:var(--text-md); min-height:42px; }.pm-form textarea { line-height:1.8; resize:vertical; }.pm-form-note { font-size:var(--text-xs); line-height:1.9; color:var(--color-text-muted); }.pm-form .pm-confirm { display:flex; align-items:flex-start; padding:16px; background:var(--color-surface-subtle); border-radius:8px; line-height:1.8; }.pm-confirm input { width:17px; min-height:17px; flex-shrink:0; margin-top:4px; }.pm-form .modal-actions { margin-top:0; }
-.pm-overview-counters { display:grid; grid-template-columns:repeat(4,1fr); gap:15px; margin:25px 0; }.pm-overview-counters > div { background:var(--color-surface-subtle); border:1px solid var(--color-border); border-radius:10px; padding:20px; }.pm-overview-counters strong { display:block; font-size:28px; font-weight:500; margin-bottom:8px; }.pm-overview-counters span { font-size:var(--text-xs); }
 .pm-toolbar { display:flex; gap:16px; padding:18px; flex-wrap:wrap; }.pm-toolbar label { display:grid; gap:7px; font-size:var(--text-xs); flex:1; min-width:180px; }.pm-table-detail { display:block; font-size:var(--text-xs); margin-top:7px; line-height:1.8; color:var(--color-text-muted); }.pm-dashboard .data-table td { vertical-align:top; }.pm-dashboard .data-table small { display:block; margin-top:6px; }.pm-open { white-space:nowrap; color:var(--color-accent); font-size:var(--text-xs); text-decoration:underline; }
-@media(max-width:600px) { .pm-form { grid-template-columns:1fr; }.pm-card,.pm-heading { padding:18px; }.pm-heading h2 { font-size:19px; }.pm-base { grid-template-columns:1fr; }.pm-overview-counters { grid-template-columns:1fr 1fr; }.pm-overview-counters > div { padding:15px; } }
+@media(max-width:600px) { .pm-form { grid-template-columns:1fr; }.pm-card,.pm-heading { padding:18px; }.pm-heading h2 { font-size:19px; }.pm-base { grid-template-columns:1fr; } }
 
 /* Readable text and focus for the planning module, without changing other pages. */
 .pm-discard { border:1px solid var(--color-border); background:var(--color-warning-bg); padding:16px; border-radius:8px; font-size:var(--text-md); }
@@ -39,12 +38,6 @@
 .pm-dashboard { color:var(--color-text); }
 .pm-dashboard-context { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:15px 0 0; color:var(--color-text-muted); font-size:var(--text-sm); }
 .pm-dashboard-context > span:last-child { margin-left:auto; }
-.pm-overview-counters > button { display:grid; grid-template-columns:1fr auto; gap:12px; padding:22px; text-align:left; background:var(--color-surface); border:1px solid var(--color-border); border-radius:14px; }
-.pm-overview-counters > button svg { grid-column:2; grid-row:1; color:var(--color-text-muted); }
-.pm-overview-counters > button span { grid-column:1; grid-row:1; font-size:var(--text-sm); line-height:1.7; }
-.pm-overview-counters > button strong { grid-column:1/-1; font-size:32px; color:var(--color-text); margin:0; }
-.pm-overview-counters > button small { grid-column:1/-1; font-size:var(--text-xs); line-height:1.7; color:var(--color-text-muted); }
-.pm-overview-counters > button:hover,.pm-overview-counters > button[aria-pressed=true] { background:var(--color-surface-subtle); border-color:var(--color-accent); }
 .pm-dashboard .panel { border-radius:14px; }
 .pm-results { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; padding:0 20px 18px; font-size:var(--text-xs); color:var(--color-text-muted); }
 .pm-results button { text-decoration:underline; text-underline-offset:3px; min-height:32px; }
@@ -53,8 +46,7 @@
 .pm-dashboard .data-table th { padding:16px 20px; background:var(--color-surface-subtle); }
 .pm-open { display:inline-flex; padding:10px 12px; border:1px solid var(--color-border); border-radius:7px; background:var(--color-surface-subtle); font-size:var(--text-sm); text-decoration:none; min-height:42px; align-items:center; }
 .pm-dashboard .data-table tbody tr:hover { background:var(--color-surface); }
-@media(max-width:1150px) { .pm-overview-counters { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media(max-width:600px) { .pm-overview-counters > button { padding:16px; gap:9px; }.pm-dashboard-context > span:last-child { margin-left:0; }.pm-overview-counters > button svg { display:none; }.pm-overview-counters > button span { grid-column:1/-1; } }
+@media(max-width:600px) { .pm-dashboard-context > span:last-child { margin-left:0; } }
 .pm-heading p,.pm-target p,.pm-explanation,.pm-forecast p,.pm-base dd,
 .pm-form label,.pm-form input,.pm-form select,.pm-form textarea,
 .pm-actions .button,.pm-form .button,.pm-toolbar input,.pm-toolbar select { font-size:var(--text-md); }
@@ -76,3 +68,6 @@
 @media (pointer: coarse) {
   .pm-results button { min-height: var(--target-min); }
 }
+
+/* Indicadores (KpiCard): separación con el resumen de arriba. */
+.pm-kpis { margin-top: var(--space-6); }
