@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { select, selectQuery } from './sql.mjs';
 import { createDriveStorage, DriveStorageError } from './drive-storage.mjs';
+import {createFolderOrganizer} from './drive-folders.mjs';
 
 /** @typedef {{content:Buffer,storage_key?:string|null,sha256?:string,size?:number}} StoredBytes */
 /** @typedef {{sha256:string,file_id:string,mime:string,size:number,ready:number}} BlobRow */
-/** @typedef {{enabled:boolean,prepare:(bytes:Buffer,mime:string)=>Promise<{content:Buffer,storage_key:string|null}>,read:(conn:import('./contracts.js').SqlConnection,file:StoredBytes)=>Promise<Buffer>}} FileStore */
+/** @typedef {{enabled:boolean,organize?:()=>Promise<number>,prepare:(bytes:Buffer,mime:string)=>Promise<{content:Buffer,storage_key:string|null}>,read:(conn:import('./contracts.js').SqlConnection,file:StoredBytes)=>Promise<Buffer>}} FileStore */
 /** @type {FileStore} */
 export const localFiles = {
   enabled:false,
@@ -17,6 +18,9 @@ export const localFiles = {
 /** @param {import('mysql2/promise').Pool} pool */
 export async function ensureFileStorage(pool) {
   await pool.query('CREATE TABLE IF NOT EXISTS em_drive_blobs (sha256 CHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,file_id VARCHAR(200) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,mime VARCHAR(40) NOT NULL,size INT NOT NULL,ready BOOLEAN NOT NULL DEFAULT FALSE,created_at BIGINT NOT NULL) ENGINE=InnoDB');
+  await pool.query('CREATE TABLE IF NOT EXISTS em_drive_folders (path_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,file_id VARCHAR(200) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,parent_id VARCHAR(200) NOT NULL,name VARCHAR(100) NOT NULL) ENGINE=InnoDB');
+  const folderColumns=await selectQuery(pool,"SHOW COLUMNS FROM em_drive_blobs LIKE 'folder_id'");
+  if(!folderColumns.length)try{await pool.query('ALTER TABLE em_drive_blobs ADD COLUMN folder_id VARCHAR(200) NULL');}catch(error){if(!(error instanceof Error)||!('code' in error)||error.code!=='ER_DUP_FIELDNAME')throw error;}
   for (const table of ['em_media','em_media_uploads','em_attachments']) {
     for (const column of table === 'em_attachments' ? ['storage_key'] : ['storage_key','thumbnail_key']) {
       const columns = await selectQuery(pool,`SHOW COLUMNS FROM ${table} LIKE ?`,[column]);
@@ -31,6 +35,7 @@ export async function ensureFileStorage(pool) {
 export function createFileStore(pool, drive, enabled=true) {
   return {
     enabled,
+    organize:enabled ? createFolderOrganizer(pool,drive) : undefined,
     async prepare(bytes,mime) {
       if (!enabled) return localFiles.prepare(bytes,mime);
       const sha256 = createHash('sha256').update(bytes).digest('hex');

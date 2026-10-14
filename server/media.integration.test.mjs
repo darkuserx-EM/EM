@@ -19,9 +19,12 @@ for (const external of [false,true]) test(`Fotografías separadas (${external?'D
   await control.query(`CREATE DATABASE ${name} CHARACTER SET utf8mb4`); const pool = mysql.createPool({...config,database:name}); let server;
   t.after(async () => { if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } await pool.end(); assert.match(name,/^em_ci_[a-f0-9]{32}$/); await control.query(`DROP DATABASE ${name}`); await control.end(); });
   await migrate(pool); await migrate(pool);
-  const remote=new Map();let remoteUnavailable=false;
+  const remote=new Map(),folders=new Map(),locations=new Map();let remoteUnavailable=false;
   const files=external?createFileStore(pool,{
     reserve:async()=>randomUUID(),verifyFolder:async()=>({private:true}),
+    rootId:'synthetic-private-root',
+    folder:async(id,name,parent)=>{if(folders.has(id))assert.deepEqual(folders.get(id),{name,parent});folders.set(id,{name,parent});},
+    move:async(id,destination,expected)=>{assert.ok(folders.has(destination));assert.equal(createHash('sha256').update(remote.get(id)).digest('hex'),expected.sha256);locations.set(id,destination);},
     put:async(id,bytes)=>{if(remote.has(id))assert.deepEqual(remote.get(id),bytes);remote.set(id,bytes);},
     get:async(id,size,sha)=>{if(remoteUnavailable)throw new DriveStorageError('DRIVE_NETWORK','Drive unavailable');const bytes=remote.get(id);assert.equal(bytes.length,size);assert.equal(createHash('sha256').update(bytes).digest('hex'),sha);return bytes;},
   }):localFiles;
@@ -116,6 +119,13 @@ for (const external of [false,true]) test(`Fotografías separadas (${external?'D
     const [stored]=await pool.execute("SELECT payload FROM em_records WHERE entity='Equipo' AND id='eq-a'");assert.ok(!stored[0].payload.includes('base64'));
   });
   let archive, backupEntries;
+  if(external)await t.test('clasifica equipo y miniatura conservando identidad, bytes e historial',async()=>{
+    const before=await readSnapshot(pool),originals=Array.from(remote.entries());
+    await files.organize();await files.organize();
+    assert.deepEqual(Array.from(remote.entries()),originals);assert.deepEqual(await readSnapshot(pool),before);
+    assert.equal(locations.size,2);assert.ok([...folders.values()].some(f=>f.name==='Equipos'));assert.ok([...folders.values()].some(f=>f.name==='Miniaturas'));
+    assert.deepEqual(Buffer.from(await (await fetch(url+imageUrl(current,'foto_frontal'),{headers:headers(a)})).arrayBuffer()),jpg);
+  });
   await t.test('respaldo consistente contiene registros y todos los binarios, incluso fotos retiradas',async()=>{
     assert.equal((await mutate('update','Equipo',{foto_frontal:''},'eq-a')).status,200);
     assert.equal((await fetch(url+imageUrl(current,'foto_frontal'),{headers:headers(a)})).status,404);

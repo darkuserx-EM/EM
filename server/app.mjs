@@ -151,6 +151,12 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   });
   app.post('/api/session/activity', (_req,res) => res.json({ok:true}));
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf,mustChangePassword:req.mustChangePassword}));
+  app.use('/api',(req,res,next)=>{
+    if(production && files.organize && req.method==='POST' && ['/mutate','/attachments','/ticket-attachments'].includes(req.path))res.once('finish',()=>{
+      if(res.statusCode<300)void files.organize?.().catch(error=>logFailure(error,{event:'drive.organize',status:503},logger));
+    });
+    next();
+  });
   // Small authenticated requests are parsed only after session and CSRF checks.
   app.use('/api', (req,res,next) => ['/mutate','/attachments','/ticket-attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
   registerMfaRoutes(app,{pool,key:mfaKey});

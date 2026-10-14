@@ -78,8 +78,55 @@ export function createDriveStorage({clientId,clientSecret,refreshToken,folderId,
     if (folder.id !== folderId || folder.name !== 'PORTAL_EM' || folder.mimeType !== 'application/vnd.google-apps.folder' || folder.trashed !== false || folder.ownedByMe !== true || !owners.some(owner => String(owner.emailAddress).toLowerCase() === ownerEmail.toLowerCase()) || !permissions.length || permissions.some(permission => permission.role !== 'owner') || object(folder.capabilities).canAddChildren !== true) throw unavailable('DRIVE_FOLDER_PRIVATE', 'PORTAL_EM debe ser una carpeta privada de la cuenta propietaria, sin enlaces públicos ni acceso compartido.');
     return {id:folderId,name:'PORTAL_EM',private:true};
   }
+  /** @param {string} id @returns {Promise<Record<string,unknown>>} */
+  async function privateFolder(id) {
+    if(!idPattern.test(id))throw unavailable('DRIVE_FOLDER_PRIVATE','La carpeta no pertenece a PORTAL_EM.');
+    const response=await call(`${api}/files/${id}?fields=id,name,mimeType,parents,trashed,ownedByMe,owners(emailAddress),permissions(type,role),capabilities(canAddChildren)`);check(response);
+    const data=object(await response.json());
+    const owners=Array.isArray(data.owners)?data.owners.map(object):[],permissions=Array.isArray(data.permissions)?data.permissions.map(object):[];
+    if(data.id!==id || data.mimeType!=='application/vnd.google-apps.folder' || data.trashed!==false || data.ownedByMe!==true || !owners.some(o=>String(o.emailAddress).toLowerCase()===ownerEmail.toLowerCase()) || !permissions.length || permissions.some(p=>p.role!=='owner') || object(data.capabilities).canAddChildren!==true)throw unavailable('DRIVE_FOLDER_PRIVATE','Las carpetas del portal deben permanecer privadas y en la cuenta propietaria.');
+    return data;
+  }
+  /** @param {string} id */
+  async function verifyTree(id) {
+    const seen=new Set();
+    for(let depth=0;depth<7;depth++) {
+      if(id===folderId){await verifyFolder();return;}
+      if(seen.has(id))break;seen.add(id);
+      const data=await privateFolder(id);
+      if(!Array.isArray(data.parents)||data.parents.length!==1||typeof data.parents[0]!=='string')break;
+      id=data.parents[0];
+    }
+    throw unavailable('DRIVE_FOLDER_PRIVATE','La carpeta no pertenece a PORTAL_EM.');
+  }
   return {
+    rootId:folderId,
     verifyFolder,
+    /** @param {string} id @param {string} name @param {string} parent */
+    async folder(id,name,parent) {
+      if(!idPattern.test(id)||!name||name.length>100||/[\x00-\x1f/\\]/.test(name))throw unavailable('DRIVE_INPUT','La carpeta no es válida.');
+      await verifyTree(parent);
+      const old=await call(`${api}/files/${id}?fields=id`);
+      if(old.status===404) {
+        const created=await call(`${api}/files`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,name,mimeType:'application/vnd.google-apps.folder',parents:[parent]})});
+        if(created.status!==409)check(created);
+      }else check(old);
+      const data=await privateFolder(id);
+      if(data.name!==name||!Array.isArray(data.parents)||data.parents.length!==1||data.parents[0]!==parent)throw unavailable('DRIVE_FOLDER_PRIVATE','La carpeta registrada cambió. No se movieron archivos.');
+    },
+    /** @param {string} id @param {string} destination @param {{sha256:string,mime:string,size:number}} expected */
+    async move(id,destination,expected) {
+      if(!idPattern.test(id)||!idPattern.test(destination))throw unavailable('DRIVE_INPUT','La ubicación no es válida.');
+      await verifyTree(destination);
+      const url=`${api}/files/${id}?fields=id,size,mimeType,sha256Checksum,parents,trashed`;
+      const before=await call(url);check(before);const data=object(await before.json());
+      if(data.id!==id||data.trashed!==false||data.sha256Checksum!==expected.sha256||data.mimeType!==expected.mime||Number(data.size)!==Number(expected.size)||!Array.isArray(data.parents)||data.parents.length!==1||typeof data.parents[0]!=='string')throw unavailable('DRIVE_INTEGRITY','El archivo no coincide con su registro. No se movió.');
+      await verifyTree(data.parents[0]);
+      if(data.parents[0]===destination)return;
+      const result=await call(`${api}/files/${id}?addParents=${destination}&removeParents=${data.parents[0]}&fields=id,size,mimeType,sha256Checksum,parents,trashed`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:'{}'});check(result);
+      const after=await call(url);check(after);const moved=object(await after.json());
+      if(moved.id!==id||moved.sha256Checksum!==expected.sha256||Number(moved.size)!==Number(expected.size)||moved.mimeType!==expected.mime||moved.trashed!==false||!Array.isArray(moved.parents)||moved.parents.length!==1||moved.parents[0]!==destination)throw unavailable('DRIVE_INTEGRITY','No se pudo verificar la nueva ubicación. Se conservaron los identificadores.');
+    },
     async reserve() {
       const response = await call(`${api}/files/generateIds?count=1&space=drive&type=files`); check(response);
       const data = object(await response.json()), id = Array.isArray(data.ids) ? data.ids[0] : undefined;
@@ -95,7 +142,8 @@ export function createDriveStorage({clientId,clientSecret,refreshToken,folderId,
       /** @param {Response} response */
       const verify = async response => {
         check(response); const data = object(await response.json());
-        if (data.id !== id || data.trashed !== false || Number(data.size) !== bytes.length || data.mimeType !== mime || data.sha256Checksum !== sha256 || !Array.isArray(data.parents) || !data.parents.includes(folderId)) throw unavailable('DRIVE_INTEGRITY', 'El archivo de Drive no coincide con la carga. No se ha enlazado al registro.');
+        if (data.id !== id || data.trashed !== false || Number(data.size) !== bytes.length || data.mimeType !== mime || data.sha256Checksum !== sha256 || !Array.isArray(data.parents) || data.parents.length!==1 || typeof data.parents[0]!=='string') throw unavailable('DRIVE_INTEGRITY', 'El archivo de Drive no coincide con la carga. No se ha enlazado al registro.');
+        await verifyTree(data.parents[0]);
       };
       const old = await call(metadataUrl);
       if (old.ok) { await verify(old); return; }
