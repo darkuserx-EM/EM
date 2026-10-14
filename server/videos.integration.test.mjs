@@ -108,6 +108,7 @@ test('Videos privados: cuatro perfiles, reintentos, rangos y recuperación',{ski
     assert.equal((await call('admin/attachments/restore',{file:stored},admin)).status,200);
     const [rows]=await pool.execute('SELECT * FROM em_attachments WHERE id=?',[file.id]);for(const [key,value] of Object.entries(stored.metadata))assert.equal(rows[0][key],value);assert.equal(rows[0].content.length,0);
     assert.deepEqual((await readSnapshot(pool)).entities.Bitacora,before);
-    assert.deepEqual((await call(`attachments/${file.id}/file?orderId=${order.id}`,undefined,sessions.tech)).data,bytes);
+    const reopened=await call(`attachments/${file.id}/file?orderId=${order.id}`,undefined,sessions.tech);
+    assert.deepEqual(reopened.data,bytes);assert.match(reopened.headers.get('content-security-policy'),/media-src 'self'/);assert.ok(!reopened.headers.get('content-security-policy').includes('sandbox'));
   });
 });

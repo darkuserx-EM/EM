@@ -63,6 +63,8 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
     if(!contents[0]) throw fail(404,'Archivo no disponible.');
     res.set('Content-Disposition',`${file.mime==='application/pdf'?'attachment':'inline'}; filename*=UTF-8''${encodeURIComponent(file.name)}`);
     if(file.mime==='video/mp4'){
+      // The browser's standalone media document must load its own authenticated URL.
+      res.set('Content-Security-Policy',"default-src 'none'; media-src 'self'; frame-ancestors 'self'");
       const range=videoRange(req.get('range'),Number(file.size));res.set('Accept-Ranges','bytes');
       if(range===false)return res.status(416).set('Content-Range',`bytes */${file.size}`).end();
       if(range){
@@ -72,7 +74,7 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
       }
     }
     const bytes=await storage.read(pool,{...contents[0],sha256:file.sha256,size:Number(file.size)});
-    res.set('Content-Security-Policy',"default-src 'none'; sandbox");res.type(file.mime).send(bytes);
+    if(file.mime!=='video/mp4')res.set('Content-Security-Policy',"default-src 'none'; sandbox");res.type(file.mime).send(bytes);
   });
   app.post('/api/attachments',(req,_res,next)=>{
     if(!['Administrador','Técnico'].includes(req.actor.rol)) return next(fail(403,'Los adjuntos se agregan por administración o el técnico asignado.'));
