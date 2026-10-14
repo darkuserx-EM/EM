@@ -205,7 +205,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (equipment && req.actor.rol === 'Técnico' && req.actor.tecnico_id) {
 
 /** @type {{payload:string}[]} */
-    const orders = await select(pool,"SELECT payload FROM em_records WHERE entity='OrdenServicio' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.tecnico_id'))=?", [equipment.id,req.actor.tecnico_id]);
+    const orders = await select(pool,"SELECT payload FROM em_records WHERE entity='OrdenServicio' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND (JSON_UNQUOTE(JSON_EXTRACT(payload,'$.tecnico_id'))=? OR JSON_UNQUOTE(JSON_EXTRACT(payload,'$.tecnico_apoyo_1_id'))=? OR JSON_UNQUOTE(JSON_EXTRACT(payload,'$.tecnico_apoyo_2_id'))=?)", [equipment.id,req.actor.tecnico_id,req.actor.tecnico_id,req.actor.tecnico_id]);
       /** @type {{payload:string}[]} */
       const tickets = await select(pool,"SELECT payload FROM em_records WHERE entity='Ticket' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.responsable_id'))=?", [equipment.id,req.actor.tecnico_id]);
       /** @type {{payload:string}[]} */

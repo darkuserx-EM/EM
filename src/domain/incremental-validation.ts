@@ -10,7 +10,7 @@ const links: Partial<Record<EntityName, readonly (readonly [string,EntityName])[
   Contacto: [['cliente_id','Cliente']],
   Sede: [['cliente_id','Cliente'],['autoriza_contacto_id','Contacto']],
   Ticket: [['equipo_id','Equipo'],['cliente_id','Cliente'],['sede_id','Sede'],['responsable_id','Tecnico'],['ticket_id','Ticket'],['orden_id','OrdenServicio']],
-  OrdenServicio: [['equipo_id','Equipo'],['cliente_id','Cliente'],['sede_id','Sede'],['tecnico_id','Tecnico'],['ticket_id','Ticket'],['orden_id','OrdenServicio']],
+  OrdenServicio: [['equipo_id','Equipo'],['cliente_id','Cliente'],['sede_id','Sede'],['tecnico_id','Tecnico'],['tecnico_apoyo_1_id','Tecnico'],['tecnico_apoyo_2_id','Tecnico'],['ticket_id','Ticket'],['orden_id','OrdenServicio']],
   LecturaHorometro: [['equipo_id','Equipo'],['cliente_id','Cliente'],['sede_id','Sede'],['tecnico_id','Tecnico'],['ticket_id','Ticket'],['orden_id','OrdenServicio']],
   OTRepuesto: [['equipo_id','Equipo'],['cliente_id','Cliente'],['orden_id','OrdenServicio']],
   OTHoras: [['equipo_id','Equipo'],['cliente_id','Cliente'],['orden_id','OrdenServicio']],

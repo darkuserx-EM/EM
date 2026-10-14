@@ -117,7 +117,7 @@ test('agenda de técnico: ticket asignado, equipo y foto autorizados; cambios y 
   const user={...coordinator,role:'Técnico',technician_id:'tech-1'};
   const request=await fixture(t,user,prepare);
   const response=await request('/api/database',{headers:{Cookie:'em_session=x'}});assert.equal(response.status,200);
-  const db=await response.json();assert.deepEqual(db.entities.Ticket.map(row=>row.id),['ticket-own']);assert.deepEqual(db.entities.Equipo.map(row=>row.id),['equipment-1']);
+  const db=await response.json();assert.deepEqual(db.entities.Ticket.map(row=>row.id),['ticket-own']);assert.equal(db.entities.Equipo.length,25);
   assert.equal((await request(`/api/equipment-images/equipment-1/foto_equipo/${imageHash}`,{headers:{Cookie:'em_session=x'}})).status,200);
   assert.equal((await request(`/api/equipment-images/equipment-2/foto_equipo/${imageHash}`,{headers:{Cookie:'em_session=x'}})).status,404);
   assert.equal((await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'update',entity:'Ticket',id:'ticket-own',revision:db.revision,fields:{estado:'Resuelto',expected_updated_at:db.entities.Ticket[0].fecha_actualizacion}})})).status,403);
@@ -486,11 +486,13 @@ test('coordinator schedules orders; only the assigned technician executes and co
   Object.assign(user,{role:'Cliente',client_id:'client-1'});const visible=await snapshot();assert.deepEqual(visible.entities.OrdenServicio.map(row=>row.id),[saved.result.id]);assert.equal(JSON.stringify(visible).includes('solicitud_datos'),false);
 });
 
-test('technician image scope follows orders and never exposes another technician equipment images',async t=>{
+test('técnico consulta fotos de equipos activos y conserva el aislamiento de equipos retirados',async t=>{
   const user={...coordinator,role:'Técnico',technician_id:'tech-1'};
   const request=await fixture(t,user,db=>{withImages(db);db.entities.Equipo[1].foto_equipo=picture;});
   assert.equal((await request(`/api/equipment-images/equipment-1/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,200);
-  assert.equal((await request(`/api/equipment-images/equipment-2/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,404);
+  assert.equal((await request(`/api/equipment-images/equipment-2/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,200);
+  const retired=await fixture(t,user,db=>{withImages(db);db.entities.Equipo[1].foto_equipo=picture;db.entities.Equipo[1].estado_administrativo='Baja';});
+  assert.equal((await retired(`/api/equipment-images/equipment-2/foto_equipo/${imageHash}`,{headers:jsonHeaders})).status,404);
 });
 
 test('la muestra de operador no se sirve en producción',async t=>{const request=await fixture(t,null);assert.equal((await request('/revision/TCL-001')).status,404);});

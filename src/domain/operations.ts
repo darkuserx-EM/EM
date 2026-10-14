@@ -1,3 +1,5 @@
+import { assignedTo, orderTechnicians, supportFields, orderTeamLabel } from './order-team';
+import { todayGT } from './maintenance-plan';
 import type { Actor, Database, EntityName, EntityRecord, Scalar } from './model';
 import { ValidationError } from './errors';
 import { canCreateTicketOrder, canReopenTicket, technicianEquipmentIds, ticketHasOrder } from './technician-work';
@@ -68,6 +70,11 @@ export function operationLinkErrors(entity: EntityName, row: EntityRecord, entit
   if (row.sede_id && !entities.Sede.some(item => item.id === row.sede_id && item.cliente_id === row.cliente_id)) errors.push('La sede no corresponde al cliente.');
   const technician = entity === 'Ticket' ? row.responsable_id : row.tecnico_id;
   if (technician && !entities.Tecnico.some(item => item.id === technician && item.activo !== false)) errors.push('El técnico seleccionado no está disponible.');
+  if (entity === 'OrdenServicio') {
+    const ids = orderTechnicians(row);
+    if (ids.length && !row.tecnico_id || new Set(ids).size !== ids.length) errors.push('Selecciona un responsable y hasta dos apoyos distintos.');
+    if (ids.some(id => !entities.Tecnico.some(item => item.id === id && item.activo !== false))) errors.push('Selecciona técnicos disponibles para el trabajo.');
+  }
   if (row.ticket_id && !entities.Ticket.some(item => item.id === row.ticket_id && item.equipo_id === row.equipo_id && item.cliente_id === row.cliente_id)) errors.push('El ticket no corresponde al equipo y cliente.');
   if (row.orden_id && !entities.OrdenServicio.some(item => item.id === row.orden_id && item.equipo_id === row.equipo_id && item.cliente_id === row.cliente_id)) errors.push('La orden no corresponde al equipo y cliente.');
   return errors;
@@ -83,7 +90,7 @@ const ticketTransitions: Record<string, readonly string[]> = {
   Programado: ['En revisión', 'Resuelto', 'Cancelado'], Resuelto: [], Cancelado: [],
 };
 export function allowedOperationStates(entity: 'Ticket' | 'OrdenServicio', original?: EntityRecord, actor?: Actor): string[] {
-  if (!original) return entity === 'Ticket' ? actor?.rol === 'Cliente' ? ['Nuevo'] : ['Nuevo', 'En revisión', 'Programado'] : ['Borrador', 'Programada'];
+  if (!original) return entity === 'Ticket' ? actor?.rol === 'Cliente' ? ['Nuevo'] : ['Nuevo', 'En revisión', 'Programado'] : ['Borrador', 'Programada', 'En proceso'];
   const transitions = entity === 'Ticket' ? ticketTransitions : orderTransitions;
   const states = [String(original.estado), ...(transitions[String(original.estado)] || [])];
   if (actor?.rol === 'Técnico') return states.filter(state => state === original.estado || ['En proceso', 'En espera', 'Completada'].includes(state) || entity === 'OrdenServicio' && original.estado === 'Borrador' && state === 'Programada');
@@ -100,13 +107,14 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
   } else if (input.reapertura_motivo !== undefined) throw new ValidationError('El motivo se registra únicamente al reabrir una solicitud resuelta sin orden.');
   const technicianCreate = entity === 'OrdenServicio' && !original && actor.rol === 'Técnico' && !!actor.tecnico_id;
   if (technicianCreate) {
-    const allowed = ['solicitud_id', 'schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tipo', 'prioridad', 'estado', 'fecha_programada', 'hora_programada', 'sintoma', 'visible_cliente', 'desde_solicitud'];
+    const allowed: string[] = [...supportFields, 'solicitud_id', 'schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tipo', 'prioridad', 'estado', 'fecha_programada', 'hora_programada', 'sintoma', 'visible_cliente', 'desde_solicitud'];
     allowed.push('fecha', 'fecha_fin', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas');
     if (Object.keys(input).some(key => !allowed.includes(key)) || input.tecnico_id && input.tecnico_id !== actor.tecnico_id || input.visible_cliente === true) throw forbidden();
     if (!technicianEquipmentIds(actor, entities).has(text(input.equipo_id))) throw forbidden();
     if (input.ticket_id) {
       const ticket = entities.Ticket.find(row => row.id === input.ticket_id);
-      if (!ticket || !canCreateTicketOrder(actor, ticket, entities.OrdenServicio)) throw Object.assign(new ValidationError('La solicitud ya tiene orden, está cerrada o no está asignada a ti. Revisa su estado actual.'), { status: 409 });
+      if (!ticket || ticket.responsable_id !== actor.tecnico_id) throw forbidden();
+      if (!canCreateTicketOrder(actor, ticket, entities.OrdenServicio)) throw Object.assign(new ValidationError('La solicitud ya tiene orden, está cerrada o no está asignada a ti. Revisa su estado actual.'), { status: 409 });
       if (input.equipo_id !== ticket.equipo_id) throw forbidden();
     }
     input = { ...input, tecnico_id: actor.tecnico_id!, visible_cliente: false };
@@ -118,8 +126,8 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
   const requestedEquipment = entities.Equipo.find(item => item.id === (original?.equipo_id || input.equipo_id));
   if (!manager) {
     const clientRequest = entity === 'Ticket' && !original && actor.rol === 'Cliente' && actor.cliente_id && requestedEquipment?.cliente_id === actor.cliente_id;
-    const technicianOrder = entity === 'OrdenServicio' && original && actor.rol === 'Técnico' && actor.tecnico_id && original.tecnico_id === actor.tecnico_id;
-    const technicianReading = entity === 'LecturaHorometro' && !original && actor.rol === 'Técnico' && actor.tecnico_id && entities.OrdenServicio.some(order => order.id === input.orden_id && order.equipo_id === input.equipo_id && order.tecnico_id === actor.tecnico_id && order.schema_operacion === 1 && !['Completada', 'Cancelada'].includes(text(order.estado)));
+    const technicianOrder = entity === 'OrdenServicio' && original && actor.rol === 'Técnico' && actor.tecnico_id && assignedTo(original, actor.tecnico_id);
+    const technicianReading = entity === 'LecturaHorometro' && !original && actor.rol === 'Técnico' && actor.tecnico_id && entities.OrdenServicio.some(order => order.id === input.orden_id && order.equipo_id === input.equipo_id && assignedTo(order, actor.tecnico_id) && order.schema_operacion === 1 && !['Completada', 'Cancelada'].includes(text(order.estado)));
     if (!clientRequest && !technicianOrder && !technicianReading && !technicianCreate && !reopening) throw forbidden();
   }
   if (original && original.schema_operacion !== 1) {
@@ -141,12 +149,13 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
       if ((input.estado && input.estado !== 'Nuevo') || ['responsable_id', 'fecha_programada', 'orden_id'].some(key => input[key])) throw new ValidationError('La coordinación asigna y programa las solicitudes.');
     } else if (reopening || technicianCreate) {
       // Resource scope and permitted fields have already been checked above.
-    } else if (entity === 'OrdenServicio' && original && actor.rol === 'Técnico' && actor.tecnico_id && original.tecnico_id === actor.tecnico_id) {
-      const allowed = ['estado', 'fecha', 'fecha_fin', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas'];
+    } else if (entity === 'OrdenServicio' && original && actor.rol === 'Técnico' && actor.tecnico_id && assignedTo(original, actor.tecnico_id)) {
+      const allowed: string[] = ['estado', 'fecha', 'fecha_fin', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas'];
+      if (original.tecnico_id === actor.tecnico_id) allowed.push(...supportFields);
       if (original.estado === 'Borrador') allowed.push('fecha_programada', 'hora_programada');
       if (Object.keys(input).some(key => !allowed.includes(key) && input[key] !== original[key])) throw new ValidationError('Solo puedes actualizar la ejecución de tu orden asignada.');
       if (input.estado && input.estado !== original.estado && !['En proceso', 'En espera', 'Completada', ...(original.estado === 'Borrador' ? ['Programada'] : [])].includes(text(input.estado))) throw new ValidationError('La coordinación administra la reprogramación y cancelación.');
-    } else if (entity === 'LecturaHorometro' && !original && actor.rol === 'Técnico' && actor.tecnico_id && entities.OrdenServicio.some(order => order.id === row.orden_id && order.equipo_id === equipment.id && order.tecnico_id === actor.tecnico_id && order.schema_operacion === 1 && !['Completada', 'Cancelada'].includes(text(order.estado)))) {
+    } else if (entity === 'LecturaHorometro' && !original && actor.rol === 'Técnico' && actor.tecnico_id && entities.OrdenServicio.some(order => order.id === row.orden_id && order.equipo_id === equipment.id && assignedTo(order, actor.tecnico_id) && order.schema_operacion === 1 && !['Completada', 'Cancelada'].includes(text(order.estado)))) {
       // The reading is linked to the technician's active assignment.
     } else throw forbidden();
   }
@@ -162,7 +171,11 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
     if (entity === 'OrdenServicio') {
       row.tipo = row.tipo || 'Correctivo'; row.visible_cliente = row.visible_cliente ?? false;
       row.motivo = row.sintoma || ''; row.trabajo = row.trabajo_realizado || '';
-      row.tecnico = entities.Tecnico.find(item => item.id === row.tecnico_id)?.nombre || '';
+      row.tecnico = orderTeamLabel(row as EntityRecord, entities.Tecnico);
+      if (!original && row.estado === 'En proceso') {
+        row.fecha = new Date().toISOString();
+        row.fecha_programada = todayGT();
+      }
       if (!row.fecha && ['En proceso', 'Completada'].includes(text(row.estado))) row.fecha = new Date().toISOString();
       if (row.estado === 'Completada' && !row.fecha_fin) row.fecha_fin = new Date().toISOString();
     }
@@ -171,7 +184,7 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
       const publicationOnly = entity === 'OrdenServicio' && manager && typeof input.visible_cliente === 'boolean' && Object.keys(input).every(key => key === 'visible_cliente');
       if (!transitions[String(original.estado)]?.length && !publicationOnly && !reopening) throw new ValidationError('La operación está cerrada; su historial se conserva. Reabre una solicitud resuelta sin orden antes de editarla.');
       if (original.estado !== row.estado && !transitions[String(original.estado)]?.includes(text(row.estado)) && !reopening) throw new ValidationError(`Cambio de estado no permitido: ${original.estado} → ${row.estado}.`);
-    } else if (!allowedOperationStates(entity as 'Ticket' | 'OrdenServicio').includes(text(row.estado))) throw new ValidationError(entity === 'Ticket' ? 'Crea la solicitud abierta antes de registrar su resolución.' : 'Crea la orden como borrador o programada antes de ejecutarla.');
+    } else if (!allowedOperationStates(entity as 'Ticket' | 'OrdenServicio').includes(text(row.estado))) throw new ValidationError(entity === 'Ticket' ? 'Crea la solicitud abierta antes de registrar su resolución.' : 'Crea la orden como borrador, programada o en proceso.');
   }
   const errors = operationFieldErrors(entity, row);
   errors.push(...operationLinkErrors(entity, row as EntityRecord, entities));

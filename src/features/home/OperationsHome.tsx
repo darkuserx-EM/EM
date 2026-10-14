@@ -1,3 +1,4 @@
+import { assignedTo } from '../../domain/order-team';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Clock3, Gauge, Plus, Search, TriangleAlert, Users } from 'lucide-react';
@@ -35,7 +36,7 @@ export default function OperationsHome() {
   const today = todayGT();
   const fleet = useMemo(() => matchingFleet(machines.rows, clients.rows, client, search), [machines.rows, clients.rows, client, search]);
   const ids = useMemo(() => new Set(fleet.map(row => row.id)), [fleet]);
-  const scopedOrders = useMemo(() => orders.rows.filter(row => ids.has(String(row.equipo_id)) && (!tech || row.tecnico_id === actor.tecnico_id)), [orders.rows, ids, tech, actor.tecnico_id]);
+  const scopedOrders = useMemo(() => orders.rows.filter(row => ids.has(String(row.equipo_id)) && (!tech || assignedTo(row, actor.tecnico_id))), [orders.rows, ids, tech, actor.tecnico_id]);
   const attention = useMemo(() => equipmentAttention(fleet, readings.rows, plans.rows, scopedOrders, findings.rows, admin, today), [fleet, readings.rows, plans.rows, scopedOrders, findings.rows, admin, today]);
   const visible = filterAttention(attention, filter), lastPage = Math.max(0, Math.ceil(visible.length / 6) - 1), currentPage = Math.min(page, lastPage);
   const work = currentWork(scopedOrders, today), range = calendarRange(today, 'week');

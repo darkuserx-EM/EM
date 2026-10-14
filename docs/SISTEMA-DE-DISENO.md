@@ -191,3 +191,13 @@ Para agregar estilos: usar la hoja de la pantalla y los tokens. Si hace falta un
 ## Decisión de mantenimiento
 
 Se conservan los tokens y componentes compartidos ya aprobados, junto con las hojas de cada pantalla. Tailwind no justifica reescribir pantallas funcionales; excluir documentación y pruebas evita utilidades accidentales. Migrar componentes cuando se modifica su pantalla, con la revisión automática de diseño vigente.
+
+## Órdenes en campo y trabajo compartido
+
+Los técnicos pueden crear órdenes en cualquier equipo activo (incluidos equipos no operativos que necesitan reparación), sin habilitación individual. Los equipos vendidos o dados de baja no se ofrecen para nuevas órdenes del técnico. Las asignaciones históricas y las habilitaciones antiguas se conservan; estas últimas ya no limitan el acceso al catálogo activo.
+
+Una orden conserva `tecnico_id` como responsable y admite `tecnico_apoyo_1_id` y `tecnico_apoyo_2_id`, opcionales y distintos. El técnico creador queda como responsable; coordinación y administración pueden asignar el equipo de trabajo. El responsable puede ajustar apoyos mientras la orden siga abierta. Los apoyos pueden documentar, adjuntar evidencias y cerrar con las mismas validaciones de ejecución, pero no cambiar el equipo de técnicos ni publicar al cliente.
+
+Cada participante consulta la misma orden en Inicio, Órdenes, Calendario y Planificador. La paginación y los filtros del servidor aplican la pertenencia al equipo de trabajo sin multiplicar registros. Las fotos y videos se autorizan contra la orden compartida y conservan sus referencias originales. Las ediciones conservan autoría y versión; un guardado desactualizado se rechaza.
+
+El alta en estado «En proceso» registra el inicio actual en Guatemala. No cambia automáticamente el estado operativo del equipo. La migración 11 agrega los apoyos al índice operativo y reconstruye esa proyección por lotes reanudables, sin modificar los registros originales, el historial ni los archivos; las órdenes anteriores sin apoyos siguen funcionando.
