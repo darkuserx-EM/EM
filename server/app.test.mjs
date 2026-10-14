@@ -42,6 +42,7 @@ function poolFor(user, prepare = () => {}) {
       }
       if(sql.startsWith("SELECT payload FROM em_records WHERE entity='OrdenServicio'")) return [db.entities.OrdenServicio.filter(row=>row.equipo_id===args[0]&&row.tecnico_id===args[1]).map(row=>({payload:JSON.stringify(row)}))];
       if(sql.startsWith("SELECT payload FROM em_records WHERE entity='Ticket'")) return [db.entities.Ticket.filter(row=>row.equipo_id===args[0]&&row.responsable_id===args[1]).map(row=>({payload:JSON.stringify(row)}))];
+      if(sql.startsWith("SELECT payload FROM em_records WHERE entity='Tecnico'")) return [db.entities.Tecnico.filter(row=>row.id===args[0]).map(row=>({payload:JSON.stringify(row)}))];
       if(sql.includes('em_sessions s')) return [user?[user]:[]];
       if(sql.startsWith("SELECT payload FROM em_records WHERE entity='Equipo'")) {
         const row=db.entities.Equipo.find(item=>item.id===args[0]);

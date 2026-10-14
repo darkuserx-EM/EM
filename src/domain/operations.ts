@@ -1,5 +1,6 @@
 import type { Actor, Database, EntityName, EntityRecord, Scalar } from './model';
 import { ValidationError } from './errors';
+import { canCreateTicketOrder, canReopenTicket, technicianEquipmentIds, ticketHasOrder } from './technician-work';
 
 export const ticketStates = ['Nuevo', 'En revisión', 'Programado', 'Resuelto', 'Cancelado'] as const;
 export const orderStates = ['Borrador', 'Programada', 'En proceso', 'En espera', 'Completada', 'Cancelada'] as const;
@@ -85,18 +86,41 @@ export function allowedOperationStates(entity: 'Ticket' | 'OrdenServicio', origi
   if (!original) return entity === 'Ticket' ? actor?.rol === 'Cliente' ? ['Nuevo'] : ['Nuevo', 'En revisión', 'Programado'] : ['Borrador', 'Programada'];
   const transitions = entity === 'Ticket' ? ticketTransitions : orderTransitions;
   const states = [String(original.estado), ...(transitions[String(original.estado)] || [])];
-  if (actor?.rol === 'Técnico') return states.filter(state => state === original.estado || ['En proceso', 'En espera', 'Completada'].includes(state));
+  if (actor?.rol === 'Técnico') return states.filter(state => state === original.estado || ['En proceso', 'En espera', 'Completada'].includes(state) || entity === 'OrdenServicio' && original.estado === 'Borrador' && state === 'Programada');
   return states;
 }
 export function prepareOperation(entity: EntityName, input: Record<string, Scalar>, actor: Actor, entities: Database['entities'], original?: EntityRecord): Record<string, Scalar> {
   if (!isOperationalEntity(entity)) return input;
   const manager = managesOperations(actor);
+  const reopening = entity === 'Ticket' && original?.estado === 'Resuelto' && input.estado === 'En revisión';
+  if (reopening) {
+    if (!canReopenTicket(actor, original!, entities.OrdenServicio)) throw forbidden();
+    if (text(input.reapertura_motivo).length < 8 || text(input.reapertura_motivo).length > 500) throw new ValidationError('Explica el motivo de reapertura (entre 8 y 500 caracteres).');
+    if (Object.keys(input).some(key => !['estado', 'reapertura_motivo'].includes(key))) throw new ValidationError('Reabre primero la solicitud; después podrás revisar sus datos.');
+  } else if (input.reapertura_motivo !== undefined) throw new ValidationError('El motivo se registra únicamente al reabrir una solicitud resuelta sin orden.');
+  const technicianCreate = entity === 'OrdenServicio' && !original && actor.rol === 'Técnico' && !!actor.tecnico_id;
+  if (technicianCreate) {
+    const allowed = ['solicitud_id', 'schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tipo', 'prioridad', 'estado', 'fecha_programada', 'hora_programada', 'sintoma', 'visible_cliente', 'desde_solicitud'];
+    allowed.push('fecha', 'fecha_fin', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas');
+    if (Object.keys(input).some(key => !allowed.includes(key)) || input.tecnico_id && input.tecnico_id !== actor.tecnico_id || input.visible_cliente === true) throw forbidden();
+    if (!technicianEquipmentIds(actor, entities).has(text(input.equipo_id))) throw forbidden();
+    if (input.ticket_id) {
+      const ticket = entities.Ticket.find(row => row.id === input.ticket_id);
+      if (!ticket || !canCreateTicketOrder(actor, ticket, entities.OrdenServicio)) throw Object.assign(new ValidationError('La solicitud ya tiene orden, está cerrada o no está asignada a ti. Revisa su estado actual.'), { status: 409 });
+      if (input.equipo_id !== ticket.equipo_id) throw forbidden();
+    }
+    input = { ...input, tecnico_id: actor.tecnico_id!, visible_cliente: false };
+  }
+  if (entity === 'OrdenServicio' && !original && input.ticket_id && input.desde_solicitud === true) {
+    const ticket = entities.Ticket.find(row => row.id === input.ticket_id);
+    if (ticket && ticketHasOrder(ticket, entities.OrdenServicio)) throw Object.assign(new ValidationError('La solicitud ya tiene una orden. Abre la orden existente para continuar.'), { status: 409 });
+  }
   const requestedEquipment = entities.Equipo.find(item => item.id === (original?.equipo_id || input.equipo_id));
   if (!manager) {
     const clientRequest = entity === 'Ticket' && !original && actor.rol === 'Cliente' && actor.cliente_id && requestedEquipment?.cliente_id === actor.cliente_id;
     const technicianOrder = entity === 'OrdenServicio' && original && actor.rol === 'Técnico' && actor.tecnico_id && original.tecnico_id === actor.tecnico_id;
     const technicianReading = entity === 'LecturaHorometro' && !original && actor.rol === 'Técnico' && actor.tecnico_id && entities.OrdenServicio.some(order => order.id === input.orden_id && order.equipo_id === input.equipo_id && order.tecnico_id === actor.tecnico_id && order.schema_operacion === 1 && !['Completada', 'Cancelada'].includes(text(order.estado)));
-    if (!clientRequest && !technicianOrder && !technicianReading) throw forbidden();
+    if (!clientRequest && !technicianOrder && !technicianReading && !technicianCreate && !reopening) throw forbidden();
   }
   if (original && original.schema_operacion !== 1) {
     if (entity === 'OrdenServicio' && actor.rol === 'Administrador' && typeof input.visible_cliente === 'boolean' && Object.keys(input).every(key => key === 'visible_cliente')) return { visible_cliente: input.visible_cliente };
@@ -115,10 +139,13 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
   if (!manager) {
     if (entity === 'Ticket' && !original && actor.rol === 'Cliente' && actor.cliente_id && actor.cliente_id === equipment.cliente_id) {
       if ((input.estado && input.estado !== 'Nuevo') || ['responsable_id', 'fecha_programada', 'orden_id'].some(key => input[key])) throw new ValidationError('La coordinación asigna y programa las solicitudes.');
+    } else if (reopening || technicianCreate) {
+      // Resource scope and permitted fields have already been checked above.
     } else if (entity === 'OrdenServicio' && original && actor.rol === 'Técnico' && actor.tecnico_id && original.tecnico_id === actor.tecnico_id) {
       const allowed = ['estado', 'fecha', 'fecha_fin', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas'];
+      if (original.estado === 'Borrador') allowed.push('fecha_programada', 'hora_programada');
       if (Object.keys(input).some(key => !allowed.includes(key) && input[key] !== original[key])) throw new ValidationError('Solo puedes actualizar la ejecución de tu orden asignada.');
-      if (input.estado && input.estado !== original.estado && !['En proceso', 'En espera', 'Completada'].includes(text(input.estado))) throw new ValidationError('La coordinación administra la programación y cancelación.');
+      if (input.estado && input.estado !== original.estado && !['En proceso', 'En espera', 'Completada', ...(original.estado === 'Borrador' ? ['Programada'] : [])].includes(text(input.estado))) throw new ValidationError('La coordinación administra la reprogramación y cancelación.');
     } else if (entity === 'LecturaHorometro' && !original && actor.rol === 'Técnico' && actor.tecnico_id && entities.OrdenServicio.some(order => order.id === row.orden_id && order.equipo_id === equipment.id && order.tecnico_id === actor.tecnico_id && order.schema_operacion === 1 && !['Completada', 'Cancelada'].includes(text(order.estado)))) {
       // The reading is linked to the technician's active assignment.
     } else throw forbidden();
@@ -142,8 +169,8 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
     if (original) {
       const transitions = entity === 'Ticket' ? ticketTransitions : orderTransitions;
       const publicationOnly = entity === 'OrdenServicio' && manager && typeof input.visible_cliente === 'boolean' && Object.keys(input).every(key => key === 'visible_cliente');
-      if (!transitions[String(original.estado)]?.length && !publicationOnly) throw new ValidationError('La operación está cerrada; su historial se conserva. Crea una nueva para continuar.');
-      if (original.estado !== row.estado && !transitions[String(original.estado)]?.includes(text(row.estado))) throw new ValidationError(`Cambio de estado no permitido: ${original.estado} → ${row.estado}.`);
+      if (!transitions[String(original.estado)]?.length && !publicationOnly && !reopening) throw new ValidationError('La operación está cerrada; su historial se conserva. Reabre una solicitud resuelta sin orden antes de editarla.');
+      if (original.estado !== row.estado && !transitions[String(original.estado)]?.includes(text(row.estado)) && !reopening) throw new ValidationError(`Cambio de estado no permitido: ${original.estado} → ${row.estado}.`);
     } else if (!allowedOperationStates(entity as 'Ticket' | 'OrdenServicio').includes(text(row.estado))) throw new ValidationError(entity === 'Ticket' ? 'Crea la solicitud abierta antes de registrar su resolución.' : 'Crea la orden como borrador o programada antes de ejecutarla.');
   }
   const errors = operationFieldErrors(entity, row);

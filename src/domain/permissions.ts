@@ -1,6 +1,7 @@
 import { operationalState, maintenanceState } from './equipment-status';
 import type { Actor, Database, EntityName, EntityRecord } from './model';
 import { ValidationError } from './errors';
+import { enabledEquipment } from './technician-work';
 
 export function canAccessModule(actor: Actor, module: string): boolean {
   if (actor.rol === 'Administrador') return module !== 'portal';
@@ -17,7 +18,7 @@ const publicFields: Partial<Record<EntityName, string[]>> = {
   OrdenServicio: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tecnico', 'tipo', 'prioridad', 'estado', 'fecha_programada', 'hora_programada', 'fecha', 'fecha_fin', 'sintoma', 'motivo', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'trabajo', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas', 'visible_cliente', 'ubicacion'],
   Ticket: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'titulo', 'descripcion', 'prioridad', 'estado', 'fecha_programada', 'responsable_id', 'orden_id', 'tiene_orden'],
   LecturaHorometro: ['equipo_id', 'cliente_id', 'orden_id', 'fecha', 'valor', 'odometro_millas', 'origen', 'es_estimado'],
-  Tecnico: ['nombre', 'especialidad', 'activo'],
+  Tecnico: ['nombre', 'especialidad', 'activo', 'equipos_habilitados'],
 };
 function project(entity: EntityName, row: EntityRecord) {
   const allowed = publicFields[entity];
@@ -31,7 +32,7 @@ export function projectOperation(actor:Actor,entity:EntityName,row:EntityRecord)
   const redacted=Object.fromEntries(Object.entries(row).filter(([key])=>!key.startsWith('costo_'))) as EntityRecord;
   return actor.rol==='Coordinador'?redacted:project(entity,redacted);
 }
-export function filterVisible(actor: Actor, entity: EntityName, rows: EntityRecord[], entities?: Pick<Database['entities'], 'Equipo' | 'OrdenServicio'> & Partial<Pick<Database['entities'], 'Ticket'>>) {
+export function filterVisible(actor: Actor, entity: EntityName, rows: EntityRecord[], entities?: Pick<Database['entities'], 'Equipo' | 'OrdenServicio'> & Partial<Pick<Database['entities'], 'Ticket' | 'Tecnico'>>) {
   // Read-only metadata: suppress a duplicate appointment even when the linked
   // order is private or assigned to another technician. Never expose that order.
   if (entity === 'Ticket') {
@@ -67,12 +68,15 @@ export function filterVisible(actor: Actor, entity: EntityName, rows: EntityReco
     const clientIds = new Set(assigned.map(row => row.cliente_id));
     const ticketEquipmentIds = new Set(tickets.map(row => row.equipo_id));
     const ticketClientIds = new Set(tickets.map(row => row.cliente_id));
+    const technician = entities?.Tecnico?.find(row => row.id === actor.tecnico_id && row.activo !== false);
+    const granted = new Set(enabledEquipment(technician));
+    const grantedClients = new Set(entities?.Equipo.filter(row => granted.has(row.id)).map(row => row.cliente_id));
     if (entity === 'Tecnico') return rows.filter(row => row.id === actor.tecnico_id).map(row => project(entity, row));
     if (entity === 'Ticket') return rows.filter(row => row.responsable_id === actor.tecnico_id).map(row => project(entity, row));
     if (entity === 'OrdenServicio') return rows.filter(row => row.tecnico_id === actor.tecnico_id).map(row => project(entity, row));
-    if (entity === 'Equipo') return rows.filter(row => equipmentIds.has(row.id) || ticketEquipmentIds.has(row.id)).map(row => project(entity, { ...row, estado_operativo: operationalState(row), estado_mantenimiento: maintenanceState(row) }));
-    if (entity === 'Cliente') return rows.filter(row => clientIds.has(row.id) || ticketClientIds.has(row.id)).map(row => project(entity, row));
-    if (['Contacto', 'Sede'].includes(entity)) return rows.filter(row => clientIds.has(row.cliente_id)).map(row => project(entity, row));
+    if (entity === 'Equipo') return rows.filter(row => equipmentIds.has(row.id) || ticketEquipmentIds.has(row.id) || granted.has(row.id)).map(row => project(entity, { ...row, estado_operativo: operationalState(row), estado_mantenimiento: maintenanceState(row) }));
+    if (entity === 'Cliente') return rows.filter(row => clientIds.has(row.id) || ticketClientIds.has(row.id) || grantedClients.has(row.id)).map(row => project(entity, row));
+    if (['Contacto', 'Sede'].includes(entity)) return rows.filter(row => clientIds.has(row.cliente_id) || ticketClientIds.has(row.cliente_id) || grantedClients.has(row.cliente_id)).map(row => project(entity, row));
     if (entity === 'LecturaHorometro') return rows.filter(row => equipmentIds.has(row.equipo_id)).map(row => project(entity, row));
     return [];
   }

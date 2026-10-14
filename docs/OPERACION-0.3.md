@@ -1,5 +1,7 @@
 # Portal EMSA · Entrega operativa 0.3
 
+Actualización del 14 de octubre: [creación de órdenes por el técnico, solicitudes en el planificador y reapertura sin orden](FLUJO-TECNICO.md). Esta actualización amplía los permisos de creación y reapertura descritos en la entrega original, conservando su historial.
+
 Gestión actual de altas, renovaciones, reactivación y recuperación administrativa: [Cuentas y recuperación](CUENTAS-Y-RECUPERACION.md). Respaldo de fotografías y evidencias: [Fotografías MySQL](FOTOGRAFIAS-MYSQL.md).
 
 Las altas y actualizaciones de tickets, órdenes y lecturas se validan contra los datos actuales dentro de la transacción. Un cambio ajeno no rechaza el guardado por revisión global. Las actualizaciones siguen exigiendo la versión original del registro (`expected_updated_at`); un conflicto de la misma orden se informa sin reintentar ni sobrescribir. Las altas conservan `solicitud_id` para reintentos idempotentes. Catálogos, clientes, equipos, importaciones y restauraciones mantienen el control de revisión global. El bloqueo y la validación completa de la base siguen vigentes; este ajuste reduce conflictos innecesarios, no sustituye la evolución de almacenamiento del issue #20.

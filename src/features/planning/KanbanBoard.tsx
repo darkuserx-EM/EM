@@ -5,11 +5,21 @@ import type { Actor, EntityRecord } from '../../domain/model';
 import { boardMoveAllowed, boardStates, calendarLabel, planningEquipmentLabel, type BoardState } from '../../domain/planning';
 import { validDay } from '../../domain/maintenance-plan';
 import { clientDisplayName } from '../../domain/client-profile';
+import { canCreateTicketOrder } from '../../domain/technician-work';
 
 const descriptions: Record<BoardState, string> = { Borrador: 'Por definir y asignar', Programada: 'Visita con fecha y técnico', 'En proceso': 'Trabajo en curso', 'En espera': 'Pendiente de continuar', Completada: 'Reportes cerrados' };
-export function KanbanBoard({ orders, equipment, clients, technicians, actor, pending, today, onMove }: { orders: EntityRecord[]; equipment: EntityRecord[]; clients: EntityRecord[]; technicians: EntityRecord[]; actor: Actor; pending: string; today: string; onMove: (order: EntityRecord, state: BoardState) => void }) {
+export function KanbanBoard({ orders, tickets = [], equipment, clients, technicians, actor, pending, today, onMove }: { orders: EntityRecord[]; tickets?: EntityRecord[]; equipment: EntityRecord[]; clients: EntityRecord[]; technicians: EntityRecord[]; actor: Actor; pending: string; today: string; onMove: (order: EntityRecord, state: BoardState) => void }) {
   const [dragged, setDragged] = useState(''); const [over, setOver] = useState<BoardState | ''>('');
-  return <div className="planning-board" aria-label="Órdenes por estado">{boardStates.map(state => {
+  return <div className="planning-board" aria-label="Solicitudes y órdenes por estado">
+    <section className="planning-column" id="solicitudes-por-atender" aria-label={`Solicitudes por atender: ${tickets.length}`}><header><h2>Solicitudes por atender<span>{tickets.length}</span></h2><p>Abiertas, con o sin fecha, todavía sin orden.</p></header><div className="planning-column-cards">
+      {tickets.map(ticket => <article key={ticket.id} className="planning-card"><div className="planning-card-top"><span>{ticket.codigo}</span><span className="planning-priority">{ticket.prioridad}</span></div>
+        <Link className="planning-card-name" to={`/tickets?ticket=${encodeURIComponent(ticket.id)}`}>{ticket.titulo}<strong>{planningEquipmentLabel(equipment.find(row => row.id === ticket.equipo_id))}</strong></Link>
+        <p className="planning-card-client">{clientDisplayName(clients.find(row => row.id === ticket.cliente_id))}</p>
+        <div className="planning-card-date"><CalendarDays size={14}/><span>{validDay(ticket.fecha_programada) ? calendarLabel(ticket.fecha_programada, { day: 'numeric', month: 'short' }) : 'Por programar'} · {ticket.estado}</span></div>
+        <div className="planning-card-technician"><UserRound size={14}/><span>{technicians.find(row => row.id === ticket.responsable_id)?.nombre || 'Sin técnico'}</span></div>
+        {canCreateTicketOrder(actor, ticket) && <Link className="button button-small" to={`/ordenes?ticket=${encodeURIComponent(ticket.id)}`}>Crear orden de atención</Link>}
+      </article>)}{!tickets.length && <p className="planning-column-empty">Sin solicitudes por atender</p>}
+    </div></section>{boardStates.map(state => {
     const items = orders.filter(order => order.estado === state).sort((a, b) => String(a.fecha_programada || '9999').localeCompare(String(b.fecha_programada || '9999')) || a.codigo.localeCompare(b.codigo));
     const dragOrder = orders.find(order => order.id === dragged); const allowed = !!dragOrder && boardMoveAllowed(dragOrder, state, actor.rol) && !pending;
     return <section key={state} className={`planning-column state-${state.toLowerCase().replaceAll(' ', '-')} ${over === state && allowed ? 'drop-target' : ''}`} aria-label={`${state}: ${items.length} órdenes`} onDragOver={event => { if (allowed) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(state); } }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(''); }} onDrop={event => { event.preventDefault(); if (dragOrder && allowed) onMove(dragOrder, state); setDragged(''); setOver(''); }}>

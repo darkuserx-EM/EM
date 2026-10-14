@@ -1,5 +1,6 @@
 import {entityNames, type Database, type EntityName, type EntityRecord} from './model';
 import {ValidationError} from './errors';
+import {enabledEquipment} from './technician-work';
 import {uniqueKeys,validateDatabase,validateDatabaseStructure} from './validation';
 
 // Dependency declarations mirror the links checked by validateDatabase. Tests
@@ -36,7 +37,7 @@ function indexDatabase(data: Database, previous?: Index): Index {
       const old=previous?.rows.get(key);
       const entry:IndexedRow=old?.serialized===serialized ? old : {
         entity,row:{...row},serialized,keys:uniqueKeys(entity,row),
-        references:(links[entity]||[]).filter(([field])=>!!row[field]).map(([field,target])=>identity(target,String(row[field]))),
+        references:[...(links[entity]||[]).filter(([field])=>!!row[field]).map(([field,target])=>identity(target,String(row[field]))), ...(entity==='Tecnico' ? enabledEquipment(row).map(id=>identity('Equipo',id)) : [])],
       };
       for(const [key,message] of entry.keys) {if(unique.has(key))throw new ValidationError(`${entity}: ${message}`);unique.add(key);}
       rows.set(key,entry);
