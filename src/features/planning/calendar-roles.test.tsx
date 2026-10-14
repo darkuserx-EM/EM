@@ -37,9 +37,20 @@ describe('vistas de calendario por perfil', () => {
     expect(html).toContain('/tickets?ticket=own');
     const manager = ['Administrador', 'Coordinador'].includes(rol);
     expect(html.includes('Solicitud ajena')).toBe(manager);
-    expect(html.includes('Nueva orden')).toBe(manager);
+    expect(html.includes('Nueva orden')).toBe(manager || rol === 'Técnico');
     expect(html.includes('Todos los técnicos')).toBe(manager);
     expect(html.includes('Solo planes')).toBe(rol === 'Administrador');
+  });
+  it.each(['Administrador', 'Coordinador', 'Cliente', 'Técnico'] as const)('%s: tablero muestra solicitudes sin orden y conserva su alcance', rol => {
+    actor = { id: rol, nombre: 'QA', rol, cliente_id: 'client-1', tecnico_id: 'tech-1' };
+    const html = markup(<PlanningPage view="kanban" />);
+    expect(html).toContain('Solicitudes por atender');
+    expect(html).toContain('Revisar frenos propios');
+    expect(html).toContain('Sin fecha todavía');
+    expect(html.includes('Solicitud ajena')).toBe(['Administrador', 'Coordinador'].includes(rol));
+    expect(html.includes('/ordenes?ticket=own')).toBe(rol !== 'Cliente');
+    db.entities.OrdenServicio = [seedRecord('linked', 'OS-LINK', { schema_operacion: 1, estado: 'Programada', fecha_programada: '2026-10-15', ticket_id: 'own', tecnico_id: 'tech-2', cliente_id: 'client-1', visible_cliente: false })];
+    try { expect(markup(<PlanningPage view="kanban" />)).not.toContain('Revisar frenos propios'); } finally { db.entities.OrdenServicio = []; }
   });
   it.each(['year', 'month', 'week'] as const)('%s: incluye solicitudes en el calendario y sus contadores accesibles', view => {
     const events = planningEvents([], [], [], [], '2026-10-12', [db.entities.Ticket[0]]);

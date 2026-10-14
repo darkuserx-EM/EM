@@ -200,7 +200,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   });
   app.get('/api/equipment-images/:id/:field/:hash', /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").SessionBody>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> {
     const equipment = await readEquipmentRecord(pool,req.params.id);
-    /** @type {Pick<import("../src/domain/model.js").Database["entities"],"Equipo"|"OrdenServicio"|"Ticket">|undefined} */
+    /** @type {Pick<import("../src/domain/model.js").Database["entities"],"Equipo"|"OrdenServicio"|"Ticket"|"Tecnico">|undefined} */
     let scope;
     if (equipment && req.actor.rol === 'Técnico' && req.actor.tecnico_id) {
 
@@ -208,7 +208,9 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     const orders = await select(pool,"SELECT payload FROM em_records WHERE entity='OrdenServicio' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.tecnico_id'))=?", [equipment.id,req.actor.tecnico_id]);
       /** @type {{payload:string}[]} */
       const tickets = await select(pool,"SELECT payload FROM em_records WHERE entity='Ticket' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.responsable_id'))=?", [equipment.id,req.actor.tecnico_id]);
-      scope = { OrdenServicio: orders.map(order => JSON.parse(order.payload)), Ticket:tickets.map(ticket=>JSON.parse(ticket.payload)), Equipo:[] };
+      /** @type {{payload:string}[]} */
+      const technicians = await select(pool,"SELECT payload FROM em_records WHERE entity='Tecnico' AND id=?", [req.actor.tecnico_id]);
+      scope = { OrdenServicio: orders.map(order => JSON.parse(order.payload)), Ticket:tickets.map(ticket=>JSON.parse(ticket.payload)), Equipo:[], Tecnico:technicians.map(row=>JSON.parse(row.payload)) };
     }
     const row = equipment && filterVisible(req.actor,'Equipo',[equipment],scope)[0];
     /** @type {{type:string,bytes:Buffer}|null} */
@@ -233,12 +235,12 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (req.actor.rol !== 'Administrador') {
       const operational = oneOf(['Ticket','OrdenServicio','LecturaHorometro'],body?.entity);
       const manager = req.actor.rol === 'Coordinador' && operational && ['create','update'].includes(body?.action);
-      const technician = req.actor.rol === 'Técnico' && ((body?.entity === 'OrdenServicio' && body?.action === 'update') || (body?.entity === 'LecturaHorometro' && body?.action === 'create'));
+      const technician = req.actor.rol === 'Técnico' && ((body?.entity === 'OrdenServicio' && ['create','update'].includes(body?.action)) || (body?.entity === 'Ticket' && body?.action === 'update') || (body?.entity === 'LecturaHorometro' && body?.action === 'create'));
       const client = req.actor.rol === 'Cliente' && body?.entity === 'Ticket' && body?.action === 'create';
       if (!manager && !technician && !client) throw fail(403,'No tienes permiso para realizar esta operación.');
     }
     if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','importHistoricalReports','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
-    if (!['importClients','importHistoricalReports','restore'].includes(body.action) && !oneOf(['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM','Ticket','OrdenServicio','LecturaHorometro'],body.entity)) throw fail(400,'Entidad no editable.');
+    if (!['importClients','importHistoricalReports','restore'].includes(body.action) && !oneOf(['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM','Tecnico','Ticket','OrdenServicio','LecturaHorometro'],body.entity)) throw fail(400,'Entidad no editable.');
     if (['create','update'].includes(body.action) && (!body.fields || typeof body.fields !== 'object' || Array.isArray(body.fields) || Object.entries(body.fields).some(([key,value]) => ['__proto__','constructor','prototype'].includes(key) || (value !== null && !['string','number','boolean'].includes(typeof value))))) throw fail(400,'Los campos del registro no son válidos.');
     if (body.action === 'update' && oneOf(['Ticket','OrdenServicio','LecturaHorometro'],body.entity) && typeof body.fields.expected_updated_at !== 'string') throw fail(400,'Recarga el registro antes de editarlo.');
     if ((body.action==='import'||body.action==='importClients') && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
