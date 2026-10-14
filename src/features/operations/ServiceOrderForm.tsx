@@ -1,3 +1,4 @@
+import { assignedTo, supportFields } from '../../domain/order-team';
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
@@ -14,23 +15,24 @@ import './operations.css';
 
 const steps = ['Identificación', 'Diagnóstico', 'Trabajo', 'Pruebas y cierre', 'Evidencias'];
 const executionFields = ['estado', 'fecha', 'fecha_fin', 'sintoma', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'recomendaciones', 'insumos', 'repuestos', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'horometro', 'odometro_millas'];
-const assignmentFields = ['equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tipo', 'prioridad', 'fecha_programada', 'hora_programada'];
+const assignmentFields = [...supportFields, 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tipo', 'prioridad', 'fecha_programada', 'hora_programada'];
 
 export default function ServiceOrderForm({ row, ticket, onClose, onSaved }: { row?: EntityRecord; ticket?: EntityRecord; onClose: () => void; onSaved: (row: EntityRecord) => void }) {
   const actor = useActor(); const notify = useToast(state => state.notify); const manager = ['Administrador', 'Coordinador'].includes(actor.rol);
   const equipment = useRows('Equipo', true); const clients = useRows('Cliente', true); const sites = useRows('Sede', true); const technicians = useRows('Tecnico', true);
-  const tickets = useRows('Ticket', !row && !manager); const orders = useRows('OrdenServicio', !row && !manager);
+
   const creating = !row && actor.rol === 'Técnico';
   const canIdentify = manager || creating;
+  const canEditTeam = manager || creating || row?.tecnico_id === actor.tecnico_id;
   const canSchedule = manager || creating || actor.rol === 'Técnico' && row?.estado === 'Borrador';
-  const enabledIds = technicianEquipmentIds(actor, { Ticket: tickets.rows, OrdenServicio: orders.rows, Tecnico: technicians.rows });
+  const enabledIds = technicianEquipmentIds(actor, { Equipo: equipment.rows, Tecnico: technicians.rows });
   const eligibleEquipment = creating ? equipment.rows.filter(item => enabledIds.has(item.id)) : equipment.rows;
   const [requestId] = useState(() => crypto.randomUUID());
   const [values, setValues] = useState<Record<string, string>>(() => ({
     ...Object.fromEntries([...assignmentFields, ...executionFields].map(key => [key, String(row?.[key] ?? '')])),
     cliente_id: String(row?.cliente_id || ticket?.cliente_id || ''), equipo_id: String(row?.equipo_id || ticket?.equipo_id || ''), sede_id: String(row?.sede_id || ticket?.sede_id || ''),
     ticket_id: String(row?.ticket_id || ticket?.id || ''), tecnico_id: String(row?.tecnico_id || (creating ? actor.tecnico_id : ticket?.responsable_id) || ''),
-    tipo: String(row?.tipo || 'Correctivo'), estado: String(row?.estado || (creating ? 'Programada' : 'Borrador')), prioridad: String(row?.prioridad || ticket?.prioridad || 'Media'),
+    tipo: String(row?.tipo || 'Correctivo'), estado: String(row?.estado || (creating ? 'En proceso' : 'Borrador')), prioridad: String(row?.prioridad || ticket?.prioridad || 'Media'),
     sintoma: String(row?.sintoma || ticket?.descripcion || ''), fecha_programada: String(row?.fecha_programada || ticket?.fecha_programada || (creating ? todayGT() : '')),
     fecha: dateTimeInput(row?.fecha), fecha_fin: dateTimeInput(row?.fecha_fin), visible_cliente: row?.visible_cliente === true ? 'true' : 'false',
   }));
@@ -40,7 +42,7 @@ export default function ServiceOrderForm({ row, ticket, onClose, onSaved }: { ro
   useLayoutEffect(() => { pendingFocus.current?.focus(); pendingFocus.current = null; }, [step]);
   const set = (key: string, value: string) => setValues(previous => ({ ...previous, [key]: value }));
   const selectedEquipment = equipment.rows.find(item => item.id === values.equipo_id);
-  const queries = [equipment, clients, sites, technicians, ...(creating ? [tickets, orders] : [])]; const loading = queries.some(query => !query.ready); const queryError = queries.find(query => query.error)?.error || '';
+  const queries = [equipment, clients, sites, technicians]; const loading = queries.some(query => !query.ready); const queryError = queries.find(query => query.error)?.error || '';
   const completed = values.estado === 'Completada';
   const requiredAssignment = ['Programada', 'En proceso', 'En espera', 'Completada'].includes(values.estado);
   function validate(onlyStep = false) {
@@ -56,7 +58,7 @@ export default function ServiceOrderForm({ row, ticket, onClose, onSaved }: { ro
     event.preventDefault(); if (busy || loading || !validate()) return;
     setBusy(true); setError('');
     try {
-      const keys = (canIdentify ? [...assignmentFields, ...executionFields] : [...executionFields.filter(key => key !== 'sintoma'), ...(canSchedule ? ['fecha_programada', 'hora_programada'] : [])]).filter(key => !['horometro', 'odometro_millas'].includes(key));
+      const keys = (canIdentify ? [...assignmentFields, ...executionFields] : [...(canEditTeam ? supportFields : []), ...executionFields.filter(key => key !== 'sintoma'), ...(canSchedule ? ['fecha_programada', 'hora_programada'] : [])]).filter(key => !['horometro', 'odometro_millas'].includes(key));
       const fields: Record<string, Scalar> = { ...Object.fromEntries(keys.map(key => [key, ['fecha', 'fecha_fin'].includes(key) ? fromDateTimeInput(values[key]) : values[key]])), ...optionalMeterFields(values, row) };
       if (manager) fields.visible_cliente = values.visible_cliente === 'true';
       if (!row) fields.solicitud_id = requestId;
@@ -76,14 +78,15 @@ export default function ServiceOrderForm({ row, ticket, onClose, onSaved }: { ro
       <p className="os-intro">Identifica el equipo, documenta el trabajo y registra las pruebas. Los campos con * son obligatorios.</p>
       <nav className="os-steps" aria-label="Pasos del reporte">{steps.map((label, index) => <button type="button" key={label} aria-current={step === index ? 'step' : undefined} disabled={busy} onClick={() => { setStep(index); setError(''); }}><span>{index + 1}</span>{label}</button>)}</nav>
       <div className="os-equipment-context"><strong>{selectedEquipment ? equipmentLabel(selectedEquipment) : 'Selecciona un equipo para comenzar'}</strong>{values.ticket_id && <small>Solicitud vinculada{ticket ? `: ${ticket.codigo}` : ''}</small>}</div>
-      <ErrorNotice message={queryError} />{creating && <p className="os-help">La orden quedará asignada a ti. Puedes elegir equipos habilitados por administración o con trabajo abierto asignado. Si falta un equipo, solicita su habilitación en Roles y accesos.</p>}
+      <ErrorNotice message={queryError} />{creating && <p className="os-help">La orden quedará asignada a ti. Puedes elegir cualquier equipo activo y agregar hasta dos técnicos de apoyo. Los tres podrán trabajar en esta misma orden.</p>}
       <section hidden={step !== 0} data-order-step="0" aria-label={steps[0]} className="os-form-grid">
         <label className="os-field">Cliente / patio<select value={values.cliente_id} disabled={busy || !canIdentify || !!row || !!ticket || loading} onChange={event => setValues(previous => ({ ...previous, cliente_id: event.target.value, equipo_id: '', sede_id: '' }))}><option value="">Patio EMSA · sin cliente asignado</option>{clients.rows.map(client => <option value={client.id} key={client.id}>{clientDisplayName(client)}</option>)}</select></label>
         <label className="os-field">Equipo *<select value={values.equipo_id} disabled={busy || !canIdentify || !!row || !!ticket || loading} required onChange={event => { const machine = equipment.rows.find(item => item.id === event.target.value); setValues(previous => ({ ...previous, equipo_id: event.target.value, sede_id: String(machine?.sede_id || '') })); }}><option value="">Selecciona un equipo</option>{eligibleEquipment.filter(item => String(item.cliente_id || '') === values.cliente_id).map(item => <option value={item.id} key={item.id}>{equipmentLabel(item)}</option>)}</select></label>
         <label className="os-field">Sede<select value={values.sede_id} disabled={busy || !manager || loading} onChange={event => set('sede_id', event.target.value)}><option value="">Sin sede asignada</option>{sites.rows.filter(site => site.cliente_id === values.cliente_id).map(site => <option value={site.id} key={site.id}>{site.nombre}</option>)}</select></label>
         <label className="os-field">Técnico responsable{requiredAssignment ? ' *' : ''}<select value={values.tecnico_id} disabled={busy || !manager || loading} required={requiredAssignment} onChange={event => set('tecnico_id', event.target.value)}><option value="">Sin asignar</option>{technicians.rows.map(technician => <option value={technician.id} key={technician.id}>{technician.nombre}</option>)}</select></label>
+        {supportFields.map((key, index) => <label className="os-field" key={key}>Técnico de apoyo {index + 1}<select value={values[key]} disabled={busy || !canEditTeam || loading} onChange={event => set(key, event.target.value)}><option value="">Sin apoyo</option>{technicians.rows.filter(person => person.activo !== false && person.id !== values.tecnico_id && !supportFields.some(other => other !== key && values[other] === person.id)).map(person => <option key={person.id} value={person.id}>{person.nombre}</option>)}</select></label>)}
         {choose('tipo', 'Tipo de servicio', serviceTypes, !canIdentify)}{choose('prioridad', 'Prioridad', priorities, !canIdentify)}
-        {input('fecha_programada', 'Día programado', 'date', requiredAssignment, !canSchedule)}{input('hora_programada', 'Hora de visita · Guatemala', 'time', false, !canSchedule)}
+        {!row && values.estado === 'En proceso' ? <p className="os-help">Inicio en campo: al guardar se registrarán la fecha y hora actuales de Guatemala.</p> : input('fecha_programada', 'Día programado', 'date', requiredAssignment, !canSchedule)}{input('hora_programada', 'Hora de visita · Guatemala', 'time', false, !canSchedule)}
       </section>
       <section hidden={step !== 1} data-order-step="1" aria-label={steps[1]} className="os-form-grid">
         {text('sintoma', 'Síntoma o motivo reportado', true)}{text('diagnostico', 'Diagnóstico técnico', completed)}{text('causa_confirmada', 'Causa confirmada', false, 'Registra solo lo comprobado; si está en estudio indícalo en el diagnóstico.')}
@@ -102,7 +105,7 @@ export default function ServiceOrderForm({ row, ticket, onClose, onSaved }: { ro
         {values.ticket_id && <p className="os-help os-span">La solicitud vinculada se resolverá al completar todas sus órdenes. Si alguna sigue pendiente o fue cancelada, coordinación revisará el cierre de la solicitud.</p>}
       </section>
       <section hidden={step !== 4} data-order-step="4" aria-label={steps[4]} className="os-form-grid">
-        {row ? <div className="os-span"><AttachmentPanel orderId={row.id} onBusy={setAttachmentBusy} editable={!saving && (actor.rol === 'Administrador' || actor.rol === 'Técnico' && row.tecnico_id === actor.tecnico_id)} /></div> : <div className="os-evidence-note os-span"><h3>Fotografías antes y después</h3><p>Guarda primero el reporte como borrador o programado. Así podrás adjuntar las evidencias a su orden y mantenerlas relacionadas con el equipo.</p><p>Al guardar se abrirá el detalle con las opciones de evidencia. Agrégalas antes de completar la orden.</p></div>}
+        {row ? <div className="os-span"><AttachmentPanel orderId={row.id} onBusy={setAttachmentBusy} editable={!saving && (actor.rol === 'Administrador' || actor.rol === 'Técnico' && assignedTo(row, actor.tecnico_id))} /></div> : <div className="os-evidence-note os-span"><h3>Fotografías antes y después</h3><p>Guarda primero la orden, incluso si ya está en proceso. Así podrás adjuntar las evidencias a su orden y mantenerlas relacionadas con el equipo.</p><p>Al guardar se abrirá el detalle con las opciones de evidencia. Agrégalas antes de completar la orden.</p></div>}
       </section>
       <ErrorNotice message={error} />
       <footer className="modal-actions os-form-actions"><button type="button" className="button" onClick={guard.requestClose} disabled={busy}>Cancelar</button><div>{step > 0 && <button type="button" className="button" onClick={() => setStep(step - 1)} disabled={busy}><ChevronLeft size={16} />Anterior</button>}{step < steps.length - 1 && <button type="button" className="button" disabled={busy} onClick={() => { if (validate(true)) { setStep(step + 1); setError(''); } }}>Siguiente<ChevronRight size={16} /></button>}<button type="submit" className="button button-dark" disabled={busy || loading || !!queryError}><Check size={16} />{busy ? 'Guardando…' : row ? 'Guardar reporte' : 'Guardar orden'}</button></div></footer>

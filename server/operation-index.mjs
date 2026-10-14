@@ -1,3 +1,4 @@
+import { errorCode } from './errors.mjs';
 import { select, selectQuery } from './sql.mjs';
 import {orderDay,projectOperation} from './generated/domain.mjs';
 /** @type {import("../src/domain/model.js").EntityName[]} */
@@ -13,21 +14,28 @@ export async function ensureOperationIndex(pool) {
     PRIMARY KEY(entity,id),INDEX idx_operation_sort(entity,sort_value,id),INDEX idx_operation_client(entity,client_id,sort_value,id),
     INDEX idx_operation_equipment(entity,equipment_id,sort_value,id),INDEX idx_operation_technician(entity,technician_id,sort_value,id),INDEX idx_operation_ticket(entity,ticket_id)
   ) ENGINE=InnoDB`);
+  for (const field of ['support_1_id','support_2_id']) {
+    /** @type {{Field:string}[]} */
+    const columns = await selectQuery(pool, 'SHOW COLUMNS FROM em_operation_index LIKE ?', [field]);
+    if (!columns.length) try {
+      await pool.query(`ALTER TABLE em_operation_index ADD COLUMN ${field} VARCHAR(128) COLLATE utf8mb4_bin NOT NULL DEFAULT '', ADD INDEX idx_operation_${field} (entity,${field},sort_value,id)`);
+    } catch (error) { if (errorCode(error) !== 'ER_DUP_FIELDNAME') throw error; }
+  }
 }
 /** @param {import("../src/domain/model.js").EntityRecord} row */
 const searchable=row=>[row.codigo,row.orden_origen,row.titulo,row.sintoma,row.motivo,row.diagnostico].join(' ').toLocaleLowerCase('es');
 /** @param {import("mysql2/promise").PoolConnection} conn @param {{entity:import("../src/domain/model.js").EntityName,row:import("../src/domain/model.js").EntityRecord}[]} entries */
 export async function indexOperations(conn,entries) {
   if(!entries.length)return;
-  const values=entries.map(({entity,row})=>[entity,row.id,String(row.cliente_id||''),String(row.equipo_id||''),String(row.tecnico_id||row.responsable_id||''),String(row.ticket_id||''),String(row.orden_id||''),String(row.estado||''),String(row.fecha||row.fecha_programada||row.fecha_creacion),orderDay(row),row.schema_operacion===1&&row.importado!==true,row.visible_cliente===true,searchable(row),searchable(projectOperation({id:'',nombre:'',rol:'Cliente'},entity,row))]);
-  await conn.execute(`INSERT INTO em_operation_index (entity,id,client_id,equipment_id,technician_id,ticket_id,order_id,state,sort_value,day_value,current_flag,visible_client,search_text,search_public) VALUES ${values.map(()=>'(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').join(',')} ON DUPLICATE KEY UPDATE client_id=VALUES(client_id),equipment_id=VALUES(equipment_id),technician_id=VALUES(technician_id),ticket_id=VALUES(ticket_id),order_id=VALUES(order_id),state=VALUES(state),sort_value=VALUES(sort_value),day_value=VALUES(day_value),current_flag=VALUES(current_flag),visible_client=VALUES(visible_client),search_text=VALUES(search_text),search_public=VALUES(search_public)`,values.flat());
+  const values=entries.map(({entity,row})=>[entity,row.id,String(row.cliente_id||''),String(row.equipo_id||''),String(row.tecnico_id||row.responsable_id||''),String(row.tecnico_apoyo_1_id||''),String(row.tecnico_apoyo_2_id||''),String(row.ticket_id||''),String(row.orden_id||''),String(row.estado||''),String(row.fecha||row.fecha_programada||row.fecha_creacion),orderDay(row),row.schema_operacion===1&&row.importado!==true,row.visible_cliente===true,searchable(row),searchable(projectOperation({id:'',nombre:'',rol:'Cliente'},entity,row))]);
+  await conn.execute(`INSERT INTO em_operation_index (entity,id,client_id,equipment_id,technician_id,support_1_id,support_2_id,ticket_id,order_id,state,sort_value,day_value,current_flag,visible_client,search_text,search_public) VALUES ${values.map(()=>'(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').join(',')} ON DUPLICATE KEY UPDATE client_id=VALUES(client_id),equipment_id=VALUES(equipment_id),technician_id=VALUES(technician_id),support_1_id=VALUES(support_1_id),support_2_id=VALUES(support_2_id),ticket_id=VALUES(ticket_id),order_id=VALUES(order_id),state=VALUES(state),sort_value=VALUES(sort_value),day_value=VALUES(day_value),current_flag=VALUES(current_flag),visible_client=VALUES(visible_client),search_text=VALUES(search_text),search_public=VALUES(search_public)`,values.flat());
 }
 /** @param {import("mysql2/promise").Pool} pool @param {{afterBatch?:()=>void|Promise<void>}} [options] */
 export async function migrateOperationIndex(pool,{afterBatch}={}) {
   const conn=await pool.getConnection();
   try {
     /** @type {{schema_version:number}[]} */
-    const version=await selectQuery(conn,'SELECT schema_version FROM em_meta WHERE id=1');if(Number(version[0].schema_version)>=10)return;
+    const version=await selectQuery(conn,'SELECT schema_version FROM em_meta WHERE id=1');if(Number(version[0].schema_version)>=11)return;
     // Projection only: original records are never changed or removed.
     for(const entity of operationalEntities) {
       let after='';
@@ -43,6 +51,6 @@ export async function migrateOperationIndex(pool,{afterBatch}={}) {
     /** @type {{n:number}[]} */
     const missing=await selectQuery(conn,"SELECT COUNT(*) n FROM em_records r LEFT JOIN em_operation_index o ON o.entity=r.entity AND o.id=r.id WHERE r.entity IN ('Ticket','OrdenServicio','LecturaHorometro') AND o.id IS NULL");
     if(Number(missing[0].n))throw Error('Operational projection incomplete');
-    await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,10) WHERE id=1');await conn.commit();
+    await conn.query('UPDATE em_meta SET schema_version=GREATEST(schema_version,11) WHERE id=1');await conn.commit();
   } catch(error){await conn.rollback();throw error;}finally{conn.release();}
 }

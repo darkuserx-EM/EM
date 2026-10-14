@@ -4,7 +4,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {once} from 'node:events';
 import mysql from 'mysql2/promise';
 import {migrate,readSnapshot,saveDatabase} from './database.mjs';
-import {migrateOperationIndex,indexOperations} from './operation-index.mjs';
+import {migrateOperationIndex,indexOperations,ensureOperationIndex} from './operation-index.mjs';
 import {operationPage} from './operation-pages.mjs';
 import {createSeed,filterVisible} from './generated/domain.mjs';
 import {createApp} from './app.mjs';
@@ -20,14 +20,18 @@ test('Páginas operativas: índices, roles, migración y revisión consistente',
   const admin={id:'qa',nombre:'QA',rol:'Administrador'},client={...admin,id:'client-qa',rol:'Cliente',cliente_id:'client-1'},tech={...admin,id:'tech-qa',rol:'Técnico',tecnico_id:'tech-1'};
   const template=seed.entities.OrdenServicio[0];
   // Legacy services have no operational state constraints; their full original payload remains intact.
-  seed.entities.OrdenServicio.push(...Array.from({length:10001},(_,i)=>({...template,id:'paged-'+String(i).padStart(6,'0'),codigo:'OS-P'+i,fecha:'2026-10-01T12:00:00.000Z',orden_origen:'PRIVATE-ORIGIN-'+i,diagnostico:'Revisión hidráulica '+i,costo_mano_obra:i,visible_cliente:i%2===0})));
+  seed.entities.OrdenServicio.push(...Array.from({length:10001},(_,i)=>({...template,id:'paged-'+String(i).padStart(6,'0'),codigo:'OS-P'+i,fecha:'2026-10-01T12:00:00.000Z',orden_origen:'PRIVATE-ORIGIN-'+i,diagnostico:'Revisión hidráulica '+i,tecnico_apoyo_1_id:i%7===0?'tech-2':'',costo_mano_obra:i,visible_cliente:i%2===0})));
   seed.entities.Ticket.push({...template,id:'ticket-paged',codigo:'TKT-1',titulo:'Solicitud sintética',descripcion:'No funciona',estado:'Nuevo',prioridad:'Media',fecha:'2026-10-01',schema_operacion:1,solicitud_id:randomUUID(),solicitud_datos:'qa'});
   seed.entities.Ticket.push(...['a','b'].map((suffix,i)=>({...seed.entities.Ticket.at(-1),id:'assigned-'+suffix,solicitud_id:randomUUID(),codigo:'TKT-'+(i+2),responsable_id:'tech-'+(i+1),tecnico_id:'',cliente_id:i?'client-2':'client-1',equipo_id:i?'equipment-7':'equipment-1'})));
   seed.entities.OrdenServicio.push({...template,id:'private-linked',codigo:'OS-PRIVATE',ticket_id:'assigned-a',cliente_id:'client-1',equipo_id:'equipment-1',tecnico_id:'tech-2',visible_cliente:false});
   const conn=await pool.getConnection();try{await conn.beginTransaction();const before=await readSnapshot(pool);await saveDatabase(conn,seed,before);await conn.commit();}finally{conn.release();}
   await t.test('migración interrumpida y reanudada no cambia ningún registro original',async()=>{
     const fingerprint=async()=>{const [rows]=await pool.query('SELECT entity,id,payload FROM em_records ORDER BY entity,id');return createHash('sha256').update(JSON.stringify(rows)).digest('hex');};
-    const before=await fingerprint();await pool.query('DELETE FROM em_operation_index');await pool.query('UPDATE em_meta SET schema_version=9 WHERE id=1');
+    const before=await fingerprint();
+    for(const field of ['support_1_id','support_2_id'])await pool.query('ALTER TABLE em_operation_index DROP INDEX idx_operation_'+field+', DROP COLUMN '+field);
+    await pool.query('UPDATE em_meta SET schema_version=10 WHERE id=1');
+    await ensureOperationIndex(pool);await ensureOperationIndex(pool);
+    await pool.query('DELETE FROM em_operation_index');
     await assert.rejects(migrateOperationIndex(pool,{afterBatch:()=>{throw Error('interrupt synthetic');}}),/interrupt/);
     await migrateOperationIndex(pool);await migrateOperationIndex(pool);assert.equal(await fingerprint(),before);
     const [missing]=await pool.query("SELECT COUNT(*) n FROM em_records r LEFT JOIN em_operation_index o ON o.entity=r.entity AND o.id=r.id WHERE r.entity IN ('Ticket','OrdenServicio','LecturaHorometro') AND o.id IS NULL");assert.equal(Number(missing[0].n),0);
@@ -39,7 +43,7 @@ test('Páginas operativas: índices, roles, migración y revisión consistente',
     const [plan]=await pool.execute("EXPLAIN SELECT id FROM em_operation_index WHERE entity='OrdenServicio' AND equipment_id=? ORDER BY sort_value DESC,id DESC LIMIT 25",['equipment-2']);t.diagnostic(JSON.stringify({operationPlan:plan.map(({type,key,rows,Extra})=>({type,key,rows,Extra}))}));assert.ok(plan.some(row=>row.key==='idx_operation_equipment'));assert.ok(plan.every(row=>!/filesort/i.test(row.Extra||'')));
   });
   await t.test('páginas, contadores y detalle respetan los mismos permisos que la base completa',async()=>{
-    for(const actor of [admin,{...admin,rol:'Coordinador'},client,tech,{...client,cliente_id:'absent'},{...tech,tecnico_id:'absent'}])for(const entity of ['Ticket','OrdenServicio','LecturaHorometro']){
+    for(const actor of [admin,{...admin,rol:'Coordinador'},client,tech,{...tech,tecnico_id:'tech-2'},{...client,cliente_id:'absent'},{...tech,tecnico_id:'absent'}])for(const entity of ['Ticket','OrdenServicio','LecturaHorometro']){
       const expected=filterVisible(actor,entity,seed.entities[entity],seed.entities),result=await operationPage(pool,actor,entity,{pageSize:7},3);
       assert.equal(result.total,expected.length);assert.equal(result.counts.total,expected.length);assert.ok(result.rows.length<=7);
       const expectedById=new Map(expected.map(row=>[row.id,row]));for(const row of result.rows)assert.deepEqual(row,expectedById.get(row.id));

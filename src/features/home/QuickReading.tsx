@@ -1,3 +1,4 @@
+import { assignedTo } from '../../domain/order-team';
 import { useRef, useState, type FormEvent } from 'react';
 import { useActor, useToast } from '../../app/state';
 import { ErrorNotice, Modal } from '../../components/ui';
@@ -9,7 +10,7 @@ import { dateTimeInput, fromDateTimeInput, equipmentLabel } from '../operations/
 
 export default function QuickReading({ equipment, orders, readings, onClose }: { equipment: EntityRecord[]; orders: EntityRecord[]; readings: EntityRecord[]; onClose: () => void }) {
   const actor = useActor(), notify = useToast(state => state.notify), technician = actor.rol === 'Técnico';
-  const open = operationalOrders(orders).filter(row => !['Completada', 'Cancelada'].includes(String(row.estado)) && (!technician || row.tecnico_id === actor.tecnico_id));
+  const open = operationalOrders(orders).filter(row => !['Completada', 'Cancelada'].includes(String(row.estado)) && (!technician || assignedTo(row, actor.tecnico_id)));
   const allowed = equipment.filter(row => !technician || open.some(order => order.equipo_id === row.id));
   const [equipmentId, setEquipment] = useState(''), [orderId, setOrder] = useState(''), [value, setValue] = useState('');
   const [when, setWhen] = useState(() => dateTimeInput(new Date().toISOString()));

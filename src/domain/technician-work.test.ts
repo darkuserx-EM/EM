@@ -26,10 +26,10 @@ describe('flujo de trabajo del técnico', () => {
     const source = fixture(), ticket = await source.repository('Ticket', coordinator).create(request);
     const repo = source.repository('OrdenServicio', tech);
     await expect(source.repository('OrdenServicio', otherTech).create({ ...order, ticket_id: ticket.id })).rejects.toThrow('permiso');
-    await expect(repo.create({ ...order, equipo_id: 'equipment-7' })).rejects.toThrow('permiso');
+    expect((await repo.create({ ...order, equipo_id: 'equipment-7' })).equipo_id).toBe('equipment-7');
     await expect(repo.create({ ...order, tecnico_id: otherTech.tecnico_id! })).rejects.toThrow('permiso');
     await expect(repo.create({ ...order, visible_cliente: true })).rejects.toThrow('permiso');
-    await expect(repo.create({ ...order, estado: 'Completada' })).rejects.toThrow('borrador o programada');
+    await expect(repo.create({ ...order, estado: 'Completada' })).rejects.toThrow('borrador, programada o en proceso');
     await expect(source.repository('OrdenServicio', client).create(order)).rejects.toThrow('permiso');
     await expect(source.repository('OrdenServicio', { ...tech, tecnico_id: undefined }).create(order)).rejects.toThrow('permiso');
   });
@@ -40,9 +40,9 @@ describe('flujo de trabajo del técnico', () => {
     await source.repository('OrdenServicio', coordinator).update(saved.id, { tecnico_id: otherTech.tecnico_id! });
     await expect(source.repository('OrdenServicio', tech).create(input)).rejects.toThrow('ya no está asignada');
   });
-  it('admin habilita equipos sin ticket; técnico crea, programa el borrador y conserva sus permisos de ejecución', async () => {
+  it('crea sin habilitación; conserva metadatos antiguos y permisos de ejecución', async () => {
     const source = fixture(), technician = source.snapshot(admin).entities.Tecnico.find(row => row.id === tech.tecnico_id)!;
-    await expect(source.repository('OrdenServicio', tech).create(order)).rejects.toThrow('permiso');
+    expect((await source.repository('OrdenServicio', tech).create({ ...order, estado: 'En proceso' })).estado).toBe('En proceso');
     await expect(source.repository('Tecnico', tech).update(technician.id, { equipos_habilitados: '["equipment-1"]' })).rejects.toThrow('administración');
     const granted = await source.repository('Tecnico', admin).update(technician.id, { equipos_habilitados: '["equipment-1"]', expected_updated_at: technician.fecha_actualizacion });
     expect(technicianEquipmentIds(tech, source.snapshot(admin).entities).has('equipment-1')).toBe(true);

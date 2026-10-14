@@ -107,7 +107,7 @@ describe('operación con permisos y trazabilidad', () => {
     expect(visible.id).toBe(row.id);
     for (const key of ['costo_repuestos', 'notas_internas', 'adjuntos_referencias', 'inspector', 'solicitud_datos']) expect(visible).not.toHaveProperty(key);
     const technicianEquipment = await source.repository('Equipo', technician).getAll();
-    expect(technicianEquipment.every(item => entities.OrdenServicio.some(os => os.equipo_id === item.id && os.tecnico_id === technician.tecnico_id))).toBe(true);
+    expect(technicianEquipment.every(item => !item.fuera_de_flota || entities.OrdenServicio.some(os => os.equipo_id === item.id && os.tecnico_id === technician.tecnico_id))).toBe(true);
     expect(filterVisible({ id: 'missing', nombre: 'Sin asociación', rol: 'Técnico' }, 'Equipo', entities.Equipo, entities)).toEqual([]);
   });
   it('no reescribe los reportes importados o legados al editar', async () => {

@@ -82,8 +82,8 @@ for (const external of [false,true]) test(`Fotografías separadas (${external?'D
   });
   await t.test('original y miniatura requieren sesión y equipo autorizado; reasignar revoca acceso', async()=>{
     for (const preview of [false,true]) {
-      for (const actor of [admin,a,tech]) {const r=await fetch(url+imageUrl(current,'foto_equipo',preview),{headers:headers(actor)});assert.equal(r.status,200);const bytes=Buffer.from(await r.arrayBuffer());if(!preview)assert.deepEqual(bytes,png);else assert.ok(bytes.length<png.length);assert.equal(r.headers.get('cache-control'),'private, no-cache');}
-      for(const actor of [undefined,b,otherTech]) assert.equal((await fetch(url+imageUrl(current,'foto_equipo',preview),{headers:headers(actor)})).status,actor?404:401);
+      for (const actor of [admin,a,tech,otherTech]) {const r=await fetch(url+imageUrl(current,'foto_equipo',preview),{headers:headers(actor)});assert.equal(r.status,200);const bytes=Buffer.from(await r.arrayBuffer());if(!preview)assert.deepEqual(bytes,png);else assert.ok(bytes.length<png.length);assert.equal(r.headers.get('cache-control'),'private, no-cache');}
+      for(const actor of [undefined,b]) assert.equal((await fetch(url+imageUrl(current,'foto_equipo',preview),{headers:headers(actor)})).status,actor?404:401);
     }
     const tag=`"${current.foto_equipo.slice(6)}-original"`;
     assert.equal((await fetch(url+imageUrl(current),{headers:{...headers(a),'If-None-Match':tag,'Cache-Control':'max-age=0'}})).status,304);

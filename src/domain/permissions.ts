@@ -1,7 +1,8 @@
 import { operationalState, maintenanceState } from './equipment-status';
 import type { Actor, Database, EntityName, EntityRecord } from './model';
 import { ValidationError } from './errors';
-import { enabledEquipment } from './technician-work';
+import { retiredEquipment } from './equipment-status';
+import { assignedTo, orderTechnicians } from './order-team';
 
 export function canAccessModule(actor: Actor, module: string): boolean {
   if (actor.rol === 'Administrador') return module !== 'portal';
@@ -15,10 +16,10 @@ const publicFields: Partial<Record<EntityName, string[]>> = {
   Contacto: ['cliente_id', 'nombre', 'cargo', 'telefono', 'correo', 'principal'],
   Sede: ['cliente_id', 'nombre', 'direccion', 'municipio', 'departamento', 'referencia_ubicacion', 'autoriza_contacto_id'],
   Equipo: ['marca', 'modelo', 'serie', 'id_interno_cliente', 'tipo', 'propiedad', 'cliente_id', 'sede_id', 'horometro', 'anio', 'capacidad_lb', 'altura_elevacion_in', 'altura_torre_in', 'largo_cuchillas_in', 'voltaje', 'combustible', 'bateria', 'cargador', 'llantas_delanteras', 'llantas_traseras', 'caster', 'foto_equipo', 'placa_datos', 'foto_frontal', 'foto_trasera', 'foto_lateral_1', 'foto_lateral_2', 'estado_operativo', 'estado_mantenimiento', 'fuera_de_flota'],
-  OrdenServicio: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tecnico', 'tipo', 'prioridad', 'estado', 'fecha_programada', 'hora_programada', 'fecha', 'fecha_fin', 'sintoma', 'motivo', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'trabajo', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas', 'visible_cliente', 'ubicacion'],
+  OrdenServicio: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tecnico_apoyo_1_id', 'tecnico_apoyo_2_id', 'tecnico', 'tipo', 'prioridad', 'estado', 'fecha_programada', 'hora_programada', 'fecha', 'fecha_fin', 'sintoma', 'motivo', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'trabajo', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas', 'visible_cliente', 'ubicacion'],
   Ticket: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'titulo', 'descripcion', 'prioridad', 'estado', 'fecha_programada', 'responsable_id', 'orden_id', 'tiene_orden'],
   LecturaHorometro: ['equipo_id', 'cliente_id', 'orden_id', 'fecha', 'valor', 'odometro_millas', 'origen', 'es_estimado'],
-  Tecnico: ['nombre', 'especialidad', 'activo', 'equipos_habilitados'],
+  Tecnico: ['nombre', 'especialidad', 'activo'],
 };
 function project(entity: EntityName, row: EntityRecord) {
   const allowed = publicFields[entity];
@@ -62,19 +63,18 @@ export function filterVisible(actor: Actor, entity: EntityName, rows: EntityReco
   }
   if (actor.rol === 'Técnico') {
     if (!actor.tecnico_id) return [];
-    const assigned = entities?.OrdenServicio.filter(row => row.tecnico_id === actor.tecnico_id) || [];
+    const assigned = entities?.OrdenServicio.filter(row => assignedTo(row, actor.tecnico_id)) || [];
     const tickets = entities?.Ticket?.filter(row => row.responsable_id === actor.tecnico_id) || [];
     const equipmentIds = new Set(assigned.map(row => row.equipo_id));
     const clientIds = new Set(assigned.map(row => row.cliente_id));
     const ticketEquipmentIds = new Set(tickets.map(row => row.equipo_id));
     const ticketClientIds = new Set(tickets.map(row => row.cliente_id));
-    const technician = entities?.Tecnico?.find(row => row.id === actor.tecnico_id && row.activo !== false);
-    const granted = new Set(enabledEquipment(technician));
+    const granted = new Set(entities?.Equipo.filter(row => !retiredEquipment(row) && row.activo !== false).map(row => row.id));
     const grantedClients = new Set(entities?.Equipo.filter(row => granted.has(row.id)).map(row => row.cliente_id));
-    if (entity === 'Tecnico') return rows.filter(row => row.id === actor.tecnico_id).map(row => project(entity, row));
+    if (entity === 'Tecnico') { const team = new Set(assigned.flatMap(orderTechnicians)); return rows.filter(row => row.activo !== false || row.id === actor.tecnico_id || team.has(row.id)).map(row => project(entity, row)); }
     if (entity === 'Ticket') return rows.filter(row => row.responsable_id === actor.tecnico_id).map(row => project(entity, row));
-    if (entity === 'OrdenServicio') return rows.filter(row => row.tecnico_id === actor.tecnico_id).map(row => project(entity, row));
-    if (entity === 'Equipo') return rows.filter(row => equipmentIds.has(row.id) || ticketEquipmentIds.has(row.id) || granted.has(row.id)).map(row => project(entity, { ...row, estado_operativo: operationalState(row), estado_mantenimiento: maintenanceState(row) }));
+    if (entity === 'OrdenServicio') return rows.filter(row => assignedTo(row, actor.tecnico_id)).map(row => project(entity, row));
+    if (entity === 'Equipo') return rows.filter(row => equipmentIds.has(row.id) || ticketEquipmentIds.has(row.id) || !retiredEquipment(row) && row.activo !== false).map(row => project(entity, { ...row, fuera_de_flota: retiredEquipment(row), estado_operativo: operationalState(row), estado_mantenimiento: maintenanceState(row) }));
     if (entity === 'Cliente') return rows.filter(row => clientIds.has(row.id) || ticketClientIds.has(row.id) || grantedClients.has(row.id)).map(row => project(entity, row));
     if (['Contacto', 'Sede'].includes(entity)) return rows.filter(row => clientIds.has(row.cliente_id) || ticketClientIds.has(row.cliente_id) || grantedClients.has(row.cliente_id)).map(row => project(entity, row));
     if (entity === 'LecturaHorometro') return rows.filter(row => equipmentIds.has(row.equipo_id)).map(row => project(entity, row));
