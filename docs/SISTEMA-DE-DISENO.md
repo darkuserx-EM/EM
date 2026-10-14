@@ -195,3 +195,11 @@ Una orden conserva `tecnico_id` como responsable y admite `tecnico_apoyo_1_id` y
 Cada participante consulta la misma orden en Inicio, Órdenes, Calendario y Planificador. La paginación y los filtros del servidor aplican la pertenencia al equipo de trabajo sin multiplicar registros. Las fotos y videos se autorizan contra la orden compartida y conservan sus referencias originales. Las ediciones conservan autoría y versión; un guardado desactualizado se rechaza.
 
 El alta en estado «En proceso» registra el inicio actual en Guatemala. No cambia automáticamente el estado operativo del equipo. La migración 11 agrega los apoyos al índice operativo y reconstruye esa proyección por lotes reanudables, sin modificar los registros originales, el historial ni los archivos; las órdenes anteriores sin apoyos siguen funcionando.
+
+## Coordinadores en campo y revisión de órdenes completadas
+
+El coordinador mantiene su perfil y puede tener un registro de técnico activo, disponible como responsable o apoyo. Accesos permite a administración vincular una cuenta de coordinador existente, con reautenticación y sin cambiar su contraseña. Las cuentas nuevas de coordinador crean ese registro; no se duplican las identidades vinculadas en un reintento.
+
+Las órdenes operativas completadas admiten dos acciones exclusivas de administración y coordinación: Corregir reporte (mantiene estado, fechas, identidad, equipo, participantes y lecturas) y Reabrir orden (En proceso, retira la publicación al cliente y devuelve las solicitudes resueltas vinculadas a En revisión). Ambas requieren motivo de 8 a 500 caracteres y versión esperada; conservan la versión completa anterior y posterior en bitácora. Los reportes importados no se reescriben. Un segundo cierre no duplica una lectura original idéntica.
+
+Coordinación también puede agregar evidencias a sus órdenes, incluso completadas con motivo obligatorio. Se conservan los archivos anteriores y se registra el autor y motivo del adjunto. El detalle muestra hasta 100 revisiones recientes para administración y coordinación. Técnicos y clientes no acceden a la corrección ni reapertura ni a las evidencias posteriores al cierre como escritores.
