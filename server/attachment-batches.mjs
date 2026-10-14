@@ -1,28 +1,30 @@
 import { select } from './sql.mjs';
+import { localFiles } from './file-storage.mjs';
 export const attachmentFields='id,order_id,ticket_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at';
 
 // Use the same repeatable-read connection for metadata and content. A count alone
 // would allow 50 x 4 MiB to accumulate before JSON/base64 serialization.
-/** @param {import('mysql2/promise').PoolConnection} conn @param {{maxBytes?:number,pageSize?:number}} [options] */
-export async function* attachmentBatches(conn,{maxBytes=8*1024*1024,pageSize=50}={}) {
+/** @param {import('mysql2/promise').PoolConnection} conn @param {{maxBytes?:number,pageSize?:number,files?:import('./file-storage.mjs').FileStore}} [options] */
+export async function* attachmentBatches(conn,{maxBytes=8*1024*1024,pageSize=50,files=localFiles}={}) {
   if(!Number.isSafeInteger(maxBytes)||maxBytes<4*1024*1024||maxBytes>8*1024*1024||!Number.isInteger(pageSize)||pageSize<1||pageSize>50)throw new RangeError('Invalid backup batch limit');
   let cursor='';
   for(;;) {
     /** @type {{id:string,bytes:number}[]} */
-    const metadata=await select(conn,`SELECT id,OCTET_LENGTH(content) AS bytes FROM em_attachments WHERE id>? ORDER BY id LIMIT ${pageSize}`,[cursor]);
+    const metadata=await select(conn,`SELECT id,IF(storage_key IS NULL,OCTET_LENGTH(content),size) AS bytes FROM em_attachments WHERE id>? ORDER BY id LIMIT ${pageSize}`,[cursor]);
     if(!metadata.length)return;
     let offset=0;
     while(offset<metadata.length) {
       const ids=[];let bytes=0;
       while(offset<metadata.length) {
         const row=metadata[offset],size=Number(row.bytes);
-        if(!Number.isSafeInteger(size)||size<12||size>4*1024*1024)throw Object.assign(new Error('Invalid attachment size'),{code:'BACKUP_ATTACHMENT_SIZE'});
+        if(!Number.isSafeInteger(size)||size<12||size>25*1024*1024)throw Object.assign(new Error('Invalid attachment size'),{code:'BACKUP_ATTACHMENT_SIZE'});
         if(ids.length&&bytes+size>maxBytes)break;
         ids.push(row.id);bytes+=size;offset++;
       }
       /** @type {import('./contracts.js').AttachmentFile[]} */
-      const rows=await select(conn,`SELECT ${attachmentFields},content FROM em_attachments WHERE id IN (${ids.map(()=>'?').join(',')}) ORDER BY id`,ids);
-      if(rows.length!==ids.length||rows.reduce((sum,row)=>sum+row.content.length,0)>maxBytes)throw Object.assign(new Error('Inconsistent attachment batch'),{code:'BACKUP_ATTACHMENT_BATCH'});
+      const rows=await select(conn,`SELECT ${attachmentFields},content,storage_key FROM em_attachments WHERE id IN (${ids.map(()=>'?').join(',')}) ORDER BY id`,ids);
+      for (const row of rows) row.content=await files.read(conn,row);
+      if(rows.length!==ids.length||rows.reduce((sum,row)=>sum+row.content.length,0)>Math.max(maxBytes,rows.length===1?25*1024*1024:0))throw Object.assign(new Error('Inconsistent attachment batch'),{code:'BACKUP_ATTACHMENT_BATCH'});
       yield rows;
     }
     cursor=metadata[metadata.length-1].id;

@@ -111,7 +111,7 @@
 
 /* Planificador (tablero por estado) */
 .planning-board-help { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin: 0 0 12px; font-size: var(--text-xs); color: var(--color-text-muted); }
-.planning-board { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); align-items: start; gap: 12px; padding-bottom: 14px; overflow-x: auto; }
+.planning-board { display: grid; grid-template-columns: repeat(6, minmax(220px, 1fr)); align-items: start; gap: 12px; padding-bottom: 14px; overflow-x: auto; }
 .planning-column { min-height: 285px; background: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: var(--radius-lg); transition: background var(--duration-fast), border-color var(--duration-fast); }
 .planning-column.drop-target { background: var(--color-accent-soft); border-color: var(--color-accent); outline: 2px dashed var(--color-accent); outline-offset: -4px; }
 .planning-column > header { padding: 16px 13px 13px; }
@@ -158,7 +158,7 @@
 
 @media (min-width: 1800px) {
   .planning-month-day { min-height: 145px; }
-  .planning-board { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .planning-board { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .planning-card { padding: 16px; }
   .planning-week { min-height: 450px; }
 }
@@ -201,7 +201,7 @@
   .planning-week-events { margin-top: 0; }
   .planning-week-events .planning-event { font-size: var(--text-sm); }
   .planning-free { justify-content: flex-start; padding-top: 20px; }
-  .planning-board { grid-template-columns: repeat(5, minmax(260px, 1fr)); scroll-snap-type: x proximity; }
+  .planning-board { grid-template-columns: repeat(6, minmax(260px, 1fr)); scroll-snap-type: x proximity; }
   .planning-column { scroll-snap-align: start; }
   .planning-move-label select { min-height: var(--target-min); }
 }

@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-vi.mock('../../data/remote',() => ({api:vi.fn()}));
+vi.mock('../../data/remote',() => ({api:vi.fn(),videoChunk:vi.fn()}));
 import { photoSelectionError, uploadTicketPhotos, type TicketPhotoDraft } from './ticket-photo-upload';
 
 const draft = (name:string):TicketPhotoDraft => ({id:crypto.randomUUID(),file:new File(['image'],name,{type:'image/png'}),status:'pending'});
 describe('fotografías de solicitudes',() => {
-  it('rechaza videos, archivos vacíos y fotos mayores a 10 MB',() => {
-    expect(photoSelectionError({name:'video.mp4',type:'video/mp4',size:20})).toContain('videos');
+  it('acepta MP4, rechaza archivos vacíos y respeta los límites de foto y video',() => {
+    expect(photoSelectionError({name:'video.mp4',type:'video/mp4',size:2000})).toBe('');
+    expect(photoSelectionError({name:'video.mp4',type:'video/mp4',size:26*1024*1024})).toContain('25 MB');
     expect(photoSelectionError({name:'foto.png',type:'image/png',size:10*1024*1024+1})).toContain('10 MB');
     expect(photoSelectionError({name:'foto.png',type:'image/png',size:0})).not.toBe('');
     expect(photoSelectionError(draft('foto.png').file)).toBe('');

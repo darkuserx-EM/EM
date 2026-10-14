@@ -10,6 +10,7 @@ import type { EntityRecord } from '../../domain/model';
 import { getDataSource } from '../../data/source';
 import { ImportedReportDetails } from '../fleet/ImportedReportDetails';
 import ServiceOrderForm from './ServiceOrderForm';
+import { canCreateTicketOrder } from '../../domain/technician-work';
 import AttachmentPanel from '../attachments/AttachmentPanel';
 import TicketPhotos from '../attachments/TicketPhotos';
 import { OperationStatus } from './OperationStatus';
@@ -21,7 +22,7 @@ function ReportSection({ title, value }: { title: string; value: unknown }) {
 }
 
 export default function ServiceOrders() {
-  const actor = useActor(); const manager = ['Administrador', 'Coordinador'].includes(actor.rol);
+  const actor = useActor(); const manager = ['Administrador', 'Coordinador'].includes(actor.rol); const canCreate = manager || actor.rol === 'Técnico' && !!actor.tecnico_id;
   const notify = useToast(state => state.notify); const [sharing, setSharing] = useState(false); const [shareError, setShareError] = useState('');
   const equipment = useRows('Equipo', true); const clients = useRows('Cliente', true); const technicians = useRows('Tecnico', true);
   const [params, setParams] = useSearchParams(); const filters = operationFiltersFromParams(params);
@@ -29,15 +30,15 @@ export default function ServiceOrders() {
   const [editor, setEditor] = useState<EntityRecord | 'new' | null>(null); const [dismissedTicket, setDismissedTicket] = useState(''); const [attachmentBusy, setAttachmentBusy] = useState(false);
   const orders=useOperationPage('OrdenServicio',{...filters,page});
   const detail=useOperationPage('OrdenServicio',{id:params.get('orden')||'',pageSize:1},params.has('orden'));
-  const tickets=useOperationPage('Ticket',{id:params.get('ticket')||'',pageSize:1},manager&&params.has('ticket')&&params.get('ticket')!==dismissedTicket);
+  const tickets=useOperationPage('Ticket',{id:params.get('ticket')||'',pageSize:1},canCreate&&params.has('ticket')&&params.get('ticket')!==dismissedTicket);
   const queries = [orders, equipment, clients, technicians, tickets, detail]; const loading = queries.some(query => !query.ready); const error = queries.find(query => query.error)?.error || '';
   const visible=orders.rows,total=orders.data?.total||0;
   const pageCount=Math.max(1,Math.ceil(total/25)),safePage=orders.data?.page||page;
   const selected=detail.rows[0];
   const selectedEquipment = equipment.rows.find(row => row.id === selected?.equipo_id);
   const selectedClient = clients.rows.find(row => row.id === selected?.cliente_id);
-  const ticket = manager && params.get('ticket') !== dismissedTicket ? tickets.rows.find(row => row.id === params.get('ticket')) : undefined;
-  const createFromLink = manager && params.get('nueva') === '1';
+  const ticket = canCreate && params.get('ticket') !== dismissedTicket ? tickets.rows.find(row => row.id === params.get('ticket') && canCreateTicketOrder(actor, row)) : undefined;
+  const createFromLink = canCreate && params.get('nueva') === '1';
   const activeFilters = (['client', 'equipment', 'technician', 'state', 'origin', 'from', 'to'] as const).filter(key => filters[key]).length;
   const counters = [
     { label: 'Órdenes actuales', icon: <ClipboardList size={18} />, origin: 'actual', state: '', value: orders.data?.counts.actual },
@@ -56,7 +57,7 @@ export default function ServiceOrders() {
     finally { setSharing(false); }
   }
   return <div className="operations-page">
-    <SectionTitle eyebrow={actor.rol === 'Técnico' ? 'MI TRABAJO' : actor.rol === 'Cliente' ? 'MI FLOTA' : 'SERVICIO Y OPERACIÓN'} title={actor.rol === 'Técnico' ? 'Mis órdenes de servicio' : actor.rol === 'Cliente' ? 'Reportes de servicio' : 'Órdenes de servicio'} description={actor.rol === 'Técnico' ? 'Tus visitas asignadas, diagnóstico, trabajo realizado y pruebas de cierre.' : actor.rol === 'Cliente' ? 'Los servicios realizados en tus equipos, con su reporte.' : 'Consulta cada servicio por cliente y equipo. El historial importado conserva su información de origen.'}>{manager && <button className="button button-dark" onClick={() => setEditor('new')}><Plus size={16} />Nueva orden</button>}</SectionTitle>
+    <SectionTitle eyebrow={actor.rol === 'Técnico' ? 'MI TRABAJO' : actor.rol === 'Cliente' ? 'MI FLOTA' : 'SERVICIO Y OPERACIÓN'} title={actor.rol === 'Técnico' ? 'Mis órdenes de servicio' : actor.rol === 'Cliente' ? 'Reportes de servicio' : 'Órdenes de servicio'} description={actor.rol === 'Técnico' ? 'Tus visitas asignadas, diagnóstico, trabajo realizado y pruebas de cierre.' : actor.rol === 'Cliente' ? 'Los servicios realizados en tus equipos, con su reporte.' : 'Consulta cada servicio por cliente y equipo. El historial importado conserva su información de origen.'}>{canCreate && <button className="button button-dark" onClick={() => setEditor('new')}><Plus size={16} />Nueva orden</button>}</SectionTitle>
     <div className="kpi-grid kpi-grid-page" role="group" aria-label="Filtrar órdenes">{counters.map(item => { const pressed = filters.origin === item.origin && filters.state === item.state; return <KpiCard key={item.label} icon={item.icon} label={item.label} value={item.value ?? '—'} pressed={pressed} onClick={() => { setFilters(pressed ? { ...emptyOperationFilters } : { ...emptyOperationFilters, origin: item.origin, state: item.state }); setPage(1); }} />; })}</div>
     <section className="panel os-list-panel">
       <div className="os-filters">
@@ -78,6 +79,7 @@ export default function ServiceOrders() {
       </>}
     </section>
     {params.has('orden') && !loading && !selected && !error && <ErrorNotice message="No se encontró el reporte o no tienes acceso a él." />}
+    {canCreate && params.has('ticket') && params.get('ticket') !== dismissedTicket && !loading && !ticket && !error && <div><ErrorNotice message="No se puede crear una orden desde esta solicitud: revisa si ya tiene orden, está cerrada o cambió su asignación." /><Link className="button" to={`/tickets?ticket=${encodeURIComponent(params.get('ticket') || '')}`}>Revisar solicitud</Link></div>}
     {selected && !editor && <Modal title={`Reporte ${serviceLabel(selected)}`} wide className="os-detail-modal" onClose={close}>
       <div className="os-detail-actions">{actor.rol !== 'Técnico' && <Link className="button" aria-disabled={attachmentBusy} onClick={event => { if (attachmentBusy) event.preventDefault(); }} to={`/${actor.rol === 'Cliente' ? 'portal' : 'flota'}?equipo=${encodeURIComponent(String(selected.equipo_id))}`}>Ficha del equipo<ArrowUpRight size={15} /></Link>}<button className="button" disabled={attachmentBusy || sharing} onClick={() => window.print()}><Printer size={15} />Imprimir / PDF</button>{isOperationalOrder(selected) && !['Completada', 'Cancelada'].includes(String(selected.estado)) && (manager || actor.rol === 'Técnico' && selected.tecnico_id === actor.tecnico_id) && <button className="button button-dark" disabled={attachmentBusy || sharing} onClick={() => setEditor(selected)}><Pencil size={15} />Editar reporte</button>}</div>
       {(actor.rol === 'Administrador' || manager && isOperationalOrder(selected)) && selected.cliente_id && <div className="os-sharing"><span>{selected.visible_cliente === true ? 'Visible en el portal del cliente' : 'El cliente aún no ve este reporte'}</span><button className="button button-small" disabled={sharing || attachmentBusy} onClick={share}>{selected.visible_cliente === true ? <EyeOff size={15} /> : <Eye size={15} />}{sharing ? 'Guardando…' : selected.visible_cliente === true ? 'Ocultar reporte' : 'Compartir con cliente'}</button></div>}

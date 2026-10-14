@@ -1,6 +1,7 @@
 import { select, selectQuery, change } from './sql.mjs';
 import { errorCode } from './errors.mjs';
 import mysql from 'mysql2/promise';
+import { ensureFileStorage } from './file-storage.mjs';
 import {ensureOperationIndex,migrateOperationIndex,indexOperations,operationalEntities} from './operation-index.mjs';
 import {ensureAuditStorage, migrateAuditStorage, appendAudit} from './audit-storage.mjs';
 import { createSeed, entityNames, validateDatabase, addClientSectors } from './generated/domain.mjs';
@@ -25,6 +26,7 @@ export async function migrate(pool) {
     `CREATE TABLE IF NOT EXISTS em_media_migration (equipment_id VARCHAR(128) PRIMARY KEY, payload LONGTEXT NOT NULL, created_at BIGINT NOT NULL) ENGINE=InnoDB`,
   ];
   for (const statement of sql) await pool.query(statement);
+  await ensureFileStorage(pool);
   // Additive: historical order attachments keep their bytes and original IDs.
   /** @type {{Field:string}[]} */
   const attachmentColumns = await selectQuery(pool,"SHOW COLUMNS FROM em_attachments LIKE 'ticket_id'");

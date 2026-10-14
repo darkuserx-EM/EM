@@ -26,6 +26,9 @@ import { registerTicketAttachmentRoutes } from './ticket-attachments.mjs';
 import { registerAttachmentBackupRoutes } from './attachment-backup.mjs';
 import { registerMediaUploadRoutes, persistEquipmentMedia, hydrateEquipment } from './media.mjs';
 import { registerFullBackupRoutes } from './full-backup.mjs';
+import { localFiles } from './file-storage.mjs';
+import { DriveStorageError } from './drive-storage.mjs';
+import {registerVideoRoutes} from './videos.mjs';
 
 /** @param {number} status @param {string} message */
 const fail = (status, message) => Object.assign(new Error(message), { status, expose: true });
@@ -44,7 +47,7 @@ const actorOf = user => ({ id: user.id, nombre: user.name, rol: user.role, clien
 /** @param {unknown} value */
 const emailOf = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
 /** @param {import("./http-contracts.js").AppOptions} options */
-export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60', totpEncryptionKey } ) {
+export function createApp({ pool, origin, setupToken, production = true, dist = resolve('dist'), trustProxy = '1', networkDiagnostics = false, logger = console.error, sessionIdleMinutes = '60', totpEncryptionKey,files=localFiles } ) {
   const app = express();
   const mfaKey=encryptionKey(totpEncryptionKey);
   const idleMs=idleTimeout(sessionIdleMinutes), cookieName=production?'__Host-em_session':'em_session';
@@ -53,7 +56,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   const snapshots = createSnapshotCache(pool);
   /** @type {WeakMap<import("../src/domain/model.js").Database,import("../src/domain/incremental-validation.js").IncrementalValidation>} */
   const validationIndexes=new WeakMap();
-  app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null, imgSrc: ["'self'", "data:", "blob:"] } } }));
+  app.use(helmet({ strictTransportSecurity: production ? { maxAge: 31536000, includeSubDomains: false } : false, contentSecurityPolicy: { directives: { upgradeInsecureRequests: production ? [] : null, imgSrc: ["'self'", "data:", "blob:"],mediaSrc:["'self'","blob:"] } } }));
   app.use((_req, res, next) => { res.set('X-Robots-Tag', 'noindex, nofollow'); next(); });
   app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
   app.get('/api/health', async (_req,res) => { try { await pool.query('SELECT 1'); res.json({ status:'ok', database:'connected', release:'0.3.0', persistence:'optimistic-v1' }); } catch (error) {
@@ -63,7 +66,8 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.use('/api', rateLimit({ windowMs:60000, limit:240, standardHeaders:'draft-8', legacyHeaders:false, message:{error:'Demasiadas solicitudes. Intenta de nuevo en un minuto.'} }));
   app.use('/api', (req,_res,next) => {
     const imageUpload = req.method === 'POST' && req.path === '/equipment-media/upload' && ['image/png','image/jpeg','image/webp'].includes(req.get('content-type')||'');
-    if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || (!req.is('application/json') && !imageUpload))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
+    const videoUpload=req.method==='POST'&&/^\/videos\/[a-f0-9-]{36}\/chunk$/i.test(req.path)&&req.is('application/octet-stream');
+    if (!['GET','HEAD'].includes(req.method) && (req.get('origin') !== origin || (!req.is('application/json') && !imageUpload && !videoUpload))) return next(fail(403,'La solicitud debe realizarse desde el portal.'));
     next();
   });
   const smallJson = express.json({ limit:'100kb' });
@@ -149,6 +153,12 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   });
   app.post('/api/session/activity', (_req,res) => res.json({ok:true}));
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf,mustChangePassword:req.mustChangePassword}));
+  app.use('/api',(req,res,next)=>{
+    if(production && files.organize && req.method==='POST' && (['/mutate','/attachments','/ticket-attachments','/admin/attachments/restore'].includes(req.path)||/^\/videos\/[^/]+\/finish$/.test(req.path)))res.once('finish',()=>{
+      if(res.statusCode<300)void files.organize?.().catch(error=>logFailure(error,{event:'drive.organize',status:503},logger));
+    });
+    next();
+  });
   // Small authenticated requests are parsed only after session and CSRF checks.
   app.use('/api', (req,res,next) => ['/mutate','/attachments','/ticket-attachments','/admin/attachments/restore','/equipment-media/upload','/admin/media/restore'].includes(req.path) && req.method === 'POST' ? next() : smallJson(req,res,next));
   registerMfaRoutes(app,{pool,key:mfaKey});
@@ -156,11 +166,12 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   registerAuditRoutes(app, pool);
   registerOperationPages(app,{pool,syncToken});
   registerAdminUserRoutes(app, {pool});
-  registerAttachmentRoutes(app, {pool});
-  registerTicketAttachmentRoutes(app, {pool});
-  registerAttachmentBackupRoutes(app, {pool,logger});
-  registerMediaUploadRoutes(app, {pool});
-  registerFullBackupRoutes(app, {pool,logger});
+  registerAttachmentRoutes(app, {pool,files});
+  registerTicketAttachmentRoutes(app, {pool,files});
+  registerVideoRoutes(app,{pool,files});
+  registerAttachmentBackupRoutes(app, {pool,logger,files});
+  registerMediaUploadRoutes(app, {pool,files});
+  registerFullBackupRoutes(app, {pool,logger,files});
   app.post('/api/logout', /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").SessionBody>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> { await pool.execute('DELETE FROM em_sessions WHERE token_hash=?',[req.sessionHash]); clearSessionCookies(res,production); res.json({ok:true}); });
   app.get('/api/database', /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").SessionBody>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> {
 
@@ -177,7 +188,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.get('/api/backup', /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").SessionBody>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> {
     if (req.actor.rol !== 'Administrador') throw fail(403,'Esta acción está disponible solo para administración.');
     const db = await readSnapshot(pool);
-    db.entities.Equipo = await hydrateEquipment(pool,db.entities.Equipo);
+    db.entities.Equipo = await hydrateEquipment(pool,db.entities.Equipo,{files});
     res.json(db);
   });
   app.post('/api/equipment-export', /** @param {import("./http-contracts.js").PortalRequest<{ids?:unknown}>} req @param {import("./http-contracts.js").PortalResponse<{rows:Record<string,import("../src/domain/model.js").Scalar>[],includesImages:boolean}>} res */ async (req,res)=> {
@@ -189,7 +200,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   });
   app.get('/api/equipment-images/:id/:field/:hash', /** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").SessionBody>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> {
     const equipment = await readEquipmentRecord(pool,req.params.id);
-    /** @type {Pick<import("../src/domain/model.js").Database["entities"],"Equipo"|"OrdenServicio"|"Ticket">|undefined} */
+    /** @type {Pick<import("../src/domain/model.js").Database["entities"],"Equipo"|"OrdenServicio"|"Ticket"|"Tecnico">|undefined} */
     let scope;
     if (equipment && req.actor.rol === 'Técnico' && req.actor.tecnico_id) {
 
@@ -197,7 +208,9 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     const orders = await select(pool,"SELECT payload FROM em_records WHERE entity='OrdenServicio' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.tecnico_id'))=?", [equipment.id,req.actor.tecnico_id]);
       /** @type {{payload:string}[]} */
       const tickets = await select(pool,"SELECT payload FROM em_records WHERE entity='Ticket' AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.equipo_id'))=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.responsable_id'))=?", [equipment.id,req.actor.tecnico_id]);
-      scope = { OrdenServicio: orders.map(order => JSON.parse(order.payload)), Ticket:tickets.map(ticket=>JSON.parse(ticket.payload)), Equipo:[] };
+      /** @type {{payload:string}[]} */
+      const technicians = await select(pool,"SELECT payload FROM em_records WHERE entity='Tecnico' AND id=?", [req.actor.tecnico_id]);
+      scope = { OrdenServicio: orders.map(order => JSON.parse(order.payload)), Ticket:tickets.map(ticket=>JSON.parse(ticket.payload)), Equipo:[], Tecnico:technicians.map(row=>JSON.parse(row.payload)) };
     }
     const row = equipment && filterVisible(req.actor,'Equipo',[equipment],scope)[0];
     /** @type {{type:string,bytes:Buffer}|null} */
@@ -206,9 +219,9 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       const preview = req.query.preview === '1';
       // Select just the requested representation; a thumbnail request does not read the original BLOB.
 
-/** @type {{mime:string,bytes:Buffer,preview:number}[]} */
-    const files = await select(pool,`SELECT mime,${preview ? 'COALESCE(thumbnail,content)' : 'content'} AS bytes,${preview ? 'thumbnail IS NOT NULL' : 'FALSE'} AS preview FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id,req.params.field,req.params.hash]);
-      if (files.length) image = { type: files[0].preview ? 'image/webp' : files[0].mime, bytes: files[0].bytes };
+/** @type {{mime:string,bytes:Buffer,storage_key:string|null,preview:number}[]} */
+    const stored = await select(pool,`SELECT mime,${preview ? 'COALESCE(thumbnail,content)' : 'content'} AS bytes,${preview ? 'IF(thumbnail IS NOT NULL,thumbnail_key,storage_key)' : 'storage_key'} AS storage_key,${preview ? 'thumbnail IS NOT NULL' : 'FALSE'} AS preview FROM em_media WHERE equipment_id=? AND field=? AND hash=?`, [row.id,req.params.field,req.params.hash]);
+      if (stored.length) image = { type: stored[0].preview ? 'image/webp' : stored[0].mime, bytes: await files.read(pool,{content:stored[0].bytes,storage_key:stored[0].storage_key}) };
     }
     if (!image) throw fail(404,'Imagen no disponible.');
     // Revalidate authorization on every request, including conditional requests.
@@ -222,12 +235,12 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (req.actor.rol !== 'Administrador') {
       const operational = oneOf(['Ticket','OrdenServicio','LecturaHorometro'],body?.entity);
       const manager = req.actor.rol === 'Coordinador' && operational && ['create','update'].includes(body?.action);
-      const technician = req.actor.rol === 'Técnico' && ((body?.entity === 'OrdenServicio' && body?.action === 'update') || (body?.entity === 'LecturaHorometro' && body?.action === 'create'));
+      const technician = req.actor.rol === 'Técnico' && ((body?.entity === 'OrdenServicio' && ['create','update'].includes(body?.action)) || (body?.entity === 'Ticket' && body?.action === 'update') || (body?.entity === 'LecturaHorometro' && body?.action === 'create'));
       const client = req.actor.rol === 'Cliente' && body?.entity === 'Ticket' && body?.action === 'create';
       if (!manager && !technician && !client) throw fail(403,'No tienes permiso para realizar esta operación.');
     }
     if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','importHistoricalReports','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
-    if (!['importClients','importHistoricalReports','restore'].includes(body.action) && !oneOf(['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM','Ticket','OrdenServicio','LecturaHorometro'],body.entity)) throw fail(400,'Entidad no editable.');
+    if (!['importClients','importHistoricalReports','restore'].includes(body.action) && !oneOf(['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM','Tecnico','Ticket','OrdenServicio','LecturaHorometro'],body.entity)) throw fail(400,'Entidad no editable.');
     if (['create','update'].includes(body.action) && (!body.fields || typeof body.fields !== 'object' || Array.isArray(body.fields) || Object.entries(body.fields).some(([key,value]) => ['__proto__','constructor','prototype'].includes(key) || (value !== null && !['string','number','boolean'].includes(typeof value))))) throw fail(400,'Los campos del registro no son válidos.');
     if (body.action === 'update' && oneOf(['Ticket','OrdenServicio','LecturaHorometro'],body.entity) && typeof body.fields.expected_updated_at !== 'string') throw fail(400,'Recarga el registro antes de editarlo.');
     if ((body.action==='import'||body.action==='importClients') && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
@@ -325,6 +338,10 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.use(/** @param {unknown} error @param {import("./http-contracts.js").PortalRequest} req @param {import("./http-contracts.js").PortalResponse<{error:string,reference?:string}>} res @param {import("express").NextFunction} _next */ (error,req,res,_next)=>{
     if (errorField(error,'type') === 'entity.too.large') return res.status(413).json({error:'El envío supera el tamaño permitido. Reduce los adjuntos o el archivo.'});
     if (errorField(error,'type') === 'entity.parse.failed') return res.status(400).json({error:'La solicitud no contiene un JSON válido.'});
+    if (error instanceof DriveStorageError) {
+      const reference=logFailure(error,{event:'file.storage',method:req.method,route:req.route?.path||'(middleware)',status:503},logger);
+      return res.set('Retry-After','60').status(503).json({error:error.message,reference});
+    }
     const status=errorField(error,'status'),message=errorField(error,'message');
     if (errorField(error,'expose') === true && typeof status==='number' && Number.isInteger(status) && status >= 400 && status < 500 && typeof message==='string') return res.status(status).json({error:message});
     const reference = logFailure(error, { event:'request', method:req.method, route:req.route?.path || '(middleware)', status:500 }, logger);

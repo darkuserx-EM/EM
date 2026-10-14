@@ -8,11 +8,12 @@ import { presentEquipment } from './equipment-images.mjs';
 import { legacyMedia, mediaColumns, mediaMetadata, verifyStoredMedia } from './media.mjs';
 import { writeLine, validateRestoreFile, metadataOf } from './attachment-backup.mjs';
 import { logFailure } from './diagnostics.mjs';
+import { localFiles } from './file-storage.mjs';
 
 /** @param {string} id @param {string} field @param {string} hash */
 const key = (id, field, hash) => JSON.stringify([id, field, hash]);
-/** @param {import("mysql2/promise").PoolConnection} conn @returns {AsyncGenerator<import("./contracts.js").FullBackupEntry>} */
-export async function* fullBackupEntries(conn) {
+/** @param {import("mysql2/promise").PoolConnection} conn @param {import('./file-storage.mjs').FileStore} [storage] @returns {AsyncGenerator<import("./contracts.js").FullBackupEntry>} */
+export async function* fullBackupEntries(conn,storage=localFiles) {
   /** @type {{revision:number}[]} */
     const meta = await selectQuery(conn,'SELECT revision FROM em_meta WHERE id=1');
   yield { type: 'portal-em.full', version: 1, schemaVersion: 1, revision: Number(meta[0].revision), exportedAt: new Date().toISOString() };
@@ -43,9 +44,9 @@ export async function* fullBackupEntries(conn) {
   let equipment = '', field = '', hash = ''; const included = new Set();
   for (;;) {
     /** @type {Omit<import("./contracts.js").MediaFile,"thumbnail">[]} */
-    const files = await select(conn,`SELECT ${mediaColumns},content FROM em_media WHERE equipment_id>? OR (equipment_id=? AND field>?) OR (equipment_id=? AND field=? AND hash>?) ORDER BY equipment_id,field,hash LIMIT 1`, [equipment, equipment, field, equipment, field, hash]);
+    const files = await select(conn,`SELECT ${mediaColumns},content,storage_key FROM em_media WHERE equipment_id>? OR (equipment_id=? AND field>?) OR (equipment_id=? AND field=? AND hash>?) ORDER BY equipment_id,field,hash LIMIT 1`, [equipment, equipment, field, equipment, field, hash]);
     if (!files.length) break;
-    const file = files[0]; verifyStoredMedia(file);
+    const file = files[0]; file.content=await storage.read(conn,file); verifyStoredMedia(file);
     const identity = key(file.equipment_id, file.field, file.hash); included.add(identity); needed.delete(identity);
     yield { type: 'media', file: { metadata: mediaMetadata(file), base64: file.content.toString('base64') } };
     equipment = file.equipment_id; field = file.field; hash = file.hash;
@@ -65,14 +66,14 @@ export async function* fullBackupEntries(conn) {
     id = record.id;
   }
   if (needed.size) throw Object.assign(new Error('Missing referenced equipment media'), { code: 'BACKUP_MEDIA_MISSING' });
-  for await(const rows of attachmentBatches(conn)) for(const row of rows) {
+  for await(const rows of attachmentBatches(conn,{files:storage})) for(const row of rows) {
     const { content } = row; const metadata = metadataOf(row);
     const file = { metadata, base64: content.toString('base64') }; validateRestoreFile(file);
     yield { type: 'attachment', file };
   }
 }
-/** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool,logger?:(line:string)=>void}} options */
-export function registerFullBackupRoutes(app, { pool, logger = console.error }) {
+/** @param {import("express").Express} app @param {{pool:import("mysql2/promise").Pool,logger?:(line:string)=>void,files?:import('./file-storage.mjs').FileStore}} options */
+export function registerFullBackupRoutes(app, { pool, logger = console.error,files=localFiles }) {
   app.get('/api/admin/full-backup', /** @param {import("./http-contracts.js").PortalRequest<unknown>} req @param {import("./http-contracts.js").PortalResponse} res */ async (req,res)=> {
     if (req.actor.rol !== 'Administrador') throw Object.assign(new Error('Solo administración puede descargar el respaldo completo.'), { status: 403, expose: true });
     const conn = await pool.getConnection();
@@ -80,7 +81,7 @@ export function registerFullBackupRoutes(app, { pool, logger = console.error }) 
       await conn.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ'); await conn.beginTransaction();
       res.type('application/x-ndjson').set('Content-Disposition', `attachment; filename="Portal-EM-Completo-${todayGT()}.jsonl"`);
       const checksum = createHash('sha256'); const counts = { record: 0, media: 0, attachment: 0 };
-      for await (const entry of fullBackupEntries(conn)) {
+      for await (const entry of fullBackupEntries(conn,files)) {
         checksum.update(await writeLine(res, entry));
         if (entry.type==='record'||entry.type==='media'||entry.type==='attachment') counts[entry.type]++;
       }

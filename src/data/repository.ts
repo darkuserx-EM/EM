@@ -11,6 +11,7 @@ import { administrativeState, equipmentStatusChanges, equipmentStatusValues } fr
 import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-images';
 import { ValidationError } from '../domain/errors';
 import type { HistoricalReportsImport } from './historical-reports';
+import { enabledEquipment, validEquipmentGrant } from '../domain/technician-work';
 import { isOperationalEntity, prepareOperation, ticketsResolvedByOrder } from '../domain/operations';
 
 export const STORAGE_KEY = 'portal-em.database.v1';
@@ -113,7 +114,7 @@ export class LocalDataSource {
   private assertEditable(entity: EntityName, actor: Actor) {
     if (isOperationalEntity(entity)) return;
     assertAdmin(actor);
-    if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo', 'Hallazgo', 'PlanPM'].includes(entity)) throw new ValidationError('La edición de este módulo se habilitará en su etapa de desarrollo.');
+    if (!['Catalogos', 'Cliente', 'Contacto', 'Sede', 'Equipo', 'Hallazgo', 'PlanPM', 'Tecnico'].includes(entity)) throw new ValidationError('La edición de este módulo se habilitará en su etapa de desarrollo.');
   }
   repository(entity: EntityName, actor: Actor): Repository {
     const getAll = async (query:OperationQuery={}) => isPagedEntity(entity)&&Object.keys(query).length ? (await this.operationPage(entity,actor,{...query,page:1,pageSize:Math.max(1,this.database.entities[entity].length)})).rows : structuredClone(filterVisible(actor, entity, this.database.entities[entity], this.database.entities));
@@ -122,12 +123,14 @@ export class LocalDataSource {
       getById: async id => (await getAll()).find(row => row.id === id),
       export: async predicate => { assertAdmin(actor); return (await getAll()).filter(predicate ?? (() => true)); },
       create: async input => {
+        if (entity === 'Tecnico') throw new ValidationError('Crea el técnico desde Roles y accesos.');
         this.assertEditable(entity, actor);
         let fields = cleanFields(entity, input);
         const requestContent = JSON.stringify(Object.entries(fields).filter(([key]) => !['solicitud_id', 'schema_operacion'].includes(key)).sort(([a], [b]) => a.localeCompare(b)));
         if (isOperationalEntity(entity)) {
           const previousRequest = fields.solicitud_id && this.database.entities[entity].find(row => row.solicitud_id === fields.solicitud_id && row.creado_por === actor.id);
           if (previousRequest) {
+            if (entity === 'OrdenServicio' && actor.rol === 'Técnico' && previousRequest.tecnico_id !== actor.tecnico_id) throw Object.assign(new ValidationError('La orden ya no está asignada a ti.'), { status: 403 });
             if (previousRequest.solicitud_datos !== requestContent) throw new ValidationError('La solicitud ya se guardó con otra información. Revisa el registro antes de crear otro.');
             return structuredClone(previousRequest);
           }
@@ -163,6 +166,11 @@ export class LocalDataSource {
         const next = structuredClone(this.database); const index = next.entities[entity].findIndex(row => row.id === id);
         if (index < 0) throw new ValidationError('No se encontró el registro.');
         const original = next.entities[entity][index]; let fields = cleanFields(entity, input);
+        if (entity === 'Tecnico') {
+          if (Object.keys(input).some(key => !['equipos_habilitados', 'expected_updated_at'].includes(key)) || !validEquipmentGrant(fields.equipos_habilitados)) throw new ValidationError('Solo se permite actualizar los equipos habilitados.');
+          if (input.expected_updated_at !== original.fecha_actualizacion) throw Object.assign(new ValidationError('El técnico cambió. Recarga antes de guardar.'), { status: 409 });
+          if (enabledEquipment({ ...original, ...fields }).some(id => !next.entities.Equipo.some(eq => eq.id === id))) throw new ValidationError('Selecciona equipos existentes.');
+        }
         if (isOperationalEntity(entity)) fields = prepareOperation(entity, fields, actor, next.entities, original);
         if (isOperationalEntity(entity) && input.expected_updated_at !== undefined && input.expected_updated_at !== original.fecha_actualizacion) throw Object.assign(new ValidationError('Este registro cambió mientras lo editabas. Cierra el formulario, revisa la versión actual y vuelve a intentarlo.'), { status: 409 });
         if (entity === 'Hallazgo') {
@@ -196,7 +204,14 @@ export class LocalDataSource {
         }
         const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : equipmentImageFields.some(field => field === key) ? `${equipmentImageLabels[key as keyof typeof equipmentImageLabels]}: ${value ? 'actualizada' : 'retirada'}` : `${key}: ${original[key]} → ${value}`).join('; ');
         if (entity === 'Hallazgo') this.recordFindingChange(next, actor, row, original);
-        else this.audit(next, actor, entity, 'Actualización', `${row.codigo} · ${changed || 'Sin cambios'}`); this.commit(next); return structuredClone(row);
+        else if (entity === 'Ticket' && original.estado === 'Resuelto' && row.estado === 'En revisión') {
+          this.audit(next, actor, entity, 'Reapertura sin orden', row.codigo + ' · Resuelto → En revisión · ' + row.reapertura_motivo);
+          Object.assign(next.entities.Bitacora.at(-1)!, { ticket_id: row.id, equipo_id: row.equipo_id, estado_anterior: original.estado, estado_nuevo: row.estado, motivo: row.reapertura_motivo });
+        } else if (entity === 'Tecnico') {
+          this.audit(next, actor, entity, 'Equipos habilitados', `${row.codigo} · Selección actualizada`);
+          Object.assign(next.entities.Bitacora.at(-1)!, { tecnico_id: row.id, equipos_anteriores: original.equipos_habilitados || '[]', equipos_nuevos: row.equipos_habilitados || '[]' });
+        } else this.audit(next, actor, entity, 'Actualización', `${row.codigo} · ${changed || 'Sin cambios'}`);
+        this.commit(next); return structuredClone(row);
       },
       remove: async id => { this.assertEditable(entity, actor); if (entity !== 'Catalogos') throw new ValidationError('Conserva el registro y cambia su estado desde la ficha.'); await this.repository(entity, actor).update(id, { activo: false }); },
       import: async (rows, expectedRevision) => {

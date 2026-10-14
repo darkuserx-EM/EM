@@ -69,6 +69,10 @@ describe('componentes compartidos', () => {
     expect(withIcon).toContain('<span class="kpi-card-icon" aria-hidden="true"><svg data-icon=""></svg></span>');
     expect(withIcon).toContain('<small class="kpi-card-hint">Abiertas</small><span class="kpi-card-arrow"');
     expect(html(<KpiCard label="Abiertas" value={12} />)).not.toContain('kpi-card-arrow');
+    const jump = html(<KpiCard label="Solicitudes por atender" value={3} to="#solicitudes-por-atender" />);
+    expect(jump).toMatch(/^<a class="kpi-card kpi-card-link" href="#solicitudes-por-atender">/);
+    expect(jump).toContain('lucide-arrow-down');
+    expect(jump).not.toContain('data-discover');
   });
 });
 

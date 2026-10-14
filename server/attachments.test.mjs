@@ -13,7 +13,7 @@ test('lectura de adjuntos usa sólo la orden y autoriza antes de cargar el binar
     async execute(sql, args) {
       queries.push(sql);
       if (sql.startsWith("SELECT payload FROM em_records WHERE entity='OrdenServicio'")) return [[{ payload:JSON.stringify(order) }]];
-      if (sql === 'SELECT content FROM em_attachments WHERE id=?') return [[{content:bytes}]];
+      if (sql === 'SELECT content,storage_key FROM em_attachments WHERE id=?') return [[{content:bytes,storage_key:null}]];
       if (sql.startsWith('SELECT id,order_id') && args[0]) return [[file]];
       throw new Error(`Unexpected broad read: ${sql}`);
     },

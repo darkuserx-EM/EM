@@ -8,6 +8,7 @@ import { siteContactError } from './site-profile';
 import { synchronizeEquipmentUnits } from './equipment-specifications';
 import { equipmentImageFields, equipmentImageLabels, validEquipmentImage } from './equipment-images';
 import { ValidationError } from './errors';
+import { enabledEquipment, validEquipmentGrant } from './technician-work';
 import { isOperationalEntity, operationFieldErrors, operationLinkErrors } from './operations';
 
 export function normalize(value: unknown) { return String(value ?? '').trim().normalize('NFKC').toLocaleLowerCase('es'); }
@@ -22,7 +23,7 @@ export function validateRecord(entity: EntityName, input: Record<string, unknown
     if (column.type === 'boolean' && typeof value !== 'boolean') errors.push(`${column.label}: usa Sí o No`);
     if (column.type === 'text' && typeof value !== 'string') errors.push(`${column.label}: debe ser texto`);
     if (column.options && !column.options.includes(String(value))) errors.push(`${column.label}: valor no permitido`);
-    const maxLength = isOperationalEntity(entity) ? 4000 : entity === 'Hallazgo' && column.key === 'descripcion' ? 2000 : 500;
+    const maxLength = entity === 'Tecnico' && column.key === 'equipos_habilitados' ? 52000 : isOperationalEntity(entity) ? 4000 : entity === 'Hallazgo' && column.key === 'descripcion' ? 2000 : 500;
     if (!(entity === 'Cliente' && column.key === 'logo') && !(entity === 'Equipo' && equipmentImageFields.some(field => field === column.key)) && typeof value === 'string' && value.length > maxLength) errors.push(`${column.label}: máximo ${maxLength} caracteres`);
   }
   if (entity === 'Cliente' && !validClientLogo(input.logo)) errors.push('Logo: usa una imagen PNG, JPG o WebP válida y ajustada desde el formulario.');
@@ -36,6 +37,7 @@ export function validateRecord(entity: EntityName, input: Record<string, unknown
     if (input.estado === 'Programado' && (!String(input.responsable || '').trim() || !input.fecha_programada)) errors.push('Para programar, indica responsable y fecha.');
     if (findingClosed(input as EntityRecord) && !String(input.detalle_resolucion || '').trim()) errors.push('Explica la resolución o el motivo de descarte.');
   }
+  if (entity === 'Tecnico' && !validEquipmentGrant(input.equipos_habilitados)) errors.push('La selección de equipos habilitados no es válida.');
   if (entity === 'PlanPM') errors.push(...planFieldErrors(input));
   errors.push(...operationFieldErrors(entity, input));
   return errors;
@@ -102,6 +104,7 @@ export function validateDatabase(value: unknown, { maxRows = Infinity }: { maxRo
   }
   for (const equipment of data.entities.Equipo) if (equipment.sede_id && (!sites.has(String(equipment.sede_id)) || sites.get(String(equipment.sede_id))?.cliente_id !== equipment.cliente_id)) throw new ValidationError(`${equipment.codigo}: la sede no pertenece al cliente seleccionado.`);
   const equipmentIds = new Set(data.entities.Equipo.map(row => row.id));
+  for (const technician of data.entities.Tecnico) if (enabledEquipment(technician).some(id => !equipmentIds.has(id))) throw new ValidationError(`${technician.codigo}: un equipo habilitado no existe.`);
   const orders = new Map(data.entities.OrdenServicio.map(row => [row.id, row]));
   for (const name of ['OrdenServicio', 'LecturaHorometro', 'OTRepuesto', 'OTHoras'] as const) {
     for (const row of data.entities[name]) {

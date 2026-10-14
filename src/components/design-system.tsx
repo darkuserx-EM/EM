@@ -1,6 +1,6 @@
 import { useId, useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, type LinkProps } from 'react-router-dom';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowDown, ArrowUpRight } from 'lucide-react';
 
 /*
  * Componentes compartidos del sistema de diseño (docs/SISTEMA-DE-DISENO.md · Componentes).
@@ -89,13 +89,16 @@ export function Tabs<T extends string>({ items, value, onChange, label, panelId,
 /**
  * Indicador con cifra. Cada uso tiene su señal visible:
  * - filtro: `onClick` + `pressed` → botón con `aria-pressed` y borde de seleccionado;
- * - enlace: `to` → lleva a otra pantalla; conserva su ícono y agrega una flecha ↗ abajo a la derecha;
+ * - enlace: `to` → lleva a otra pantalla; conserva su ícono y agrega una flecha ↗ abajo a la derecha.
+ *   Con `to="#id"` salta a una sección de la misma página: enlace normal (el navegador hace el desplazamiento) y flecha ↓;
  * - informativo: sin `onClick` ni `to`.
  * `alert` pinta la cifra en rojo (por ejemplo, citas atrasadas). Agrupar en `<div className="kpi-grid">`.
  */
 export function KpiCard({ label, value, hint, icon, pressed, onClick, to, alert = false }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode; pressed?: boolean; onClick?: () => void; to?: LinkProps['to']; alert?: boolean }) {
+  const anchor = typeof to === 'string' && to.startsWith('#');
   const className = ['kpi-card', to && 'kpi-card-link', alert && 'kpi-card-alert'].filter(Boolean).join(' ');
-  const content = <>{icon && <span className="kpi-card-icon" aria-hidden="true">{icon}</span>}<span className="kpi-card-label">{label}</span><strong className="kpi-card-value">{value}</strong>{hint && <small className="kpi-card-hint">{hint}</small>}{to && <span className="kpi-card-arrow" aria-hidden="true"><ArrowUpRight size={16} /></span>}</>;
+  const content = <>{icon && <span className="kpi-card-icon" aria-hidden="true">{icon}</span>}<span className="kpi-card-label">{label}</span><strong className="kpi-card-value">{value}</strong>{hint && <small className="kpi-card-hint">{hint}</small>}{to && <span className="kpi-card-arrow" aria-hidden="true">{anchor ? <ArrowDown size={16} /> : <ArrowUpRight size={16} />}</span>}</>;
+  if (anchor) return <a className={className} href={to as string}>{content}</a>;
   if (to) return <Link className={className} to={to}>{content}</Link>;
   return onClick ? <button type="button" className={className} aria-pressed={pressed} onClick={onClick}>{content}</button> : <div className={className}>{content}</div>;
 }
