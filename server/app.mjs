@@ -22,6 +22,7 @@ import { createSnapshotCache } from './snapshot-cache.mjs';
 import { registerAccountRoutes } from './account.mjs';
 import { registerAdminUserRoutes } from './admin-users.mjs';
 import { registerAttachmentRoutes } from './attachments.mjs';
+import { registerSignatureRoutes } from './signatures.mjs';
 import { registerTicketAttachmentRoutes } from './ticket-attachments.mjs';
 import { registerAttachmentBackupRoutes } from './attachment-backup.mjs';
 import { registerMediaUploadRoutes, persistEquipmentMedia, hydrateEquipment } from './media.mjs';
@@ -154,7 +155,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   app.post('/api/session/activity', (_req,res) => res.json({ok:true}));
   app.get('/api/session', (req,res) => res.json({actor:req.actor,csrf:req.csrf,mustChangePassword:req.mustChangePassword}));
   app.use('/api',(req,res,next)=>{
-    if(production && files.organize && req.method==='POST' && (['/mutate','/attachments','/ticket-attachments','/admin/attachments/restore'].includes(req.path)||/^\/videos\/[^/]+\/finish$/.test(req.path)))res.once('finish',()=>{
+    if(production && files.organize && req.method==='POST' && (['/mutate','/attachments','/ticket-attachments','/admin/attachments/restore'].includes(req.path)||/^\/videos\/[^/]+\/finish$/.test(req.path)||/^\/orders\/[^/]+\/signature$/.test(req.path)))res.once('finish',()=>{
       if(res.statusCode<300)void files.organize?.().catch(error=>logFailure(error,{event:'drive.organize',status:503},logger));
     });
     next();
@@ -167,6 +168,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
   registerOperationPages(app,{pool,syncToken});
   registerAdminUserRoutes(app, {pool});
   registerAttachmentRoutes(app, {pool,files});
+  registerSignatureRoutes(app, {pool,files});
   registerTicketAttachmentRoutes(app, {pool,files});
   registerVideoRoutes(app,{pool,files});
   registerAttachmentBackupRoutes(app, {pool,logger,files});

@@ -13,7 +13,7 @@ export async function fileFolderPath(conn,sha) {
   // One physical original keeps its first recorded origin, even when reused elsewhere.
   /** @type {{entity:string,id:string,created_at:number,kind:string}[]} */
   const owners=await select(conn,`SELECT 'Equipo' entity,equipment_id id,created_at,'Fotos' kind FROM em_media WHERE storage_key=?
-    UNION ALL SELECT IF(ticket_id IS NULL,'OrdenServicio','Ticket'),IFNULL(ticket_id,order_id),created_at,IF(mime='application/pdf','Documentos',IF(mime='video/mp4','Videos','Fotos')) FROM em_attachments WHERE storage_key=?
+    UNION ALL SELECT IF(ticket_id IS NULL,'OrdenServicio','Ticket'),IFNULL(ticket_id,order_id),created_at,IF(category='Firma','Firmas',IF(mime='application/pdf','Documentos',IF(mime='video/mp4','Videos','Fotos'))) FROM em_attachments WHERE storage_key=?
     UNION ALL SELECT 'Equipo',equipment_id,created_at,'Miniaturas' FROM em_media WHERE thumbnail_key=? ORDER BY created_at,entity,id LIMIT 1`,[sha,sha,sha]);
   const owner=owners[0];if(!owner)return null;
   const row=await record(conn,owner.entity,owner.id);

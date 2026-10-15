@@ -12,6 +12,29 @@ Para una orden sin solicitud previa, usa **Órdenes de servicio → Nueva orden*
 
 La creación queda privada para el cliente. Administración/coordinación conserva la acción **Compartir con cliente**, la reasignación y la reprogramación de visitas ya programadas. El técnico puede programar su propio borrador, pero no cambiar su responsable. Los controles se repiten en el servidor.
 
+## Firma de quien recibe
+
+En **Pruebas y cierre**, el apartado **Recibido por** reúne el nombre de quien recibe el servicio y su firma en pantalla.
+
+1. Escribe el nombre y pulsa **Pedir firma**. Sin nombre, el portal lo pide primero.
+2. Quien recibe firma con el dedo (o un lápiz o el mouse) dentro del recuadro. **Borrar** limpia el recuadro; **Cancelar** lo cierra sin guardar.
+3. **Confirmar firma** la guarda de inmediato en la orden, como las evidencias: no depende de **Guardar avance**. Aparece la firma con el nombre, la fecha y hora de Guatemala y quién la capturó.
+4. **Volver a firmar** reemplaza la firma que se muestra; las anteriores se conservan y quedan en el historial.
+
+Si la persona no puede firmar en la pantalla, no se pide nada más: la orden muestra **Firma pendiente** y el reporte impreso conserva la línea para firmar a mano. La firma no es obligatoria para completar la orden. Una firma dibujada sin confirmar sí bloquea el cierre y la salida sin aviso, igual que una evidencia pendiente.
+
+**Dónde se ve:** en el reporte en pantalla (apartado «Conformidad del servicio»), en el portal del cliente si el reporte está compartido, y en el PDF, en lugar de la línea de «Recibido por». «Capturada por» solo lo ve el personal de EMSA en pantalla.
+
+**Permisos** (los mismos de las evidencias, comprobados también en el servidor):
+- orden abierta: el técnico responsable o de apoyo, coordinación y administración;
+- orden completada: solo coordinación y administración, desde **Corregir reporte**, con un motivo de 8 a 500 caracteres;
+- órdenes canceladas o históricas importadas: no admiten firma;
+- leer la firma: quien puede ver la orden; el cliente, solo en reportes compartidos y sin el nombre de quien la capturó.
+
+**Almacenamiento y auditoría:** cada firma es un adjunto privado de la orden en `em_attachments`, categoría `Firma`, PNG de hasta 64 KB y 1600 × 800 px. El nombre del archivo es «Firma de <nombre>.png» (quién firmó), `created_at` es la fecha y hora y `uploaded_by` quién la capturó. Vale la más reciente; la orden admite hasta 5 firmas. No se listan con las evidencias ni salen en el anexo de fotos, no cuentan para el límite de 20 adjuntos y la carga general de adjuntos no acepta la categoría `Firma`. Cada firma deja en la bitácora de la orden **Firma registrada** o, si la orden ya estaba completada, **Firma posterior al cierre** con el motivo. El respaldo y la restauración de adjuntos las conservan; en Google Drive van a la carpeta `Firmas` del reporte.
+
+API: `GET /api/orders/:id/signature` devuelve `{signature: {id, signer, signedAt, capturedBy?} | null}`; `POST /api/orders/:id/signature` recibe `{signer, base64, requestId, reason?}`. Reintentar con el mismo `requestId` devuelve la misma firma sin duplicarla. La imagen se abre con `/api/attachments/:id/file`, que revisa el acceso a la orden. No hay migración: se reutiliza la tabla de adjuntos.
+
 ## Reabrir una solicitud resuelta sin orden
 
 Administración, coordinación y el técnico asignado pueden abrir el detalle y pulsar **Reabrir solicitud**, indicando un motivo de 8 a 500 caracteres. Vuelve a **En revisión** y permite generar la orden. Administración/coordinación puede después editar sus datos; el técnico conserva el alcance de ejecución y creación de su orden.
@@ -38,4 +61,4 @@ Reversión: volver al código previo sin borrar registros, campos, archivos ni b
 
 ## Atención continua · primera etapa
 
-Los avances usan la versión leída por el formulario, no la recibida silenciosamente en una actualización de fondo. Si otro participante cambia la orden, el guardado se rechaza conservando el texto local para comparar; no se sobrescribe el historial. La fecha de inicio conservada no se redondea al guardar otros campos. Las órdenes completadas solo admiten corrección o reapertura con motivo por administración/coordinación, sin alterar este control. No se hacen obligatorios el horómetro, las fotografías ni el nombre de quien recibe.
+Los avances usan la versión leída por el formulario, no la recibida silenciosamente en una actualización de fondo. Si otro participante cambia la orden, el guardado se rechaza conservando el texto local para comparar; no se sobrescribe el historial. La fecha de inicio conservada no se redondea al guardar otros campos. Las órdenes completadas solo admiten corrección o reapertura con motivo por administración/coordinación, sin alterar este control. No se hacen obligatorios el horómetro, las fotografías, el nombre de quien recibe ni su firma.

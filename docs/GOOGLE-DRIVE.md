@@ -16,7 +16,7 @@ Los respaldos completo y separado incluyen los bytes originales, metadatos y hue
 
 La conexión está activa en producción. Las imágenes antiguas de prueba se retiraron con autorización del titular, respaldo completo y ensayo de recuperación; no se retiraron registros, historial ni logotipos de clientes.
 
-El organizador crea `PORTAL_EM/Equipos`, `Solicitudes` y `Reportes`. Equipos usa `código_ID/Fotos` y `Miniaturas`; solicitudes y reportes agregan año de carga en Guatemala, `código_ID`, y `Fotos`, `Videos` o `Documentos` según MIME. Solo se crean subcarpetas necesarias. El ID corto evita confundir códigos históricos repetidos.
+El organizador crea `PORTAL_EM/Equipos`, `Solicitudes` y `Reportes`. Equipos usa `código_ID/Fotos` y `Miniaturas`; solicitudes y reportes agregan año de carga en Guatemala, `código_ID`, y `Fotos`, `Videos` o `Documentos` según MIME; las firmas de quien recibe van en `Firmas`. Solo se crean subcarpetas necesarias. El ID corto evita confundir códigos históricos repetidos.
 
 Las cargas nuevas se confirman primero y se clasifican después, fuera de transacciones operativas. En producción se dispara tras guardar un registro o evidencia y también durante el mantenimiento periódico (arranque y cada 15 minutos), en lotes de hasta 20 archivos. Una interrupción deja la misma referencia accesible y el siguiente ciclo reintenta. Los recibos sin registro guardado no se clasifican ni borran.
 
