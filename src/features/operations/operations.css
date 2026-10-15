@@ -90,9 +90,12 @@
   .os-field input, .os-field select, .os-field textarea { font-size: 16px; }
   .os-steps { margin-inline: -5px; padding-inline: 5px; }
   .os-steps button { flex: 0 0 auto; padding: 9px 12px; }
-  .os-form-actions { bottom: -20px; flex-wrap: wrap; }
-  .os-form-actions > div { flex: 1; justify-content: flex-end; flex-wrap: wrap; }
-  .os-form-actions .button { padding: 10px; }
+  .os-form-actions { bottom: -20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); align-items: center; }
+  .os-form-actions > div { display: contents; }
+  .os-form-actions .button { padding: 10px; white-space: normal; min-height: var(--target-min); }
+  .os-form-actions > .button { order: 2; }
+  .os-form-actions button[type=submit] { order: 3; }
+  .os-form-actions button.button-dark[type=button] { grid-column: 1 / -1; order: 1; }
   .os-report-header { flex-direction: column; }
   .os-report-header h2 { font-size: var(--text-lg); }
   .os-report-meta { gap: 16px; }

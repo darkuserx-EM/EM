@@ -60,6 +60,19 @@ test('Trabajo del técnico: permisos, concurrencia, reapertura e integridad',{sk
   ticket=await update('Ticket',ticket,{responsable_id:tech,estado:'Programado',fecha_programada:date},sessions.coordinator);
   const fields={equipo_id:'eq-a',ticket_id:ticket.id,desde_solicitud:true,estado:'Programada',fecha_programada:date,sintoma:'Cadena floja'};
   let order;
+  await t.test('administración, coordinador y técnico inician borrador y conservan versión e historial en avances',async()=>{
+    for(const actor of [admin,sessions.coordinator,sessions.tech]){
+      const draft=await create('OrdenServicio',{equipo_id:'eq-a',tecnico_id:tech,sintoma:'Atención continua sintética',estado:'Borrador'},actor);
+      const started=await update('OrdenServicio',draft,{estado:'En proceso',fecha_programada:date},actor);
+      assert.ok(started.fecha);assert.equal(started.visible_cliente,false);
+      const advance=await update('OrdenServicio',started,{diagnostico:'Revisión parcial sin cierre'},actor);
+      assert.equal(advance.fecha,started.fecha);assert.equal(advance.estado,'En proceso');
+      const stale=await mutate('OrdenServicio','update',{trabajo_realizado:'Versión obsoleta',expected_updated_at:started.fecha_actualizacion},actor,draft.id);
+      assert.equal(stale.status,409);
+      const after=await readSnapshot(pool);assert.equal(after.entities.OrdenServicio.find(row=>row.id===draft.id).diagnostico,advance.diagnostico);
+      assert.equal(after.entities.LecturaHorometro.some(row=>row.orden_id===draft.id),false);
+    }
+  });
   await t.test('autoriza únicamente al técnico asignado; rechaza cliente, técnico ajeno y publicación',async()=>{
     for(const actor of [sessions.client,sessions.foreign,sessions.otherTech])assert.equal((await mutate('OrdenServicio','create',fields,actor)).status,403);
     assert.equal((await mutate('OrdenServicio','create',{...fields,visible_cliente:true},sessions.tech)).status,403);
