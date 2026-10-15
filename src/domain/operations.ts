@@ -81,7 +81,7 @@ export function operationLinkErrors(entity: EntityName, row: EntityRecord, entit
 }
 
 const orderTransitions: Record<string, readonly string[]> = {
-  Borrador: ['Programada', 'Cancelada'], Programada: ['En proceso', 'En espera', 'Cancelada'],
+  Borrador: ['Programada', 'En proceso', 'Cancelada'], Programada: ['En proceso', 'En espera', 'Cancelada'],
   'En proceso': ['En espera', 'Completada', 'Cancelada'], 'En espera': ['Programada', 'En proceso', 'Completada', 'Cancelada'],
   Completada: [], Cancelada: [],
 };

@@ -12,6 +12,22 @@ function fixture() {
 const ticket = { equipo_id: 'equipment-1', cliente_id: 'client-1', titulo: 'Revisión de frenos', descripcion: 'El recorrido aumentó.', prioridad: 'Alta' };
 const order = { equipo_id: 'equipment-1', cliente_id: 'client-1', sintoma: 'Inspeccionar frenos', tipo: 'Correctivo', prioridad: 'Alta', estado: 'Programada', fecha_programada: '2026-10-10', tecnico_id: 'tech-1', visible_cliente: true };
 describe('operación con permisos y trazabilidad', () => {
+  it.each([admin, coordinator, technician])('$rol inicia un borrador y guarda avances parciales sin inventar lecturas ni cerrar la solicitud', async actor => {
+    const source = fixture(); const request = await source.repository('Ticket', coordinator).create({ ...ticket, responsable_id: technician.tecnico_id! });
+    const draft = await source.repository('OrdenServicio', coordinator).create({ ...order, ticket_id: request.id, estado: 'Borrador', fecha_programada: '', visible_cliente: false });
+    const before = source.snapshot(admin); const repo = source.repository('OrdenServicio', actor);
+    const started = await repo.update(draft.id, { estado: 'En proceso', fecha_programada: '2026-10-14', expected_updated_at: draft.fecha_actualizacion });
+    expect(started.fecha).toBeTruthy(); expect(started.tecnico_id).toBe(technician.tecnico_id);
+    const partial = await repo.update(started.id, { diagnostico: 'En revisión, pendiente de pruebas', expected_updated_at: started.fecha_actualizacion });
+    expect(partial).toMatchObject({ id: draft.id, estado: 'En proceso', fecha: started.fecha, visible_cliente: false });
+    expect(partial.resultado_pruebas || '').toBe('');
+    const after = source.snapshot(admin);
+    expect(after.entities.LecturaHorometro).toEqual(before.entities.LecturaHorometro);
+    expect(after.entities.Ticket).toEqual(before.entities.Ticket);
+    expect(after.entities.OrdenServicio.filter(row => row.ticket_id === request.id)).toHaveLength(1);
+    await expect(source.repository('OrdenServicio', client).update(draft.id, { estado: 'En proceso' })).rejects.toThrow('permiso');
+    await expect(source.repository('OrdenServicio', otherTechnician).update(draft.id, { estado: 'En proceso' })).rejects.toThrow('permiso');
+  });
   it('el técnico consulta sus solicitudes y equipo antes de tener orden, sin poder editarlas', async () => {
     const source = fixture();
     const own = await source.repository('Ticket', coordinator).create({ ...ticket, responsable_id: technician.tecnico_id! });
