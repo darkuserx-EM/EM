@@ -158,6 +158,29 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
 - **Agenda de hoy del coordinador y el administrador:** sigue en la columna lateral. Si hay citas atrasadas, lo dice arriba («4 citas atrasadas · Revisar atrasadas») en lugar de mostrar solo «No hay servicios programados para hoy».
 - **Listas en el teléfono:** en Órdenes y Solicitudes, la búsqueda queda visible y el resto de filtros se pliega con `FilterToggle`.
 
+## Reporte de servicio
+
+`ServiceReport` (`src/features/operations/ServiceReport.tsx`) es el reporte de una orden: el mismo en pantalla, en el portal del cliente y en papel o PDF («Imprimir / PDF»).
+
+- **Orden de lectura:**
+  1. encabezado con el logotipo, el código y el estado;
+  2. resumen: cliente, sede, tipo, fecha, horario con duración y técnicos con su rol;
+  3. equipo en cuadrícula: marca y modelo, serie, ID del cliente, código EMSA, horómetro y odómetro;
+  4. **resultado** destacado;
+  5. detalle del trabajo, con la etiqueta a la izquierda;
+  6. materiales: «Ninguno registrado» si no hay;
+  7. recomendaciones y seguridad, solo si tienen texto;
+  8. firmas, solo en papel;
+  9. aviso de cierre.
+- **Etiquetas para el cliente:** «Horómetro» y «Odómetro», sin «H1» ni «H3», que son nombres internos de AppSheet.
+- **Papel:** página con nombre `service-report`, tamaño carta, 16 × 14 mm de margen.
+  - En cada hoja va un encabezado y un pie propios, con el contacto de la empresa y «Página N de M». Al definirlos, Chrome 131 o posterior deja de imprimir su fecha, su título y la dirección con el identificador interno de la orden.
+  - `print-color-adjust: exact` conserva los fondos del resultado y de la cuadrícula del equipo, aunque «Gráficos de fondo» esté apagado.
+- **Firmas:** dos líneas para firmar a mano, una del técnico responsable y otra de quien recibe, con sus nombres. La firma digital en el teléfono es otro paso: requiere guardar la firma en el servidor.
+- **Anexo:** las fotos de evidencia (Antes y Después) se imprimen después del reporte, en tres columnas. Los controles, los videos y los PDF no se imprimen.
+- **Nombre del PDF:** mientras el reporte está abierto, el título de la página es «Reporte de servicio OS-N · Expertos en Montacargas», que el navegador propone como nombre del archivo.
+- **Técnicos:** si quien ve el reporte no puede leer sus nombres, como el cliente, dice «Técnico de Expertos en Montacargas, S.A.» en lugar de «Sin técnico asignado».
+
 ## Formularios en línea y casillas
 
 - **Estilos compartidos en `base.css`:** la barra de filtros y formularios en línea (`.ops-filters`: Reportes, Roles y accesos y Adjuntos) y los paneles `.access-accounts`, `.access-credentials`, `.ops-table-actions` y `.attachment-*` estaban en la hoja de Inicio. Al abrir Roles y accesos, Datos u Órdenes directamente (recargar o un enlace), esas pantallas quedaban sin estilos hasta pasar por Inicio. **Regla:** una clase que usan dos o más pantallas va en `base.css`, no en la hoja de una pantalla.
