@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 import { select } from './sql.mjs';
 import { auditEvidence, decodeAttachment, evidenceReason, permitted, readOrder } from './attachments.mjs';
 import { localFiles } from './file-storage.mjs';
@@ -28,11 +29,16 @@ export const signatureFileName = signer => `${prefix}${signer}${suffix}`;
 export const signerOf = name => name.startsWith(prefix) && name.endsWith(suffix) ? name.slice(prefix.length,-suffix.length) : name;
 
 /** PNG pequeño con medidas razonables: la firma se dibuja en un recuadro y se recorta antes de enviarla. @param {import('./http-contracts.js').SignatureBody} body @param {string} signer */
-export function decodeSignature(body,signer) {
+export async function decodeSignature(body,signer) {
   if (typeof body.base64 !== 'string' || body.base64.length > Math.ceil(SIGNATURE_MAX_BYTES / 3) * 4) throw fail(400,'La firma supera el tamaño permitido. Bórrala y vuelve a firmar.');
   const file = decodeAttachment({ category:'Firma', name:signatureFileName(signer), base64:body.base64, requestId:body.requestId });
+  // El redondeo de base64 puede admitir hasta dos bytes de más: el límite real es el del PNG.
+  if (file.bytes.length > SIGNATURE_MAX_BYTES) throw fail(400,'La firma supera el tamaño permitido. Bórrala y vuelve a firmar.');
   const width = file.bytes.length >= 24 && file.bytes.subarray(12,16).toString() === 'IHDR' ? file.bytes.readUInt32BE(16) : 0, height = width ? file.bytes.readUInt32BE(20) : 0;
   if (width < 20 || height < 10 || width > 1600 || height > 800) throw fail(400,'La imagen de la firma no es válida. Bórrala y vuelve a firmar.');
+  // Leer las medidas no basta: validar todos los píxeles antes de almacenar el original y su hash.
+  try { await sharp(file.bytes,{ limitInputPixels:1600 * 800, failOn:'warning' }).raw().toBuffer(); }
+  catch { throw fail(400,'La imagen de la firma no es válida. Bórrala y vuelve a firmar.'); }
   return file;
 }
 
@@ -63,7 +69,7 @@ export function registerSignatureRoutes(app,{pool,files:storage=localFiles}) {
     const body = req.body ?? {};
     const initialOrder = permitted(await readOrder(pool,req.params.id),req.actor,true);
     evidenceReason(initialOrder,body.reason);
-    const signer = signerName(body.signer), file = decodeSignature(body,signer);
+    const signer = signerName(body.signer), file = await decodeSignature(body,signer);
     /** @type {import('./contracts.js').AttachmentMetadata[]} */
     const prior = await select(pool,'SELECT id,order_id,category,sha256 FROM em_attachments WHERE request_id=?',[file.requestId]);
     if (prior.length && (prior[0].order_id !== initialOrder.id || prior[0].sha256 !== file.sha256 || prior[0].category !== 'Firma')) throw fail(409,'El identificador del envío ya pertenece a otro archivo.');

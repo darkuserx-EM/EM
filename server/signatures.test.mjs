@@ -6,7 +6,7 @@ import express from 'express';
 import sharp from 'sharp';
 import { registerAttachmentRoutes } from './attachments.mjs';
 import { validateRestoreFile } from './attachment-backup.mjs';
-import { registerSignatureRoutes, SIGNATURES_PER_ORDER } from './signatures.mjs';
+import { registerSignatureRoutes, SIGNATURE_MAX_BYTES, SIGNATURES_PER_ORDER } from './signatures.mjs';
 
 const png = (width, height) => sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
 const base = { cliente_id: 'client-a', equipo_id: 'equipment-a', tecnico_id: 'tech-a', schema_operacion: 1, visible_cliente: true };
@@ -52,7 +52,7 @@ function memory() {
   return { pool: fake, files, audit };
 }
 
-async function serve(t, db) {
+async function serve(t, db, storage) {
   const app = express();
   app.use((req, _res, next) => {
     const rol = req.get('x-role') || 'Técnico';
@@ -62,7 +62,7 @@ async function serve(t, db) {
   // Mismo límite que el resto de solicitudes pequeñas en app.mjs; aquí más amplio para probar el tope propio de la firma.
   app.use(express.json({ limit: '1mb' }));
   registerAttachmentRoutes(app, { pool: db.pool });
-  registerSignatureRoutes(app, { pool: db.pool });
+  registerSignatureRoutes(app, { pool: db.pool, files: storage });
   app.use((error, _req, res, _next) => res.status(error.status || 500).json({ error: error.message }));
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
@@ -114,6 +114,9 @@ test('las reglas de escritura son las de las evidencias: asignación, estado y m
   assert.equal(late.status, 201);
   assert.deepEqual(db.audit.map(row => [row.accion, row.motivo, row.registrado_por]), [['Firma posterior al cierre', 'Firma capturada al entregar el equipo', 'Coordinación de prueba']]);
   assert.equal(db.files.length, 1);
+  const admin = await api.sign('order-open', body(), { 'x-role': 'Administrador' });
+  assert.equal(admin.status, 201); assert.equal(db.files.length, 2);
+  assert.equal(db.audit[1].accion, 'Firma registrada');
 });
 
 test('valida nombre e imagen, no duplica reintentos y limita las firmas por orden', async t => {
@@ -141,6 +144,47 @@ test('valida nombre e imagen, no duplica reintentos y limita las firmas por orde
   assert.equal((await (await api.get('/api/orders/order-open/signature')).json()).signature.id, again.signature.id);
   while (db.files.length < SIGNATURES_PER_ORDER) assert.equal((await send({ base64: (await png(200 + db.files.length, 80)).toString('base64') })).status, 201);
   assert.deepEqual(await error(await send({ base64: (await png(300, 80)).toString('base64') })), [400, `La orden admite hasta ${SIGNATURES_PER_ORDER} firmas. Pide a coordinación que revise la orden.`]);
+});
+
+test('rechaza PNG truncados o corruptos antes de almacenar archivos o escribir la bitácora', async t => {
+  const db = memory(); let uploads = 0;
+  const api = await serve(t, db, { prepare: async () => { uploads++; throw new Error('No debe almacenar una firma inválida'); } });
+  const image = await png(240, 80);
+  const idat = image.indexOf(Buffer.from('IDAT'));
+  assert.ok(idat > 24);
+  const corrupt = Buffer.from(image); corrupt[idat + 4] ^= 0xff;
+  for (const [label, bytes] of [
+    ['solo cabecera y medidas', image.subarray(0, 24)],
+    ['datos de píxeles incompletos', image.subarray(0, idat + 8)],
+    ['datos de píxeles corruptos', corrupt],
+  ]) {
+    const response = await api.sign('order-open', { signer: 'Persona de prueba', base64: bytes.toString('base64'), requestId: randomUUID() });
+    assert.equal(response.status, 400, label);
+    assert.match((await response.json()).error, /La imagen de la firma no es válida/, label);
+  }
+  assert.equal(uploads, 0); assert.equal(db.files.length, 0); assert.equal(db.audit.length, 0);
+});
+
+test('el límite de 64 KB se aplica a los bytes PNG decodificados, incluido el redondeo de base64', async t => {
+  const db = memory(); let uploads = 0;
+  const api = await serve(t, db, { prepare: async bytes => { uploads++; return { content: bytes, storage_key: null }; } });
+  const image = await png(240, 80);
+  // Un PNG decodificable con relleno tras IEND: 65536, 65537 y 65538 bytes producen base64 del mismo largo.
+  const padded = size => Buffer.concat([image, Buffer.alloc(size - image.length)]);
+  for (const excess of [1, 2]) {
+    const bytes = padded(SIGNATURE_MAX_BYTES + excess);
+    assert.equal(bytes.toString('base64').length, padded(SIGNATURE_MAX_BYTES).toString('base64').length);
+    await sharp(bytes).raw().toBuffer();
+    const response = await api.sign('order-open', { signer: 'Persona de prueba', base64: bytes.toString('base64'), requestId: randomUUID() });
+    assert.equal(response.status, 400, `${excess} byte(s) de exceso`);
+    assert.match((await response.json()).error, /La firma supera el tamaño permitido/);
+  }
+  assert.equal(uploads, 0); assert.equal(db.files.length, 0); assert.equal(db.audit.length, 0);
+  const boundary = padded(SIGNATURE_MAX_BYTES);
+  const response = await api.sign('order-open', { signer: 'Persona de prueba', base64: boundary.toString('base64'), requestId: randomUUID() });
+  assert.equal(response.status, 201);
+  assert.equal(uploads, 1); assert.equal(db.files.length, 1); assert.equal(db.audit.length, 1);
+  assert.equal(db.files[0].size, SIGNATURE_MAX_BYTES); assert.deepEqual(db.files[0].content, boundary);
 });
 
 test('la carga general de adjuntos no acepta la categoría Firma', async t => {
