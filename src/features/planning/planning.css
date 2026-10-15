@@ -250,6 +250,9 @@
 /* Pantallas táctiles anchas (tabletas y pantallas de dedo): el número del día medía 28 px de ancho. En teléfonos ya ocupa toda la celda. */
 @media (pointer: coarse) and (min-width: 751px) {
   .planning-day-number { justify-content: center; min-width: var(--target-min); }
+  /* Citas del mes: 44 px de alto (antes 25). La hora va arriba y el código debajo, así se lee entero en lugar de «09:30 OT-0…». */
+  .planning-event.compact { display: flex; flex-direction: column; justify-content: center; min-height: var(--target-min); }
+  .planning-event.compact .planning-event-title time { display: block; }
 }
 
 /* En teléfonos, 7 columnas en 375 px dejan los días en 41–42 px de ancho: menos relleno lateral para llegar a 44 px. */
