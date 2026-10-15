@@ -1,6 +1,6 @@
 import OrderRevisionHistory from './OrderRevisionHistory';
 import { assignedTo, orderTeamLabel } from '../../domain/order-team';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowUpRight, CalendarDays, ClipboardList, Eye, EyeOff, History, Pencil, Plus, Printer, Search, Wrench } from 'lucide-react';
 import { useActor, useRows, useToast, useOperationPage } from '../../app/state';
@@ -31,6 +31,7 @@ export default function ServiceOrders() {
   const setFilters = (next: typeof filters) => { setParams(operationFilterParams(next, params), { replace: true }); }; const [page, setPage] = useState(1); const [filtersOpen, setFiltersOpen] = useState(false);
   const [reopening, setReopening] = useState(false), [reason, setReason] = useState('');
   const [editor, setEditor] = useState<EntityRecord | 'new' | null>(null); const [dismissedTicket, setDismissedTicket] = useState(''); const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [draftTicket, setDraftTicket] = useState<EntityRecord>();
   const orders=useOperationPage('OrdenServicio',{...filters,page});
   const detail=useOperationPage('OrdenServicio',{id:params.get('orden')||'',pageSize:1},params.has('orden'));
   const tickets=useOperationPage('Ticket',{id:params.get('ticket')||'',pageSize:1},canCreate&&params.has('ticket')&&params.get('ticket')!==dismissedTicket);
@@ -42,6 +43,14 @@ export default function ServiceOrders() {
   const selectedClient = clients.rows.find(row => row.id === selected?.cliente_id);
   const ticket = canCreate && params.get('ticket') !== dismissedTicket ? tickets.rows.find(row => row.id === params.get('ticket') && canCreateTicketOrder(actor, row)) : undefined;
   const createFromLink = canCreate && params.get('nueva') === '1';
+  useEffect(() => {
+    if (editor) return;
+    if (ticket) { setDraftTicket(ticket); setEditor('new'); }
+    else if (params.get('atender') === '1' && selected && isOperationalOrder(selected) && !['Completada', 'Cancelada'].includes(String(selected.estado)) && (manager || actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id))) {
+      setEditor(selected);
+      const next = new URLSearchParams(params); next.delete('atender'); setParams(next, { replace: true });
+    }
+  }, [ticket, selected, editor, params, setParams, manager, actor.rol, actor.tecnico_id]);
   const activeFilters = (['client', 'equipment', 'technician', 'state', 'origin', 'from', 'to'] as const).filter(key => filters[key]).length;
   const counters = [
     { label: 'Órdenes actuales', icon: <ClipboardList size={18} />, origin: 'actual', state: '', value: orders.data?.counts.actual },
@@ -87,9 +96,9 @@ export default function ServiceOrders() {
       </>}
     </section>
     {params.has('orden') && !loading && !selected && !error && <ErrorNotice message="No se encontró el reporte o no tienes acceso a él." />}
-    {canCreate && params.has('ticket') && params.get('ticket') !== dismissedTicket && !loading && !ticket && !error && <div><ErrorNotice message="No se puede crear una orden desde esta solicitud: revisa si ya tiene orden, está cerrada o cambió su asignación." /><Link className="button" to={`/tickets?ticket=${encodeURIComponent(params.get('ticket') || '')}`}>Revisar solicitud</Link></div>}
+    {canCreate && params.has('ticket') && params.get('ticket') !== dismissedTicket && !loading && !ticket && !editor && !error && <div><ErrorNotice message="No se puede crear una orden desde esta solicitud: revisa si ya tiene orden, está cerrada o cambió su asignación." /><Link className="button" to={`/tickets?ticket=${encodeURIComponent(params.get('ticket') || '')}`}>Revisar solicitud</Link></div>}
     {selected && !editor && <Modal title={`Reporte ${serviceLabel(selected)}`} wide className="os-detail-modal" onClose={close}>
-      <div className="os-detail-actions">{actor.rol !== 'Técnico' && <Link className="button" aria-disabled={attachmentBusy} onClick={event => { if (attachmentBusy) event.preventDefault(); }} to={`/${actor.rol === 'Cliente' ? 'portal' : 'flota'}?equipo=${encodeURIComponent(String(selected.equipo_id))}`}>Ficha del equipo<ArrowUpRight size={15} /></Link>}<button className="button" disabled={attachmentBusy || sharing} onClick={() => window.print()}><Printer size={15} />Imprimir / PDF</button>{isOperationalOrder(selected) && (selected.estado !== 'Cancelada' && (selected.estado !== 'Completada' || manager)) && (manager || actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id)) && <button className="button button-dark" disabled={attachmentBusy || sharing} onClick={() => setEditor(selected)}><Pencil size={15} />{selected.estado === 'Completada' ? 'Corregir reporte' : 'Editar reporte'}</button>}{manager && isOperationalOrder(selected) && selected.estado === 'Completada' && <button className="button" disabled={attachmentBusy || sharing} onClick={()=>{setReason('');setShareError('');setReopening(true);}}>Reabrir orden</button>}</div>
+      <div className="os-detail-actions">{actor.rol !== 'Técnico' && <Link className="button" aria-disabled={attachmentBusy} onClick={event => { if (attachmentBusy) event.preventDefault(); }} to={`/${actor.rol === 'Cliente' ? 'portal' : 'flota'}?equipo=${encodeURIComponent(String(selected.equipo_id))}`}>Ficha del equipo<ArrowUpRight size={15} /></Link>}<button className="button" disabled={attachmentBusy || sharing} onClick={() => window.print()}><Printer size={15} />Imprimir / PDF</button>{isOperationalOrder(selected) && (selected.estado !== 'Cancelada' && (selected.estado !== 'Completada' || manager)) && (manager || actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id)) && <button className="button button-dark" disabled={attachmentBusy || sharing} onClick={() => setEditor(selected)}><Pencil size={15} />{selected.estado === 'Completada' ? 'Corregir reporte' : selected.estado === 'En proceso' ? 'Continuar atención' : 'Atender orden'}</button>}{manager && isOperationalOrder(selected) && selected.estado === 'Completada' && <button className="button" disabled={attachmentBusy || sharing} onClick={()=>{setReason('');setShareError('');setReopening(true);}}>Reabrir orden</button>}</div>
       {(actor.rol === 'Administrador' || manager && isOperationalOrder(selected)) && selected.cliente_id && <div className="os-sharing"><span>{selected.visible_cliente === true ? 'Visible en el portal del cliente' : 'El cliente aún no ve este reporte'}</span><button className="button button-small" disabled={sharing || attachmentBusy} onClick={share}>{selected.visible_cliente === true ? <EyeOff size={15} /> : <Eye size={15} />}{sharing ? 'Guardando…' : selected.visible_cliente === true ? 'Ocultar reporte' : 'Compartir con cliente'}</button></div>}
       <ErrorNotice message={shareError} />
       <article className="os-print-report">
@@ -106,6 +115,6 @@ export default function ServiceOrders() {
       {isOperationalOrder(selected) && <AttachmentPanel orderId={selected.id} completed={selected.estado === 'Completada'} onBusy={setAttachmentBusy} editable={selected.estado !== 'Cancelada' && (manager || selected.estado !== 'Completada' && actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id))} />}
     </Modal>}
     {reopening && selected && <Modal title={`Reabrir ${selected.codigo}`} onClose={()=>{if(!sharing)setReopening(false);}}><form onSubmit={e=>{e.preventDefault();void reopenOrder();}}><p>La orden vuelve a En proceso. Se conserva el cierre anterior en el historial; la solicitud resuelta vinculada vuelve a En revisión. El reporte quedará sin compartir hasta su revisión.</p><label className="record-field">Motivo de reapertura<textarea required minLength={8} maxLength={500} value={reason} onChange={e=>setReason(e.target.value)} disabled={sharing}/></label><ErrorNotice message={shareError}/><div className="modal-actions"><button type="submit" className="button button-dark" disabled={sharing}>{sharing?'Guardando…':'Confirmar reapertura'}</button></div></form></Modal>}
-    {(editor || ticket || createFromLink) && <ServiceOrderForm key={editor && editor !== 'new' ? editor.id : ticket?.id || 'new'} row={editor && editor !== 'new' ? editor : undefined} ticket={editor ? undefined : ticket} onClose={() => { setEditor(null); if (ticket) setDismissedTicket(ticket.id); if (ticket || createFromLink) setParams({}); }} onSaved={row => { setEditor(null); setDismissedTicket(ticket?.id || ''); open(row.id); }} />}
+    {(editor || createFromLink) && <ServiceOrderForm key={editor && editor !== 'new' ? editor.id : draftTicket?.id || 'new'} row={editor && editor !== 'new' ? editor : undefined} ticket={draftTicket} onClose={() => { setEditor(null); setDraftTicket(undefined); if (draftTicket) setDismissedTicket(draftTicket.id); if (draftTicket || createFromLink) setParams({}); }} onSaved={row => { setEditor(null); setDraftTicket(undefined); setDismissedTicket(draftTicket?.id || ''); open(row.id); }} />}
   </div>;
 }
