@@ -155,4 +155,34 @@ test('Trabajo del técnico: permisos, concurrencia, reapertura e integridad',{sk
     assert.ok(entries.filter(row=>row.type==='attachment').every(row=>row.file.metadata.sha256===sha256));
     const [blobs]=await pool.query('SELECT * FROM em_drive_blobs WHERE sha256=?',[sha256]);assert.equal(blobs.length,1);
   });
+  await t.test('coordinador participante y revisión de cierre: cuatro perfiles, motivo, versiones y evidencias',async()=>{
+    const coordId=accounts.coordinator.technicianId;assert.ok(coordId);
+    const request=await create('Ticket',{equipo_id:'eq-a',titulo:'Prueba revisión',descripcion:'Trabajo compartido',responsable_id:tech});
+    let order=await create('OrdenServicio',{equipo_id:'eq-a',ticket_id:request.id,sintoma:'Servicio en campo',estado:'En proceso',tecnico_apoyo_1_id:coordId},sessions.tech);
+    order=await update('OrdenServicio',order,{estado:'Completada',diagnostico:'Original',trabajo_realizado:'Trabajo',pruebas_realizadas:'Prueba',resultado_pruebas:'Correcto',visible_cliente:true},sessions.coordinator);
+    const reason='Se precisa el diagnóstico conservando cierre';
+    for(const actor of [sessions.tech,sessions.client])for(const action of ['corregir','reabrir'])assert.equal((await mutate('OrdenServicio','update',{revision_accion:action,revision_motivo:reason},actor,order.id)).status,403);
+    assert.equal((await mutate('OrdenServicio','update',{revision_accion:'corregir',revision_motivo:''},sessions.coordinator,order.id)).status,400);
+    const original={...order};order=await update('OrdenServicio',order,{revision_accion:'corregir',revision_motivo:reason,diagnostico:'Precisado'},sessions.coordinator);
+    assert.equal(order.fecha_fin,original.fecha_fin);assert.equal(order.estado,'Completada');
+    const snapshot=await readSnapshot(pool),audit=snapshot.entities.Bitacora.find(row=>row.orden_id===order.id&&row.accion==='Corrección de orden completada');assert.deepEqual(JSON.parse(audit.version_anterior),original);assert.deepEqual(JSON.parse(audit.version_nueva),order);
+    const body={orderId:order.id,category:'Después',requestId:randomUUID(),name:'Prueba.jpg',base64:Buffer.from([255,216,255,224,0,16,74,70,73,70,0,1,0,0,0,0]).toString('base64')};
+    assert.equal((await call('attachments',body,sessions.coordinator)).status,400);
+    for(const actor of [sessions.tech,sessions.client])assert.equal((await call('attachments',{...body,reason},actor)).status,403);
+    const image=await call('attachments',{...body,reason},sessions.coordinator);assert.equal(image.status,201,JSON.stringify(image.data));
+    assert.equal((await call('attachments',{...body,reason},sessions.coordinator)).data.file.id,image.data.file.id);
+    for(const actor of [admin,sessions.coordinator,sessions.tech,sessions.client])assert.equal((await call('attachments/'+image.data.file.id+'/file',undefined,actor)).status,200);
+    const videoId=randomUUID();assert.equal((await call('videos/start',{orderId:order.id,category:'Después',requestId:videoId,name:'Final.mp4',size:clip.length,sha256,reason},sessions.coordinator)).status,200);
+    assert.equal((await call('videos/'+videoId+'/finish',{},sessions.coordinator)).status,400);
+    assert.equal((await call('videos/'+videoId+'/finish',{reason},sessions.coordinator)).status,201);
+    const history=await call('orders/'+order.id+'/revisions',undefined,sessions.coordinator);assert.equal(history.status,200);assert.equal(history.data.events.filter(row=>row.action==='Evidencia posterior al cierre').length,2);
+    assert.equal((await call('orders/'+order.id+'/revisions',undefined,sessions.tech)).status,403);
+    assert.equal((await call('orders/'+order.id+'/revisions',undefined,sessions.client)).status,403);
+    order=await update('OrdenServicio',order,{revision_accion:'reabrir',revision_motivo:'Falta prueba final en campo'},admin);assert.equal(order.estado,'En proceso');assert.equal(order.visible_cliente,false);
+    assert.equal((await readSnapshot(pool)).entities.Ticket.find(row=>row.id===request.id).estado,'En revisión');
+    assert.equal((await call('attachments/'+image.data.file.id+'/file',undefined,sessions.client)).status,404);
+    order=await update('OrdenServicio',order,{estado:'Completada'},sessions.coordinator);assert.equal(order.estado,'Completada');
+    assert.equal((await readSnapshot(pool)).entities.Ticket.find(row=>row.id===request.id).estado,'Resuelto');
+  });
+
 });

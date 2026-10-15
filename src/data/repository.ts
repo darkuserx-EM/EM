@@ -172,6 +172,7 @@ export class LocalDataSource {
           if (input.expected_updated_at !== original.fecha_actualizacion) throw Object.assign(new ValidationError('El técnico cambió. Recarga antes de guardar.'), { status: 409 });
           if (enabledEquipment({ ...original, ...fields }).some(id => !next.entities.Equipo.some(eq => eq.id === id))) throw new ValidationError('Selecciona equipos existentes.');
         }
+        if (entity === 'OrdenServicio' && input.revision_accion && input.expected_updated_at !== original.fecha_actualizacion) throw Object.assign(new ValidationError('La orden cambió. Actualiza antes de revisarla.'), { status: 409 });
         if (isOperationalEntity(entity)) fields = prepareOperation(entity, fields, actor, next.entities, original);
         if (isOperationalEntity(entity) && input.expected_updated_at !== undefined && input.expected_updated_at !== original.fecha_actualizacion) throw Object.assign(new ValidationError('Este registro cambió mientras lo editabas. Cierra el formulario, revisa la versión actual y vuelve a intentarlo.'), { status: 409 });
         if (entity === 'Hallazgo') {
@@ -188,7 +189,7 @@ export class LocalDataSource {
         if (errors.length || duplicate) throw new ValidationError(errors.join('; ') || duplicate!);
         if (entity === 'Equipo') this.recordEquipmentStatus(next, actor, row, original);
         next.entities[entity][index] = row;
-        if (entity === 'OrdenServicio' && row.estado === 'Completada' && original.estado !== 'Completada' && typeof row.horometro === 'number') {
+        if (entity === 'OrdenServicio' && row.estado === 'Completada' && original.estado !== 'Completada' && typeof row.horometro === 'number' && !next.entities.LecturaHorometro.some(reading => reading.orden_id === row.id && reading.valor === row.horometro && String(reading.odometro_millas ?? '') === String(row.odometro_millas ?? ''))) {
           const readingFields = prepareOperation('LecturaHorometro', { equipo_id: row.equipo_id, cliente_id: row.cliente_id, orden_id: row.id, fecha: row.fecha_fin || new Date().toISOString(), valor: row.horometro, ...(typeof row.odometro_millas === 'number' ? { odometro_millas: row.odometro_millas } : {}) }, { ...actor, rol: 'Administrador' }, next.entities);
           const reading = this.record('LecturaHorometro', actor, readingFields, next.entities.LecturaHorometro);
           next.entities.LecturaHorometro.push(reading);
@@ -203,9 +204,19 @@ export class LocalDataSource {
             Object.assign(next.entities.Bitacora.at(-1)!, { ticket_id: ticket.id, orden_id: row.id, equipo_id: ticket.equipo_id, estado_anterior: previousState, estado_nuevo: 'Resuelto' });
           }
         }
+        if (entity === 'OrdenServicio' && original.estado === 'Completada' && input.revision_accion === 'reabrir') {
+          for (const ticket of next.entities.Ticket.filter(ticket => ticket.schema_operacion === 1 && ticket.importado !== true && ticket.estado === 'Resuelto' && (row.ticket_id === ticket.id || ticket.orden_id === row.id))) {
+            Object.assign(ticket, { estado: 'En revisión', actualizado_por: actor.id, fecha_actualizacion: row.fecha_actualizacion });
+            this.audit(next, actor, 'Ticket', 'Reapertura por orden', `${ticket.codigo} · Reapertura de ${row.codigo}`);
+            Object.assign(next.entities.Bitacora.at(-1)!, { ticket_id: ticket.id, orden_id: row.id, equipo_id: row.equipo_id, estado_anterior: 'Resuelto', estado_nuevo: 'En revisión', motivo: input.revision_motivo });
+          }
+        }
         const changed = Object.entries(fields).filter(([key, value]) => original[key] !== value).map(([key, value]) => key === 'logo' ? `Logo: ${value ? 'actualizado' : 'retirado'}` : equipmentImageFields.some(field => field === key) ? `${equipmentImageLabels[key as keyof typeof equipmentImageLabels]}: ${value ? 'actualizada' : 'retirada'}` : `${key}: ${original[key]} → ${value}`).join('; ');
         if (entity === 'Hallazgo') this.recordFindingChange(next, actor, row, original);
-        else if (entity === 'Ticket' && original.estado === 'Resuelto' && row.estado === 'En revisión') {
+        else if (entity === 'OrdenServicio' && original.estado === 'Completada' && input.revision_accion) {
+          this.audit(next, actor, entity, input.revision_accion === 'reabrir' ? 'Reapertura de orden' : 'Corrección de orden completada', row.codigo + ' · ' + input.revision_motivo);
+          Object.assign(next.entities.Bitacora.at(-1)!, { orden_id: row.id, equipo_id: row.equipo_id, motivo: input.revision_motivo, estado_anterior: original.estado, estado_nuevo: row.estado, version_anterior: JSON.stringify(original), version_nueva: JSON.stringify(row) });
+        } else if (entity === 'Ticket' && original.estado === 'Resuelto' && row.estado === 'En revisión') {
           this.audit(next, actor, entity, 'Reapertura sin orden', row.codigo + ' · Resuelto → En revisión · ' + row.reapertura_motivo);
           Object.assign(next.entities.Bitacora.at(-1)!, { ticket_id: row.id, equipo_id: row.equipo_id, estado_anterior: original.estado, estado_nuevo: row.estado, motivo: row.reapertura_motivo });
         } else if (entity === 'Tecnico') {

@@ -2,11 +2,11 @@ import express from 'express';
 import {randomUUID} from 'node:crypto';
 import {select,change} from './sql.mjs';
 import {authorizeTicketEvidence} from './ticket-evidence-access.mjs';
-import {permitted,readOrder} from './attachments.mjs';
+import {permitted,readOrder,evidenceReason,auditEvidence} from './attachments.mjs';
 import {VIDEO_MAX_BYTES,VIDEO_CHUNK_BYTES,validateVideo} from './video-validation.mjs';
 
 /** @typedef {{id:string,actor_id:string,target_kind:string,target_id:string,category:string,name:string,size:number,sha256:string,file_id:string|null,location:string|null,lease_until:number,created_at:number}} Upload */
-/** @typedef {{requestId?:unknown,ticketId?:unknown,orderId?:unknown,category?:unknown,name?:unknown,size?:unknown,sha256?:unknown}} VideoInput */
+/** @typedef {{reason?:unknown,requestId?:unknown,ticketId?:unknown,orderId?:unknown,category?:unknown,name?:unknown,size?:unknown,sha256?:unknown}} VideoInput */
 /** @param {number} status @param {string} message */
 const fail=(status,message)=>Object.assign(new Error(message),{status,expose:true});
 const fields='id,order_id,ticket_id,category,name,mime,size,sha256,uploaded_by,created_at';
@@ -47,7 +47,7 @@ export function registerVideoRoutes(app,{pool,files}) {
     await authorize(pool,req.actor,row,false);
     /** @type {import('./contracts.js').AttachmentMetadata[]} */const prior=await select(pool,`SELECT ${fields} FROM em_attachments WHERE request_id=?`,[row.id]);
     if(prior.length){const f=prior[0];if((f.ticket_id||f.order_id)!==target||f.sha256!==row.sha256||f.category!==category)throw fail(409,'El envío pertenece a otro archivo.');return res.json({offset:row.size,file:f});}
-    await authorize(pool,req.actor,row);
+    const targetRecord=await authorize(pool,req.actor,row);if(row.target_kind==='order')evidenceReason(targetRecord,b.reason);
     /** @type {{n:number}[]} */const capacity=await select(pool,`SELECT COUNT(*) AS n FROM em_attachments WHERE ${row.target_kind==='ticket'?'ticket_id':'order_id'}=?`,[row.target_id]);
     if(Number(capacity[0].n)>=(row.target_kind==='ticket'?10:20))throw fail(400,'El registro alcanzó su límite de adjuntos.');
     const conn=await pool.getConnection();
@@ -78,7 +78,7 @@ export function registerVideoRoutes(app,{pool,files}) {
       return video.chunk(row.location||'',offset,Number(row.size),bytes);
     });if(next<0)throw fail(410,'La carga venció. Reintenta desde el archivo original.');res.json({offset:next});
   });
-  app.post('/api/videos/:id/finish',async(req,res)=>{
+  app.post('/api/videos/:id/finish',/** @param {import('./http-contracts.js').PortalRequest<VideoInput>} req */async(req,res)=>{
     const row=await owned(req),video=files.video;if(!video||!row.file_id)throw fail(409,'Falta iniciar la carga.');
     const result=await exclusive(row,async()=>{
       if(verifying>=2)throw fail(429,'Hay videos verificándose. Espera unos segundos y reintenta; las partes recibidas se conservan.');
@@ -89,13 +89,14 @@ export function registerVideoRoutes(app,{pool,files}) {
       const stored=await files.prepare(bytes,'video/mp4');
       const conn=await pool.getConnection();
       try {
-        await conn.beginTransaction();await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE');await authorize(conn,req.actor,row);
+        await conn.beginTransaction();await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE');const targetRecord=await authorize(conn,req.actor,row);if(row.target_kind==='order')evidenceReason(targetRecord,req.body?.reason);
         /** @type {import('./contracts.js').AttachmentMetadata[]} */const prior=await select(conn,`SELECT ${fields} FROM em_attachments WHERE request_id=? OR (${row.target_kind==='ticket'?'ticket_id':'order_id'}=? AND sha256=? AND category=?)`,[row.id,row.target_id,row.sha256,row.category]);
         if(prior.length){await conn.commit();return prior[0];}
         /** @type {{n:number}[]} */const counts=await select(conn,`SELECT COUNT(*) AS n FROM em_attachments WHERE ${row.target_kind==='ticket'?'ticket_id':'order_id'}=?`,[row.target_id]);
         if(Number(counts[0].n)>=(row.target_kind==='ticket'?10:20))throw fail(400,'El registro alcanzó su límite de adjuntos.');
         const file={id:randomUUID(),order_id:row.target_kind==='order'?row.target_id:'',ticket_id:row.target_kind==='ticket'?row.target_id:null,request_id:row.id,category:row.category,name:row.name,mime:'video/mp4',size:Number(row.size),sha256:row.sha256,uploaded_by:req.actor.id,created_at:Date.now()};
         await conn.execute('INSERT INTO em_attachments (id,order_id,ticket_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content,storage_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[file.id,file.order_id,file.ticket_id,file.request_id,file.category,file.name,file.mime,file.size,file.sha256,file.uploaded_by,file.created_at,stored.content,stored.storage_key]);
+        if(row.target_kind==='order')await auditEvidence(conn,req.actor,targetRecord,file.id,file.name,req.body?.reason);
         await conn.execute('INSERT INTO em_security_events (id,actor_id,target_id,action,created_at) VALUES (?,?,?,?,?)',[randomUUID(),req.actor.id,file.id,'video.added',Date.now()]);await conn.commit();return file;
       }catch(error){await conn.rollback();throw error;}finally{conn.release();}
       }finally{verifying--;}

@@ -67,18 +67,40 @@ export function registerAdminUserRoutes(app,{pool}) {
       let clientId=null;
       if (b.role==='Cliente') {
         clientId=String(b.clientId||'');if (!db.entities.Cliente.some(row=>row.id===clientId)) throw fail(400,'Selecciona el cliente al que tendrá acceso.');
-      } else if (b.role==='Técnico') {
+      } else if (b.role==='Técnico'||b.role==='Coordinador') {
         technicianId=b.technicianId||randomUUID();
         if (b.technicianId&&!db.entities.Tecnico.some(row=>row.id===technicianId)) throw fail(400,'El técnico seleccionado no existe.');
         if (!b.technicianId) {
           const next=Math.max(0,...db.entities.Tecnico.map(row=>Number(String(row.codigo).replace(/^TEC-/,''))||0))+1,now=new Date().toISOString();
-          db.entities.Tecnico.push({id:technicianId,codigo:'TEC-'+String(next).padStart(3,'0'),nombre:name,especialidad:specialty,activo:true,fecha_creacion:now,fecha_actualizacion:now,creado_por:req.actor.id,actualizado_por:req.actor.id});
+          db.entities.Tecnico.push({id:technicianId,codigo:'TEC-'+String(next).padStart(3,'0'),nombre:name,especialidad:specialty||'Coordinación y servicio',activo:true,fecha_creacion:now,fecha_actualizacion:now,creado_por:req.actor.id,actualizado_por:req.actor.id});
           db.revision++;await saveDatabase(conn,db,previous);
         }
       }
       await conn.execute('INSERT INTO em_users (id,email,name,role,password_hash,client_id,technician_id,expires_at,creation_request,must_change_password) VALUES (?,?,?,?,?,?,?,?,?,TRUE)',[id,email,name,b.role,hash,clientId,technicianId,expiresAt,requestId]);
       await event(conn,req,id,'account.created');await conn.commit();res.status(201).json({id,email,password,expiresAt,technicianId,clientId});
     } catch(error) {await conn.rollback();if(errorCode(error)==='ER_DUP_ENTRY')throw fail(409,'La cuenta ya existe.');throw error;}finally{conn.release();}
+  });
+  app.post('/api/admin/users/:id/technician',admin,limit,/** @param {import('./http-contracts.js').PortalRequest<import('./http-contracts.js').AdminUserBody>} req */async(req,res)=>{
+    const conn=await pool.getConnection();
+    try {
+      await conn.beginTransaction();const previous=await readDatabase(conn,true,{includeAudit:false}),db=structuredClone(previous);
+      await authorize(conn,req,true);
+      /** @type {import('./contracts.js').UserRow[]} */
+      const users=await select(conn,'SELECT * FROM em_users WHERE id=? FOR UPDATE',[req.params.id]);const user=users[0];
+      if(!user||user.role!=='Coordinador'||!user.active)throw fail(400,'Selecciona un coordinador activo.');
+      if(user.technician_id){await conn.commit();return res.json({ok:true,technicianId:user.technician_id});}
+      const id=req.body.technicianId||randomUUID();
+      if(req.body.technicianId&&!db.entities.Tecnico.some(row=>row.id===id&&row.activo!==false))throw fail(400,'Selecciona un técnico activo.');
+      const linked=await select(conn,'SELECT id FROM em_users WHERE technician_id=? AND id<>?',[id,user.id]);
+      if(linked.length)throw fail(409,'Ese técnico ya está vinculado a otra cuenta.');
+      if(!req.body.technicianId){
+        const next=Math.max(0,...db.entities.Tecnico.map(row=>Number(String(row.codigo).replace(/^TEC-/,''))||0))+1,now=new Date().toISOString();
+        db.entities.Tecnico.push({id,codigo:'TEC-'+String(next).padStart(3,'0'),nombre:user.name,especialidad:'Coordinación y servicio',activo:true,fecha_creacion:now,fecha_actualizacion:now,creado_por:req.actor.id,actualizado_por:req.actor.id});
+        db.revision++;await saveDatabase(conn,db,previous);
+      }
+      await conn.execute('UPDATE em_users SET technician_id=? WHERE id=?',[id,user.id]);
+      await event(conn,req,user.id,'account.technician-linked');await conn.commit();res.json({ok:true,technicianId:id});
+    }catch(error){await conn.rollback();throw error;}finally{conn.release();}
   });
   for(const action of ['renew','reactivate','reset-password','revoke']) app.post('/api/admin/users/:id/'+action,admin,limit,/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AdminUserBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AdminUserReply>} res */ async (req,res)=>{
     const conn=await pool.getConnection();
