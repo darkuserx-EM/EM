@@ -4,11 +4,11 @@ import { useActor, useRows, useToast } from '../../app/state';
 import { ErrorNotice, Modal } from '../../components/ui';
 import { getDataSource } from '../../data/source';
 import type { EntityRecord, Scalar } from '../../domain/model';
-import { currentPlan, planStatusLabel, planTypes, planService, projectPlan, todayGT, planIntervalLimits } from '../../domain/maintenance-plan';
+import { currentPlan, planTypes, planService, projectPlan, todayGT, planIntervalLimits } from '../../domain/maintenance-plan';
 import { localDay } from '../../domain/equipment-history';
 import { formatDate, formatNumber } from '../../domain/format';
 import './equipment-planning.css';
-import { PlanCycle } from './PlanCycle';
+import { PlanCycle, PlanStatus } from './PlanCycle';
 import { planDate } from './PlanCycle';
 export { planDate } from './PlanCycle';
 
@@ -75,7 +75,7 @@ export function EquipmentPlanning({ equipment, services, readings, onReport }: {
     <div className="pm-cards">{planTypes.map(type => {
       const plan = currentPlan(plans.rows, equipment.id, type); const projection = projectPlan(plan, readings, services);
       const versions = plans.rows.filter(row => row.schema_plan === 1 && row.equipo_id === equipment.id && row.tipo_plan === type).sort((a,b) => Number(b.version) - Number(a.version));
-      return <article className="pm-card" key={type} aria-label={`Plan ${type.toLowerCase()}`}><div className="pm-card-title"><h3>{type}</h3><span className={`pm-status ${projection.tone}`}>{planStatusLabel(projection)}</span></div><p className="pm-interval">{plan ? `Cada ${formatNumber(Number(plan.intervalo))} ${plan.criterio === 'Horas' ? 'horas' : 'días'}` : type === 'Mayor' ? 'Ciclo recomendado de 2,000 horas' : '250 horas o 30 / 60 / 90 días'}</p>
+      return <article className="pm-card" key={type} aria-label={`Plan ${type.toLowerCase()}`}><div className="pm-card-title"><h3>{type}</h3><PlanStatus projection={projection} /></div><p className="pm-interval">{plan ? `Cada ${formatNumber(Number(plan.intervalo))} ${plan.criterio === 'Horas' ? 'horas' : 'días'}` : type === 'Mayor' ? 'Ciclo recomendado de 2,000 horas' : '250 horas o 30 / 60 / 90 días'}</p>
         <PlanCycle plan={plan} projection={projection} />
         {plan && <dl className="pm-base"><div><dt>Base del ciclo</dt><dd>{plan.base_origen === 'Pendiente' ? 'Pendiente de confirmar' : `${planDate(String(plan.base_fecha))}${typeof plan.base_horas === 'number' ? ` · ${formatNumber(plan.base_horas)} h` : ''} · ${plan.base_calidad}`}</dd></div><div><dt>Responsable</dt><dd>{plan.responsable || 'Sin asignar'}</dd></div></dl>}
         <div className="pm-actions"><button className="button button-dark" onClick={() => setEditing(type)}><Settings2 size={15} />{plan ? 'Actualizar plan o base' : `Configurar ${type.toLowerCase()}`}</button>{plan?.base_orden_id && <button className="summary-link" onClick={() => onReport(String(plan.base_orden_id))}>Ver reporte base<ArrowUpRight size={14} /></button>}</div>

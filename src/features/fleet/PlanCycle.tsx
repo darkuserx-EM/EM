@@ -1,8 +1,15 @@
 import type { EntityRecord } from '../../domain/model';
-import type { PlanProjection } from '../../domain/maintenance-plan';
+import { planStatusLabel, type PlanProjection } from '../../domain/maintenance-plan';
+import { Badge, type BadgeTone } from '../../components/design-system';
 import { formatDate, formatNumber } from '../../domain/format';
 
 export const planDate = (value: string) => formatDate(`${value}T12:00:00-06:00`);
+
+const planTones: Record<PlanProjection['tone'], BadgeTone> = { good: 'success', warning: 'warning', danger: 'danger', neutral: 'neutral' };
+/** Estado del plan con el mismo tono en Mantenimiento, la ficha del equipo y el editor de planes. */
+export function PlanStatus({ projection }: { projection: PlanProjection }) {
+  return <Badge tone={planTones[projection.tone]}>{planStatusLabel(projection)}</Badge>;
+}
 
 export function remainingLabel(plan: EntityRecord | undefined, projection: PlanProjection) {
   if (projection.remaining === undefined) return projection.status;

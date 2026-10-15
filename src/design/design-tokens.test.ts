@@ -7,7 +7,7 @@ const MIN_FONT_PX = 12;
 // Única hoja que define colores: la paleta.
 const PALETTE = 'src/design/tokens.css';
 // Hoja antigua: sus reglas ya están reemplazadas por las hojas de cada pantalla. No puede crecer; al limpiarla, bajar estos números.
-const LEGACY = { file: 'src/styles.css', hex: 428, smallFont: 259 };
+const LEGACY = { file: 'src/styles.css', hex: 419, smallFont: 252 };
 
 type Finding = { file: string; line: number; text: string };
 

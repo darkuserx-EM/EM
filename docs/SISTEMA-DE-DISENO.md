@@ -109,7 +109,7 @@ Con este paso todas las pantallas usan tokens. Lo único que queda bajo 12 px es
 | `Button` | `<Button variant="primary" icon={<Plus size={16} />}>Nueva orden</Button>` | Variantes `secondary` (por defecto), `primary` y `danger`; `size="sm"`. Es `type="button"` por defecto: para enviar un formulario, `type="submit"` explícito. |
 | `ButtonLink` | `<ButtonLink to="/plan">Ver plan</ButtonLink>` | Enlace interno (react-router) con aspecto de botón. Mismas variantes. |
 | `IconButton` | `<IconButton label="Editar TCL-001" icon={<Pencil size={15} />} onClick={…} />` | `label` es obligatoria: se usa como `aria-label` y texto emergente. |
-| `Badge` | `<Badge tone="warning">Por vencer</Badge>` | Tonos `success`, `info`, `warning`, `danger` y `neutral`. `Status` lo usa con `statusTone(valor)`. |
+| `Badge` | `<Badge tone="warning">Por vencer</Badge>` | **Única etiqueta de estado del portal.** Tono según el significado: `success` listo o al día, `info` programado o en curso, `warning` en espera, en revisión o por vencer, `danger` vencido o fuera de servicio, `neutral` sin estado o dato informativo. `Status` (equipos y clientes) lo usa con `statusTone(valor)`, `OperationStatus` (órdenes y solicitudes) con `operationTone(estado)` y `PlanStatus` (planes de mantenimiento) con el tono del plan. Reemplaza a `.os-status`, `.pm-status`, `.review-pill`, `.plain-tag` y `.roadmap-status`. |
 | `Panel` | `<Panel title="Servicios" description="Por mes" actions={…}>…</Panel>` | El encabezado aparece solo si hay título o acciones. |
 | `Field` | `<Field label="Marca" required help="…" error={error}>{control => <input {...control} value={marca} onChange={…} />}</Field>` | Vincula etiqueta, ayuda y error con el control (`id`, `aria-describedby`, `aria-invalid`). Con error, el campo toma borde rojo. |
 | `Tabs` | `<Tabs label="Secciones" value={vista} onChange={setVista} items={[{ value: 'resumen', label: 'Resumen' }, { value: 'equipos', label: 'Equipos', count: 4 }]} />` | `role="tablist"`. Una sola pestaña enfocable; se cambia con las flechas, Inicio y Fin. Variantes `line` (por defecto) y `segmented`. |
@@ -121,6 +121,10 @@ Con este paso todas las pantallas usan tokens. Lo único que queda bajo 12 px es
 | `BrandMark` | `<BrandMark />` | Logotipo oficial «EM» en SVG. Decorativo (`aria-hidden`): el nombre va en texto al lado. Toma el color del texto (`currentColor`). Lo usa `Brand` (menú lateral, acceso, error y vista del operador). |
 
 En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-danger` y `button-orange`), `.icon-button` y el aviso de cambios sin guardar pasan a tokens. Visualmente cambia poco: borde del botón `#dddfd5` → `--color-border`, radio 7 → 8 px, y botón oscuro `#3a3a3a` → `--color-primary`. El foco de enlaces y botones usa `--color-focus`. Las tablas (`.data-table`) usan el token `--color-border-subtle` para separar filas y `--color-surface-subtle` en la cabecera y al pasar el cursor. La tabla de permisos de Accesos usa `DataTable` como ejemplo.
+
+**Botones:**
+- **Acción principal:** oscura en todas las pantallas (`variant="primary"`, clase `button-dark`), incluido «Nueva orden» en Inicio, que antes era naranja. El naranja es color de marca: `button-orange` queda solo en la vista del operador, sobre fondo oscuro.
+- **Esquinas:** todos los botones usan `--radius-md` (8 px), los botones de ícono `--radius-sm` y los campos el radio general. Una pantalla no redefine el radio: el Inicio del administrador y la ficha del equipo usaban 4 px.
 
 ## Marca
 
@@ -146,6 +150,7 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
 - **Menú del cliente:** `clientNavigation` en `Shell.tsx`. La ruta de navegación del cliente usa estos nombres, no los del personal.
 - **Inicio** es la excepción: su título saluda según el perfil («Operación», «Tu operación, bajo control», «Tu jornada, en orden»). La ruta de navegación sigue diciendo «Inicio».
 - **Módulos en preparación:** el antetítulo es el grupo del menú al que pertenecen.
+- **Sección «Próximamente»:** los módulos sin construir (`upcoming: true` en `navigation`: Contratos, Checklist diario, Horas de técnicos y Viáticos) van en una sección plegable al final del menú, con el número de módulos. Está cerrada por defecto y se abre sola al entrar a uno de ellos. El botón usa `aria-expanded` y `aria-controls`. Al construir un módulo, se le quita `upcoming` y vuelve a su grupo.
 
 ## Primero el trabajo
 
@@ -167,6 +172,7 @@ En pantallas de dedo (`@media (pointer: coarse)`), todo control mide al menos `-
 - **Regla general en `base.css`:** campos y selectores (con especificidad alta a propósito, para ganar a las alturas fijas de cada pantalla), menú lateral, botón de perfil, `.text-link`, `summary`, y enlaces que se muestran como bloque dentro de tablas y listas (`td > a`, `li > a`). `min-height` no afecta a los enlaces en línea dentro de un texto.
 - **Hojas de pantalla:** cuando una pantalla fija la altura de un botón con un selector más específico, se agrega su propio bloque `@media (pointer: coarse)` **al final** de la hoja, para ganar también a sus reglas de móvil. Ejemplos: días del calendario, enlace de fila de Órdenes y botones de la ficha.
 - **Calendario en teléfonos:** 7 columnas en 375 px dejan poco ancho; las celdas usan menos relleno lateral para que cada día llegue a 44 × 44 px.
+- **Calendario en pantallas táctiles anchas** (más de 750 px, como una tableta): el número del día mide 44 × 44 px; antes medía 28 px de ancho.
 - **Al crear un control nuevo:** usar los componentes (`Button`, `IconButton`, `Tabs`, `Steps`…), que ya cumplen. Si una hoja fija una altura menor de 44 px, agregar su bloque táctil.
 
 ## Revisión automática
@@ -176,7 +182,7 @@ En pantallas de dedo (`@media (pointer: coarse)`), todo control mide al menos `-
 - una hoja `.css` en `src/` usa un color fijo (`#hex`, `rgb()`, `hsl()`) fuera de `src/design/tokens.css`;
 - una hoja usa un tamaño de letra menor de 12 px, en `font-size` o en el atajo `font`, con `px` o `rem`;
 - un componente `.tsx` usa clases de Tailwind con valores fijos (`bg-[#…]`, `text-[10px]`) o estilos en línea con color o tamaño fijo;
-- `src/styles.css`, la hoja antigua, suma colores fijos o textos pequeños. Hoy tiene 428 y 259: sus reglas ya están reemplazadas por las hojas de cada pantalla. Si se limpia, hay que bajar esos números en la prueba.
+- `src/styles.css`, la hoja antigua, suma colores fijos o textos pequeños. Hoy tiene 419 y 252: sus reglas ya están reemplazadas por las hojas de cada pantalla. Si se limpia, hay que bajar esos números en la prueba.
 
 El mensaje de error indica archivo, línea y valor. Las ilustraciones SVG con atributos de color, como el montacargas de `ui.tsx`, no se revisan.
 

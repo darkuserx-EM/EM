@@ -3,7 +3,7 @@ import { ArrowRight, Wrench } from 'lucide-react';
 import { SectionTitle } from '../../components/ui';
 import { ButtonLink, Panel } from '../../components/design-system';
 import { stages } from '../../domain/model';
-import { navigation } from '../../components/Shell';
+import { navigation } from '../../components/navigation';
 
 export function ModulePage({ module: fixedModule }: { module?: string }) {
   const location = useLocation(); const module = fixedModule ?? location.pathname.split('/')[1];

@@ -29,7 +29,6 @@
 .data-card-meta { font-size: var(--text-xs); color: var(--color-text-muted); }
 .data-card-meta strong { color: var(--color-text); }
 .log-detail { font-size: var(--text-xs); color: var(--color-text-muted); }
-.plain-tag { background: var(--color-surface-muted); font-size: var(--text-xs); color: var(--color-text-muted); }
 .restore-counts > div { background: var(--color-surface-subtle); font-size: var(--text-sm); color: var(--color-text-muted); }
 
 /* Importación del historial de reportes */
@@ -56,14 +55,17 @@
 
 /* Plan de trabajo */
 .plan-summary p { font-size: var(--text-sm); color: var(--color-text-muted); }
-.review-pill { border-color: var(--color-border); font-size: var(--text-xs); color: var(--color-success-text); }
 .roadmap-item { border-color: var(--color-border); background: var(--color-surface-subtle); }
 .roadmap-item.current { border-color: var(--color-accent); background: var(--color-surface); }
 .roadmap-number { color: var(--color-text-muted); }
 .roadmap-item.current .roadmap-number { color: var(--color-accent); }
 .roadmap-item p { font-size: var(--text-xs); color: var(--color-text-muted); }
-.roadmap-status { font-size: var(--text-xs); color: var(--color-text-muted); }
-.roadmap-status.text-green { color: var(--color-success-text); }
+/* Estado (Badge) a la derecha; en el teléfono baja a su propia línea, alineado con el texto. */
+.plan-summary > .status, .roadmap-item > .status { margin-left: auto; }
+@media (max-width: 600px) {
+  .plan-summary > .status { margin-left: 51px; }
+  .roadmap-item > .status { margin-left: 43px; }
+}
 
 /* Módulos próximos (Contratos, Checklist diario, Horas, Viáticos, Costos) */
 .phase-banner { border-color: var(--color-border); background: var(--color-surface-muted); }
