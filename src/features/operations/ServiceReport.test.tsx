@@ -9,6 +9,16 @@ const technicians = [record({ id: 't1', nombre: 'Técnico Uno' }), record({ id: 
 const equipment = record({ id: 'm1', codigo: 'TCE-007', id_interno_cliente: 'UN01', marca: 'Marca', modelo: 'Modelo', serie: 'S-1' });
 
 describe('reporte de servicio', () => {
+  it.each(['OS-180', 'OS-"\\\n</style><script>alert(1)</script>'])('imprime el código %s en el margen sin permitir inyección de CSS o HTML', codigo => {
+    const html = renderToStaticMarkup(<ServiceReport order={record({ codigo })} technicians={[]} />);
+    const style = html.match(/<style>(.*?)<\/style>/s)?.[1] ?? '';
+    expect(style).toMatch(/^@page service-report \{ @top-right \{ content: "(?:\\[0-9a-f]+ )+"; \} \}$/);
+    const encoded = style.match(/content: "(.*?)"/s)?.[1] ?? '';
+    expect(encoded.replace(/\\([0-9a-f]+) /g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))).toBe(codigo);
+    expect(html.match(/<style>/g)).toHaveLength(1);
+    expect(html).not.toContain('<script>');
+  });
+
   it('muestra el horario con inicio, fin y duración', () => {
     expect(serviceHours(order)).toBe('10:30 a 11:45 · 1 h 15 min');
     expect(serviceHours(record({ fecha: '2026-10-13T16:30:00.000Z' }))).toBe('Desde las 10:30');

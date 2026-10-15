@@ -174,10 +174,11 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
   9. aviso de cierre.
 - **Etiquetas para el cliente:** «Horómetro» y «Odómetro», sin «H1» ni «H3», que son nombres internos de AppSheet.
 - **Papel:** página con nombre `service-report`, tamaño carta, 16 × 14 mm de margen.
-  - En cada hoja va un encabezado y un pie propios, con el contacto de la empresa y «Página N de M». Al definirlos, Chrome 131 o posterior deja de imprimir su fecha, su título y la dirección con el identificador interno de la orden.
+  - En cada hoja, incluidas las evidencias, se repite el código de la orden como texto de impresión. El encabezado y pie propios incluyen el contacto de la empresa y «Página N de M». Al definirlos, Chrome 131 o posterior deja de imprimir su fecha, su título y la dirección con el identificador interno de la orden.
+  - Al guardar con una impresora PDF del sistema, seleccionar también papel Carta (216 × 279 mm): el controlador puede reemplazar el tamaño indicado por la página.
   - `print-color-adjust: exact` conserva los fondos del resultado y de la cuadrícula del equipo, aunque «Gráficos de fondo» esté apagado.
 - **Firmas:** dos líneas para firmar a mano, una del técnico responsable y otra de quien recibe, con sus nombres. La firma digital en el teléfono es otro paso: requiere guardar la firma en el servidor.
-- **Anexo:** las fotos de evidencia (Antes y Después) se imprimen después del reporte, en tres columnas. Los controles, los videos y los PDF no se imprimen.
+- **Anexo:** las fotos de evidencia (Antes y Después) comienzan en una hoja nueva con su título y se distribuyen en tres columnas. Se conserva el encuadre completo de fotos horizontales y verticales, sin recortarlas; cada foto permanece junto a su nombre y categoría. Sin fotografías no se agrega una hoja de anexo. Los controles, los videos y los PDF no se imprimen.
 - **Nombre del PDF:** mientras el reporte está abierto, el título de la página es «Reporte de servicio OS-N · Expertos en Montacargas», que el navegador propone como nombre del archivo.
 - **Técnicos:** si quien ve el reporte no puede leer sus nombres, como el cliente, dice «Técnico de Expertos en Montacargas, S.A.» en lugar de «Sin técnico asignado».
 

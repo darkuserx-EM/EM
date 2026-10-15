@@ -13,6 +13,9 @@ export const company = { name: 'Expertos en Montacargas, S.A.', web: 'www.expert
 
 const withTime = (value: unknown): value is string => typeof value === 'string' && value.includes('T') && Number.isFinite(Date.parse(value));
 const text = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : '';
+// Cada carácter se escapa como punto de código CSS: incluso un código importado con comillas
+// o etiquetas permanece como texto y no puede cerrar el estilo ni inyectar reglas.
+const pageCode = (value: string) => `"${Array.from(value, char => `\\${char.codePointAt(0)!.toString(16)} `).join('')}"`;
 const duration = (minutes: number) => [Math.floor(minutes / 60) && `${Math.floor(minutes / 60)} h`, minutes % 60 && `${minutes % 60} min`].filter(Boolean).join(' ');
 
 /** Horario del servicio: inicio y fin, con la duración cuando hay hora de fin. Sin hora real, la programada. */
@@ -46,6 +49,7 @@ export function ServiceReport({ order, equipment, client, site, technicians }: {
   const result = text(order.resultado_pruebas), supplies = text(order.insumos) || text(order.insumos_origen), parts = text(order.repuestos) || text(order.repuestos_origen);
   const recommendations = text(order.recomendaciones), safety = order.importado ? '' : text(order.notas_seguridad);
   return <article className="os-print-report service-report">
+    <style>{`@page service-report { @top-right { content: ${pageCode(code)}; } }`}</style>
     <header className="sr-header">
       <div className="sr-company"><BrandMark className="sr-logo" /><strong>{company.name}</strong></div>
       <div className="sr-title"><span className="sr-kicker">Reporte de servicio</span><h2>{code}</h2><OperationStatus value={order.estado} /></div>
