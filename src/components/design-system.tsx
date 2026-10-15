@@ -93,11 +93,13 @@ export function Tabs<T extends string>({ items, value, onChange, label, panelId,
  *   Con `to="#id"` salta a una sección de la misma página: enlace normal (el navegador hace el desplazamiento) y flecha ↓;
  * - informativo: sin `onClick` ni `to`.
  * `alert` pinta la cifra en rojo (por ejemplo, citas atrasadas). Agrupar en `<div className="kpi-grid">`.
+ * `tone` muestra, en lugar del ícono, un punto del color de la etiqueta de ese estado (el mismo tono de `Badge`).
+ * `meter` agrega una barra de avance bajo la cifra, con su texto para lectores de pantalla.
  */
-export function KpiCard({ label, value, hint, icon, pressed, onClick, to, alert = false }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode; pressed?: boolean; onClick?: () => void; to?: LinkProps['to']; alert?: boolean }) {
+export function KpiCard({ label, value, hint, icon, tone, meter, pressed, onClick, to, alert = false }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode; tone?: BadgeTone; meter?: { value: number; label: string }; pressed?: boolean; onClick?: () => void; to?: LinkProps['to']; alert?: boolean }) {
   const anchor = typeof to === 'string' && to.startsWith('#');
   const className = ['kpi-card', to && 'kpi-card-link', alert && 'kpi-card-alert'].filter(Boolean).join(' ');
-  const content = <>{icon && <span className="kpi-card-icon" aria-hidden="true">{icon}</span>}<span className="kpi-card-label">{label}</span><strong className="kpi-card-value">{value}</strong>{hint && <small className="kpi-card-hint">{hint}</small>}{to && <span className="kpi-card-arrow" aria-hidden="true">{anchor ? <ArrowDown size={16} /> : <ArrowUpRight size={16} />}</span>}</>;
+  const content = <>{icon ? <span className="kpi-card-icon" aria-hidden="true">{icon}</span> : tone && <span className="kpi-card-dot" data-tone={tone} aria-hidden="true" />}<span className="kpi-card-label">{label}</span><strong className="kpi-card-value">{value}</strong>{meter && <span className="kpi-card-meter" role="img" aria-label={meter.label}><i style={{ width: `${Math.min(100, Math.max(0, meter.value))}%` }} /></span>}{hint && <small className="kpi-card-hint">{hint}</small>}{to && <span className="kpi-card-arrow" aria-hidden="true">{anchor ? <ArrowDown size={16} /> : <ArrowUpRight size={16} />}</span>}</>;
   if (anchor) return <a className={className} href={to as string}>{content}</a>;
   if (to) return <Link className={className} to={to}>{content}</Link>;
   return onClick ? <button type="button" className={className} aria-pressed={pressed} onClick={onClick}>{content}</button> : <div className={className}>{content}</div>;

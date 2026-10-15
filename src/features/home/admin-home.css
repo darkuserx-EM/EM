@@ -23,32 +23,6 @@
 .admin-home .home-search select { min-height: 44px; }
 .admin-home .home-scope { font-size: var(--text-xs); }
 
-.admin-home .home-kpis { gap: 0; grid-template-columns: 1.45fr repeat(3, minmax(0, 1fr)); }
-.admin-home .home-kpis > button {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-  padding: 4px 24px;
-  min-width: 0;
-  text-align: left;
-  border-radius: 0;
-  background: transparent;
-  border: 0;
-  border-left: 1px solid var(--home-line);
-  box-shadow: none;
-}
-.admin-home .home-kpis > button:first-child { border-left: 0; padding-left: 0; }
-.admin-home .home-kpis > button:last-child { padding-right: 0; }
-.admin-home .home-kpis > button:hover { background: var(--home-soft); }
-.admin-home .home-kpis > button:hover .home-card-label { text-decoration: underline; text-underline-offset: 4px; }
-.admin-home .home-card-label { color: var(--home-muted); font-size: var(--text-sm); }
-.admin-home .home-card-label svg { display: none; }
-.admin-home .home-card-value, .admin-home .home-stat > strong { font-size: 32px; letter-spacing: -.02em; }
-.admin-home .home-card-value small { display: inline; font-size: var(--text-xs); margin-left: 4px; }
-.admin-home .home-progress, .admin-home .home-progress i { border-radius: 0; height: 3px; }
-.admin-home .home-kpi-help, .admin-home .home-stat > small { font-size: var(--text-xs); }
-.admin-home .home-stat-alert > strong { color: var(--color-danger-text); }
 
 .admin-home .home-attention-banner {
   padding: 12px 0;
@@ -118,9 +92,6 @@
   .admin-home .home-main-grid { grid-template-columns: minmax(0, 1fr); }
   .admin-home .home-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-home .home-activity { padding: 0; border: 0; }
-  .admin-home .home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 20px; }
-  .admin-home .home-kpis > button:nth-child(3) { border-left: 0; padding-left: 0; }
-  .admin-home .home-kpis > button:nth-child(2) { padding-right: 0; }
 }
 @media (max-width: 650px) {
   .admin-home { gap: 20px; }
@@ -128,10 +99,6 @@
   .admin-home .home-search { gap: 12px; }
   .admin-home .home-search-input input { font-size: var(--text-lg); }
   .admin-home .home-actions .button { font-size: var(--text-xs); min-height: 44px; }
-  .admin-home .home-kpis > button { padding: 4px 12px; gap: 8px; }
-  .admin-home .home-card-value, .admin-home .home-stat > strong { font-size: 28px; }
-  .admin-home .home-card-value small { display: block; margin: 4px 0 0; line-height: 1.5; }
-  .admin-home .home-kpi-help { gap: 4px; }
   .admin-home .home-attention-banner { gap: 8px; padding: 12px 0; }
   .admin-home .home-pending-actions { gap: 4px; }
   .admin-home .home-main-grid { gap: 24px; }

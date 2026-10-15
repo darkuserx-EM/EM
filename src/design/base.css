@@ -173,11 +173,24 @@ a.kpi-card:hover { border-color: var(--color-border-strong); background: var(--c
 .kpi-card-arrow { grid-column: 2; grid-row: 3; align-self: end; justify-self: end; line-height: 0; color: var(--color-text-muted); }
 a.kpi-card:hover .kpi-card-arrow { color: var(--color-text); }
 .kpi-card-alert .kpi-card-value { color: var(--color-danger-text); }
+/* Punto de estado (tone), en lugar del ícono: el mismo color de la etiqueta Badge de ese estado. */
+.kpi-card-dot { grid-column: 2; grid-row: 1; align-self: start; width: 10px; height: 10px; margin-top: calc((var(--text-sm) * var(--leading-normal) - 10px) / 2); border-radius: var(--radius-full); background: currentColor; }
+.kpi-card-dot[data-tone=success] { color: var(--color-success-text); }
+.kpi-card-dot[data-tone=info] { color: var(--color-info-text); }
+.kpi-card-dot[data-tone=warning] { color: var(--color-warning-text); }
+.kpi-card-dot[data-tone=danger] { color: var(--color-danger-text); }
+.kpi-card-dot[data-tone=neutral] { color: var(--color-text-muted); }
+/* Barra de avance (meter) y complemento de la cifra, como «de 25 con estado conocido». */
+.kpi-card-meter { grid-column: 1 / -1; height: 5px; margin-block: var(--space-1); border-radius: var(--radius-full); background: var(--color-warning-bg); overflow: hidden; }
+.kpi-card-meter i { display: block; height: 100%; background: var(--color-accent); }
+.kpi-card-value small { margin-left: var(--space-1); font-size: var(--text-xs); font-weight: var(--weight-regular); color: var(--color-text-muted); }
 /* Separación con lo que sigue cuando el grupo va directo en la página (no dentro de un panel). */
 .kpi-grid-page { margin-bottom: var(--space-5); }
 @media (max-width: 600px) {
   .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
   .kpi-card { padding: var(--space-3); }
+  /* En dos columnas, el complemento de la cifra va en su propia línea. */
+  .kpi-card-value small { display: block; margin: var(--space-1) 0 0; line-height: var(--leading-normal); }
 }
 
 /* ── Pasos de un asistente (componente Steps) ──────────────────── */
