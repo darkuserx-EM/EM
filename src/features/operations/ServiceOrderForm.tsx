@@ -46,7 +46,7 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
   const [attachmentPending, setAttachmentPending] = useState(false);
   const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues) || !!reason || attachmentPending, onClose);
   const [savedMessage, setSavedMessage] = useState('');
-  const [step, setStep] = useState(0); const [saving, setBusy] = useState(false); const [attachmentBusy, setAttachmentBusy] = useState(false); const [error, setError] = useState(''); const busy = saving || attachmentBusy;
+  const [step, setStep] = useState(original && !correcting && ['En proceso', 'En espera'].includes(String(original.estado)) ? 1 : 0); const [saving, setBusy] = useState(false); const [attachmentBusy, setAttachmentBusy] = useState(false); const [error, setError] = useState(''); const busy = saving || attachmentBusy;
   const form = useRef<HTMLFormElement>(null); const pendingFocus = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => { pendingFocus.current?.focus(); pendingFocus.current = null; }, [step]);
   const set = (key: string, value: string) => setValues(previous => ({ ...previous, [key]: value }));
