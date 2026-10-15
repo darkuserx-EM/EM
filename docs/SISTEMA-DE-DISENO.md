@@ -176,6 +176,7 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
 - **Papel:** página con nombre `service-report`, tamaño carta, 16 × 14 mm de margen.
   - En cada hoja, incluidas las evidencias, se repite el código de la orden como texto de impresión. El encabezado y pie propios incluyen el contacto de la empresa y «Página N de M». Al definirlos, Chrome 131 o posterior deja de imprimir su fecha, su título y la dirección con el identificador interno de la orden.
   - Al guardar con una impresora PDF del sistema, seleccionar también papel Carta (216 × 279 mm): el controlador puede reemplazar el tamaño indicado por la página.
+  - El pie del reporte conserva sus párrafos juntos y unidos al bloque anterior. Si no cabe el cierre, se mueve completo con las firmas; no se agrega una hoja solo para el aviso o la fecha de generación.
   - `print-color-adjust: exact` conserva los fondos del resultado y de la cuadrícula del equipo, aunque «Gráficos de fondo» esté apagado.
 - **Firmas:** dos líneas para firmar a mano, una del técnico responsable y otra de quien recibe, con sus nombres.
   - **Firma digital de quien recibe** (prop `signature` de `ServiceReport`): la imagen ocupa el lugar de la línea de «Recibido por», con el nombre de quien firmó y «firmado el 15/10/2026 a las 10:42». En papel mide 15 mm de alto y las dos columnas se alinean abajo. En pantalla aparece el apartado «Conformidad del servicio» solo con esa firma (la línea del técnico no tiene sentido en pantalla), también en el portal del cliente.
