@@ -26,7 +26,6 @@
 .fleet-client-filter select { max-width: 100%; min-width: 190px; font-size: var(--text-md); font-weight: var(--weight-regular); color: var(--color-text); }
 
 /* Situación administrativa y notas del estado */
-.equipment-admin-state { display: block; margin-top: 5px; font-size: var(--text-xs); color: var(--color-text-muted); white-space: normal; }
 .equipment-status-note { margin-top: 12px; font-size: var(--text-xs); color: var(--color-text-muted); overflow-wrap: anywhere; }
 .equipment-status-note p { margin-bottom: 7px; white-space: pre-wrap; }
 .equipment-status-note small { display: block; font-size: var(--text-xs); line-height: 1.7; color: var(--color-text-muted); }
