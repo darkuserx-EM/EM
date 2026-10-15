@@ -5,6 +5,7 @@ import { formatDate, formatNumber, formatTime } from '../../domain/format';
 import type { EntityRecord } from '../../domain/model';
 import { orderTechnicians } from '../../domain/order-team';
 import { ImportedReportDetails } from '../fleet/ImportedReportDetails';
+import { signatureUrl, signedLabel, type Signature } from '../attachments/signature';
 import { OperationStatus } from './OperationStatus';
 import { isOperationalOrder, operationDateLabel, serviceLabel } from './operations-ui';
 
@@ -37,8 +38,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 /**
  * Reporte de servicio: lo que ve el cliente en el portal y lo que se imprime o guarda en PDF.
  * Orden de lectura: quién y cuándo, qué equipo, el resultado, el detalle del trabajo, materiales, avisos y conformidad.
+ * Con firma de quien recibe, la imagen reemplaza su línea y la conformidad también se ve en pantalla.
  */
-export function ServiceReport({ order, equipment, client, site, technicians }: { order: EntityRecord; equipment?: EntityRecord; client?: EntityRecord; site?: EntityRecord; technicians: EntityRecord[] }) {
+export function ServiceReport({ order, equipment, client, site, technicians, signature }: { order: EntityRecord; equipment?: EntityRecord; client?: EntityRecord; site?: EntityRecord; technicians: EntityRecord[]; signature?: Signature | null }) {
   const operational = isOperationalOrder(order); const code = serviceLabel(order);
   // Al guardar como PDF, el navegador propone el título de la página como nombre del archivo.
   useEffect(() => { const previous = document.title; document.title = `Reporte de servicio ${code} · Expertos en Montacargas`; return () => { document.title = previous; }; }, [code]);
@@ -82,9 +84,11 @@ export function ServiceReport({ order, equipment, client, site, technicians }: {
     {recommendations && <section className="sr-note" aria-labelledby="sr-recomendaciones"><h3 id="sr-recomendaciones">Recomendaciones</h3><p>{recommendations}</p></section>}
     {safety && <section className="sr-note sr-warning" aria-labelledby="sr-seguridad"><h3 id="sr-seguridad">Seguridad y restricciones</h3><p>{safety}</p></section>}
     <ImportedReportDetails report={order} />
-    {operational && <section className="sr-sign" aria-label="Conformidad del servicio">
-      <div><span className="sr-line" /><strong>{lead}</strong><small>Técnico responsable · firma</small></div>
-      <div><span className="sr-line" /><strong>{text(order.recibido_por) || 'Nombre de quien recibe'}</strong><small>Recibido por · firma</small></div>
+    {operational && <section className={signature ? 'sr-sign sr-signed' : 'sr-sign'} aria-labelledby="sr-conformidad">
+      <h3 id="sr-conformidad" className="sr-sign-title">Conformidad del servicio</h3>
+      <div className="sr-sign-tech"><span className="sr-line" /><strong>{lead}</strong><small>Técnico responsable · firma</small></div>
+      {signature ? <div><img className="sr-signature" src={signatureUrl(signature)} alt={`Firma de ${signature.signer}`} /><strong>{signature.signer}</strong><small>Recibido por · {signedLabel(signature).toLocaleLowerCase('es')}</small>{signature.capturedBy && <small className="sr-sign-capture">Capturada en el portal por {signature.capturedBy}</small>}</div>
+        : <div><span className="sr-line" /><strong>{text(order.recibido_por) || 'Nombre de quien recibe'}</strong><small>Recibido por · firma</small></div>}
     </section>}
     <footer className="sr-footer">
       {operational && <p>El cierre del servicio no reemplaza la revisión del estado operativo ni de los hallazgos de seguridad del equipo.</p>}

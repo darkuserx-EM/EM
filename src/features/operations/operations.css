@@ -69,7 +69,7 @@
 .sr-logo { flex-shrink: 0; width: auto; height: 36px; color: var(--color-logo); }
 .sr-company strong { font-size: var(--text-md); }
 .sr-title { display: grid; justify-items: end; gap: var(--space-1); flex-shrink: 0; text-align: right; }
-.sr-kicker, .sr-section h3, .sr-result h3, .sr-note h3 { font-size: var(--text-xs); font-weight: var(--weight-semibold); letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-muted); }
+.sr-kicker, .sr-section h3, .sr-result h3, .sr-note h3, .sr-sign-title { font-size: var(--text-xs); font-weight: var(--weight-semibold); letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-muted); }
 .sr-title h2 { font-size: var(--text-2xl); line-height: var(--leading-tight); }
 .sr-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3) var(--space-5); padding: var(--space-4) 0; border-bottom: 1px solid var(--color-border); }
 .sr-section { padding: var(--space-4) 0; border-bottom: 1px solid var(--color-border); }
@@ -93,8 +93,15 @@
 .sr-note p { font-size: var(--text-sm); line-height: var(--leading-normal); white-space: pre-wrap; overflow-wrap: anywhere; }
 .sr-warning { border-color: var(--color-warning-bg); background: var(--color-warning-bg); }
 .sr-warning h3 { color: var(--color-warning-text); }
-/* Firmas: solo en papel; en pantalla, «Recibido por» va en el resumen de quien firma */
+/* Conformidad: en papel, siempre, con las dos líneas para firmar. En pantalla, solo cuando quien recibe firmó en el portal:
+ * su firma, nombre, fecha y hora (y, para el personal de EMSA, quién la capturó). */
 .sr-sign { display: none; }
+.sr-signed { display: grid; gap: var(--space-2); margin-top: var(--space-4); }
+.sr-signed .sr-sign-tech { display: none; }
+.sr-signed > div { display: grid; gap: 2px; max-width: 360px; }
+.sr-signature { display: block; width: 100%; height: 80px; object-fit: contain; object-position: left bottom; margin-bottom: var(--space-1); border-bottom: 1px solid var(--color-text); }
+.sr-sign strong { font-size: var(--text-sm); }
+.sr-sign small { font-size: var(--text-xs); color: var(--color-text-muted); }
 .sr-footer { margin-top: var(--space-5); padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
 .sr-footer p { font-size: var(--text-xs); line-height: var(--leading-normal); color: var(--color-text-muted); }
 .sr-footer p + p { margin-top: var(--space-1); }
@@ -189,11 +196,13 @@
   .sr-result, .sr-note { margin-top: var(--space-3); padding: var(--space-2) var(--space-3); }
   .sr-detail > div { padding: 6px 0; }
   .sr-footer { margin-top: var(--space-3); padding-top: var(--space-2); }
-  .sr-sign { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16mm; margin-top: 6mm; }
-  .sr-sign > div { display: grid; gap: 2px; }
+  .sr-sign { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 16mm; margin-top: 6mm; }
+  .sr-sign > div { display: grid; gap: 2px; max-width: none; }
   .sr-line { display: block; height: 11mm; margin-bottom: var(--space-1); border-bottom: 1px solid var(--color-text); }
-  .sr-sign strong { font-size: var(--text-sm); }
-  .sr-sign small { font-size: var(--text-xs); color: var(--color-text-muted); }
+  /* La firma digital ocupa el lugar de la línea, un poco más alta para que se lea. */
+  .sr-signed .sr-sign-tech { display: grid; }
+  .sr-signature { height: 15mm; }
+  .sr-sign-title, .sr-sign-capture { display: none; }
   /* Anexo: las fotos de evidencia (Antes y Después) se imprimen después del reporte; controles, videos y documentos no. */
   body:has(.os-print-report) .os-detail-modal > .attachment-panel:has(img) { display: block !important; page: service-report; break-before: page; margin-top: 0; padding: 0; border: 0; }
   body:has(.os-print-report) .attachment-panel:has(img), body:has(.os-print-report) .attachment-panel:has(img) * { visibility: visible; }
@@ -202,6 +211,29 @@
   .attachment-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
   .attachment-grid a { padding: 0; border: 0; break-inside: avoid; }
   .attachment-grid img { height: 55mm; object-fit: contain; border-radius: var(--radius-sm); }
+}
+
+/* Firma de quien recibe en el formulario (ReceiverSignature y SignaturePad): nombre, firma guardada o pendiente y recuadro para firmar */
+.receiver-signature { display: grid; gap: var(--space-3); min-width: 0; margin: 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.receiver-signature legend { padding: 0 var(--space-1); font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--color-text); }
+.receiver-signature > .button { justify-self: start; }
+.receiver-signature-pending { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--text-sm); line-height: var(--leading-normal); color: var(--color-text-muted); }
+.receiver-signature-current { display: grid; gap: var(--space-2); margin: 0; }
+.receiver-signature-current img { display: block; width: 100%; max-width: 360px; height: 96px; object-fit: contain; object-position: left bottom; border-bottom: 1px solid var(--color-text); }
+.receiver-signature-current figcaption { display: grid; gap: 2px; }
+.receiver-signature-current strong { font-size: var(--text-md); color: var(--color-text); }
+.receiver-signature-current small { font-size: var(--text-xs); color: var(--color-text-muted); }
+.signature-pad { display: grid; gap: var(--space-3); }
+.signature-box { position: relative; }
+/* touch-action: none evita que la página se desplace mientras se firma con el dedo. La tinta usa `color`. */
+.signature-box canvas { display: block; width: 100%; height: 200px; border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text); touch-action: none; cursor: crosshair; }
+.signature-guide { position: absolute; left: var(--space-5); right: var(--space-5); bottom: var(--space-12); padding-bottom: 2px; border-bottom: 1px solid var(--color-border-strong); font-size: var(--text-xs); color: var(--color-text-muted); pointer-events: none; }
+.signature-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+@media (max-width: 580px) {
+  .receiver-signature { padding: var(--space-3); }
+  .signature-box canvas { height: 180px; }
+  .signature-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .signature-actions .button-dark { grid-column: 1 / -1; order: -1; }
 }
 
 /* Objetivos táctiles: enlace de cada fila y botón de la barra de resultados con 44 px en pantallas de dedo (al final para ganar a las reglas de móvil). */

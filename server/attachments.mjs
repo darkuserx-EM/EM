@@ -13,7 +13,7 @@ const fail =(status,message)=>Object.assign(new Error(message),{status,expose:tr
 const fields='id,order_id,ticket_id,category,name,mime,size,sha256,uploaded_by,created_at';
 /** @param {import("./http-contracts.js").AttachmentBody|undefined} body @param {boolean} [allowVideo] */
 export function decodeAttachment(body,allowVideo=false) {
-  if(!body || typeof body.category!=='string' || !['Antes','Después','Documento','Solicitud'].includes(body.category) || typeof body.requestId!=='string' || !/^[a-f0-9-]{36}$/i.test(body.requestId)) throw fail(400,'Adjunto inválido.');
+  if(!body || typeof body.category!=='string' || !['Antes','Después','Documento','Solicitud','Firma'].includes(body.category) || typeof body.requestId!=='string' || !/^[a-f0-9-]{36}$/i.test(body.requestId)) throw fail(400,'Adjunto inválido.');
   const name=String(body.name || '').trim();
   if(!name || name.length>160 || /[\x00-\x1f]/.test(name)) throw fail(400,'Nombre de archivo inválido.');
   const max=allowVideo?VIDEO_MAX_BYTES:4*1024*1024;
@@ -28,6 +28,7 @@ export function decodeAttachment(body,allowVideo=false) {
   if(allowVideo&&bytes.subarray(4,8).toString()==='ftyp'&&body.category!=='Documento')mime='video/mp4';
   if(mime!=='video/mp4'&&bytes.length>4*1024*1024)throw fail(400,'La fotografía o documento supera 4 MB.');
   if(!mime) throw fail(400,'Usa JPG, PNG, WebP o un documento PDF.');
+  if(body.category==='Firma'&&mime!=='image/png') throw fail(400,'La firma debe ser una imagen PNG.');
   return {name,bytes,mime,requestId:body.requestId,category:body.category,sha256:createHash('sha256').update(bytes).digest('hex')};
 }
 /** @param {import("../src/domain/model.js").EntityRecord|undefined} order @param {import("../src/domain/model.js").Actor} actor @param {boolean} [write] */
@@ -40,10 +41,10 @@ export function permitted(order,actor,write=false) {
 export function evidenceReason(order,reason) {
   if(order.estado==='Completada'&&(typeof reason!=='string'||reason.trim().length<8||reason.trim().length>500))throw fail(400,'Explica el motivo de la evidencia posterior al cierre (8 a 500 caracteres).');
 }
-/** @param {import('mysql2/promise').PoolConnection} conn @param {import('../src/domain/model.js').Actor} actor @param {import('../src/domain/model.js').EntityRecord} order @param {string} fileId @param {string} name @param {unknown} reason */
-export async function auditEvidence(conn,actor,order,fileId,name,reason) {
+/** @param {import('mysql2/promise').PoolConnection} conn @param {import('../src/domain/model.js').Actor} actor @param {import('../src/domain/model.js').EntityRecord} order @param {string} fileId @param {string} name @param {unknown} reason @param {{open:string,closed:string}} [actions] */
+export async function auditEvidence(conn,actor,order,fileId,name,reason,actions={open:'Evidencia agregada',closed:'Evidencia posterior al cierre'}) {
   evidenceReason(order,reason);const id=randomUUID(),now=new Date().toISOString();
-  const row={id,codigo:'LOG-'+String(await auditSequence(conn)+1).padStart(3,'0'),creado_por:actor.id,actualizado_por:actor.id,fecha_creacion:now,fecha_actualizacion:now,entidad:'OrdenServicio',accion:order.estado==='Completada'?'Evidencia posterior al cierre':'Evidencia agregada',detalle:order.codigo+' · '+name,orden_id:order.id,equipo_id:order.equipo_id,archivo_id:fileId,motivo:typeof reason==='string'?reason.trim():'',registrado_por:actor.nombre,registrado_rol:actor.rol};
+  const row={id,codigo:'LOG-'+String(await auditSequence(conn)+1).padStart(3,'0'),creado_por:actor.id,actualizado_por:actor.id,fecha_creacion:now,fecha_actualizacion:now,entidad:'OrdenServicio',accion:order.estado==='Completada'?actions.closed:actions.open,detalle:order.codigo+' · '+name,orden_id:order.id,equipo_id:order.equipo_id,archivo_id:fileId,motivo:typeof reason==='string'?reason.trim():'',registrado_por:actor.nombre,registrado_rol:actor.rol};
   await appendAudit(conn,[{id,payload:JSON.stringify(row)}]);
   await conn.execute('UPDATE em_meta SET revision=revision+1 WHERE id=1');
 }
@@ -71,7 +72,8 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
   app.get('/api/attachments',/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AttachmentReply|Buffer>} res */ async (req,res)=>{
     const id=String(req.query.orderId || ''); permitted(await readOrder(pool,id),req.actor);
     /** @type {Omit<import("./contracts.js").AttachmentMetadata,"request_id">[]} */
-    const files = await select(pool,`SELECT ${fields} FROM em_attachments WHERE order_id=? ORDER BY created_at,id`,[id]); res.json({files});
+    // La firma de quien recibe se muestra en el reporte, no como evidencia ni en el anexo de fotos.
+    const files = await select(pool,`SELECT ${fields} FROM em_attachments WHERE order_id=? AND category<>'Firma' ORDER BY created_at,id`,[id]); res.json({files});
   });
   app.get('/api/attachments/:id/file',/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AttachmentReply|Buffer>} res */ async (req,res)=>{
     /** @type {Omit<import("./contracts.js").AttachmentMetadata,"request_id">[]} */
@@ -105,6 +107,7 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
     evidenceReason(initialOrder,req.body?.reason);
     const file=decodeAttachment(req.body);
     if(file.category==='Solicitud') throw fail(400,'La evidencia inicial se agrega desde la solicitud.');
+    if(file.category==='Firma') throw fail(400,'La firma se guarda desde «Pedir firma» en la orden.');
     /** @type {import('./contracts.js').AttachmentMetadata[]} */
     const prior=await select(pool,`SELECT ${fields} FROM em_attachments WHERE request_id=?`,[file.requestId]);
     if(prior.length){
@@ -112,7 +115,7 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
       return res.json({file:prior[0]});
     }
     /** @type {{n:number}[]} */
-    const totals=await select(pool,'SELECT COUNT(*) AS n FROM em_attachments WHERE order_id=?',[initialOrder.id]);
+    const totals=await select(pool,"SELECT COUNT(*) AS n FROM em_attachments WHERE order_id=? AND category<>'Firma'",[initialOrder.id]);
     if(Number(totals[0].n)>=20)throw fail(400,'La orden admite hasta 20 adjuntos.');
     const stored=await storage.prepare(file.bytes,file.mime);
     const conn=await pool.getConnection();
@@ -125,7 +128,7 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
         await conn.commit();return res.json({file:existing[0]});
       }
       /** @type {{n:number}[]} */
-    const count = await select(conn,'SELECT COUNT(*) AS n FROM em_attachments WHERE order_id=?',[order.id]);
+    const count = await select(conn,"SELECT COUNT(*) AS n FROM em_attachments WHERE order_id=? AND category<>'Firma'",[order.id]);
       if(Number(count[0].n)>=20) throw fail(400,'La orden admite hasta 20 adjuntos.');
       const id=randomUUID(),created=Date.now();
       await conn.execute('INSERT INTO em_attachments (id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content,storage_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',[id,order.id,file.requestId,file.category,file.name,file.mime,file.bytes.length,file.sha256,req.actor.id,created,stored.content,stored.storage_key]);

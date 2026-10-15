@@ -13,10 +13,17 @@ import ServiceOrderForm from './ServiceOrderForm';
 import { canCreateTicketOrder } from '../../domain/technician-work';
 import AttachmentPanel from '../attachments/AttachmentPanel';
 import TicketPhotos from '../attachments/TicketPhotos';
+import { useOrderSignature } from '../attachments/signature-api';
 import { OperationStatus } from './OperationStatus';
 import { ServiceReport } from './ServiceReport';
 import { operationFiltersFromParams, operationFilterParams, emptyOperationFilters, isOperationalOrder, operationDateLabel, serviceLabel, serviceStates } from './operations-ui';
 import './operations.css';
+
+/** Reporte con la firma de quien recibe. Se monta con el detalle: al cerrar el formulario vuelve a leer la firma. */
+function OrderReport(props: Parameters<typeof ServiceReport>[0]) {
+  const { signature, error } = useOrderSignature(isOperationalOrder(props.order) ? props.order.id : undefined);
+  return <><ErrorNotice message={error ? `No se pudo cargar la firma de quien recibe. ${error}` : ''} /><ServiceReport {...props} signature={signature} /></>;
+}
 
 export default function ServiceOrders() {
   const actor = useActor(); const manager = ['Administrador', 'Coordinador'].includes(actor.rol); const canCreate = manager || actor.rol === 'Técnico' && !!actor.tecnico_id;
@@ -98,7 +105,7 @@ export default function ServiceOrders() {
       <div className="os-detail-actions">{actor.rol !== 'Técnico' && <Link className="button" aria-disabled={attachmentBusy} onClick={event => { if (attachmentBusy) event.preventDefault(); }} to={`/${actor.rol === 'Cliente' ? 'portal' : 'flota'}?equipo=${encodeURIComponent(String(selected.equipo_id))}`}>Ficha del equipo<ArrowUpRight size={15} /></Link>}<button className="button" disabled={attachmentBusy || sharing} onClick={() => window.print()}><Printer size={15} />Imprimir / PDF</button>{isOperationalOrder(selected) && (selected.estado !== 'Cancelada' && (selected.estado !== 'Completada' || manager)) && (manager || actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id)) && <button className="button button-dark" disabled={attachmentBusy || sharing} onClick={() => setEditor(selected)}><Pencil size={15} />{selected.estado === 'Completada' ? 'Corregir reporte' : selected.estado === 'En proceso' ? 'Continuar atención' : 'Atender orden'}</button>}{manager && isOperationalOrder(selected) && selected.estado === 'Completada' && <button className="button" disabled={attachmentBusy || sharing} onClick={()=>{setReason('');setShareError('');setReopening(true);}}>Reabrir orden</button>}</div>
       {(actor.rol === 'Administrador' || manager && isOperationalOrder(selected)) && selected.cliente_id && <div className="os-sharing"><span>{selected.visible_cliente === true ? 'Visible en el portal del cliente' : 'El cliente aún no ve este reporte'}</span><button className="button button-small" disabled={sharing || attachmentBusy} onClick={share}>{selected.visible_cliente === true ? <EyeOff size={15} /> : <Eye size={15} />}{sharing ? 'Guardando…' : selected.visible_cliente === true ? 'Ocultar reporte' : 'Compartir con cliente'}</button></div>}
       <ErrorNotice message={shareError} />
-      <ServiceReport order={selected} equipment={selectedEquipment} client={selectedClient} site={sites.rows.find(row => row.id === selected.sede_id)} technicians={technicians.rows} />
+      <OrderReport order={selected} equipment={selectedEquipment} client={selectedClient} site={sites.rows.find(row => row.id === selected.sede_id)} technicians={technicians.rows} />
       {manager && isOperationalOrder(selected) && <OrderRevisionHistory id={selected.id} version={selected.fecha_actualizacion + String(attachmentBusy)}/> }
       {selected.ticket_id && <TicketPhotos key={selected.id} orderId={selected.id}/>}
       {isOperationalOrder(selected) && <AttachmentPanel orderId={selected.id} completed={selected.estado === 'Completada'} onBusy={setAttachmentBusy} editable={selected.estado !== 'Cancelada' && (manager || selected.estado !== 'Completada' && actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id))} />}

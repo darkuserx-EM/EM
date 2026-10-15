@@ -170,14 +170,23 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
   5. detalle del trabajo, con la etiqueta a la izquierda;
   6. materiales: «Ninguno registrado» si no hay;
   7. recomendaciones y seguridad, solo si tienen texto;
-  8. firmas, solo en papel;
+  8. conformidad: en papel, siempre, con las dos firmas; en pantalla, solo cuando quien recibe firmó en el portal;
   9. aviso de cierre.
 - **Etiquetas para el cliente:** «Horómetro» y «Odómetro», sin «H1» ni «H3», que son nombres internos de AppSheet.
 - **Papel:** página con nombre `service-report`, tamaño carta, 16 × 14 mm de margen.
   - En cada hoja, incluidas las evidencias, se repite el código de la orden como texto de impresión. El encabezado y pie propios incluyen el contacto de la empresa y «Página N de M». Al definirlos, Chrome 131 o posterior deja de imprimir su fecha, su título y la dirección con el identificador interno de la orden.
   - Al guardar con una impresora PDF del sistema, seleccionar también papel Carta (216 × 279 mm): el controlador puede reemplazar el tamaño indicado por la página.
   - `print-color-adjust: exact` conserva los fondos del resultado y de la cuadrícula del equipo, aunque «Gráficos de fondo» esté apagado.
-- **Firmas:** dos líneas para firmar a mano, una del técnico responsable y otra de quien recibe, con sus nombres. La firma digital en el teléfono es otro paso: requiere guardar la firma en el servidor.
+- **Firmas:** dos líneas para firmar a mano, una del técnico responsable y otra de quien recibe, con sus nombres.
+  - **Firma digital de quien recibe** (prop `signature` de `ServiceReport`): la imagen ocupa el lugar de la línea de «Recibido por», con el nombre de quien firmó y «firmado el 15/10/2026 a las 10:42». En papel mide 15 mm de alto y las dos columnas se alinean abajo. En pantalla aparece el apartado «Conformidad del servicio» solo con esa firma (la línea del técnico no tiene sentido en pantalla), también en el portal del cliente.
+  - «Capturada en el portal por …» solo se ve en pantalla y solo para el personal de EMSA: el servidor no envía ese dato al cliente y no se imprime.
+  - Sin firma digital, el reporte queda como antes: líneas para firmar a mano, solo en papel.
+- **Recuadro para firmar** (`SignaturePad` y `ReceiverSignature` en `src/features/attachments`, estilos en `operations.css`):
+  - lienzo de 200 px de alto (180 px en el teléfono) con borde punteado `--color-border-strong` (3.14:1) y la guía «Firma aquí»; `touch-action: none` evita que la página se mueva mientras se firma;
+  - la tinta toma el `color` del lienzo (`--color-text`), sin colores fijos en el código;
+  - botones del sistema: «Borrar», «Cancelar» y «Confirmar firma» (principal). En el teléfono, «Confirmar firma» ocupa todo el ancho arriba y los otros dos van debajo; todos miden 44 px en pantallas táctiles;
+  - alternativa: el recuadro no se puede usar con teclado ni lector de pantalla, así que el texto de ayuda (enlazado con `aria-describedby`) explica que, si la persona no puede firmar en la pantalla, la firma queda pendiente («Firma pendiente», `Badge` de aviso) y el reporte impreso conserva la línea para firmar a mano;
+  - la imagen se recorta a los trazos y se guarda a 2× como máximo (800 × 300 px), unos pocos KB.
 - **Anexo:** las fotos de evidencia (Antes y Después) comienzan en una hoja nueva con su título y se distribuyen en tres columnas. Se conserva el encuadre completo de fotos horizontales y verticales, sin recortarlas; cada foto permanece junto a su nombre y categoría. Sin fotografías no se agrega una hoja de anexo. Los controles, los videos y los PDF no se imprimen.
 - **Nombre del PDF:** mientras el reporte está abierto, el título de la página es «Reporte de servicio OS-N · Expertos en Montacargas», que el navegador propone como nombre del archivo.
 - **Técnicos:** si quien ve el reporte no puede leer sus nombres, como el cliente, dice «Técnico de Expertos en Montacargas, S.A.» en lugar de «Sin técnico asignado».

@@ -44,6 +44,28 @@ describe('reporte de servicio', () => {
     expect(html).toContain('Equipo no disponible');
   });
 
+  it('sin firma digital, las dos líneas para firmar a mano solo salen en papel', () => {
+    const html = renderToStaticMarkup(<ServiceReport order={order} equipment={equipment} technicians={technicians} signature={null} />);
+    expect(html).toContain('<section class="sr-sign" aria-labelledby="sr-conformidad">');
+    expect(html.match(/class="sr-line"/g)).toHaveLength(2);
+    expect(html).toContain('Recibido por · firma');
+    expect(html).not.toContain('<img');
+  });
+
+  it('con firma digital, la imagen reemplaza la línea de quien recibe y la conformidad se ve también en pantalla', () => {
+    const signature = { id: 'sig-1', signer: 'Persona que firmó', signedAt: Date.parse('2026-10-13T17:50:00.000Z'), capturedBy: 'Técnico Uno' };
+    const html = renderToStaticMarkup(<ServiceReport order={order} equipment={equipment} technicians={technicians} signature={signature} />);
+    expect(html).toContain('<section class="sr-sign sr-signed" aria-labelledby="sr-conformidad"><h3 id="sr-conformidad" class="sr-sign-title">Conformidad del servicio</h3>');
+    expect(html.match(/class="sr-line"/g)).toHaveLength(1);
+    expect(html).toContain('<div class="sr-sign-tech"><span class="sr-line"></span><strong>Técnico Uno</strong>');
+    expect(html).toContain('<img class="sr-signature" src="/api/attachments/sig-1/file" alt="Firma de Persona que firmó"/><strong>Persona que firmó</strong><small>Recibido por · firmado el 13/10/2026 a las 11:50</small>');
+    expect(html).toContain('<small class="sr-sign-capture">Capturada en el portal por Técnico Uno</small>');
+    // El servidor no envía al cliente quién capturó la firma; el reporte no inventa ese dato.
+    const client = renderToStaticMarkup(<ServiceReport order={order} equipment={equipment} technicians={[]} signature={{ ...signature, capturedBy: undefined }} />);
+    expect(client).toContain('alt="Firma de Persona que firmó"');
+    expect(client).not.toContain('sr-sign-capture');
+  });
+
   it('sin acceso a los nombres de los técnicos (cliente) no dice que la orden no tiene técnico', () => {
     const html = renderToStaticMarkup(<ServiceReport order={order} equipment={equipment} technicians={[]} />);
     expect(html).toContain('Técnico de Expertos en Montacargas, S.A.');

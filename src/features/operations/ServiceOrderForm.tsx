@@ -10,6 +10,7 @@ import { allowedOperationStates } from '../../domain/operations';
 import { technicianEquipmentIds } from '../../domain/technician-work';
 import { todayGT } from '../../domain/maintenance-plan';
 import AttachmentPanel from '../attachments/AttachmentPanel';
+import { ReceiverSignature } from '../attachments/ReceiverSignature';
 import TicketPhotos from '../attachments/TicketPhotos';
 import { dateTimeInput, equipmentLabel, fromDateTimeInput, optionalMeterFields, priorities, serviceTypes } from './operations-ui';
 import './operations.css';
@@ -43,10 +44,10 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
     fecha: dateTimeInput(row?.fecha), fecha_fin: dateTimeInput(row?.fecha_fin), visible_cliente: row?.visible_cliente === true ? 'true' : 'false',
   }));
   const [initialValues, setInitialValues] = useState(values);
-  const [attachmentPending, setAttachmentPending] = useState(false);
-  const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues) || !!reason || attachmentPending, onClose);
+  const [attachmentPending, setAttachmentPending] = useState(false); const [signaturePending, setSignaturePending] = useState(false);
+  const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues) || !!reason || attachmentPending || signaturePending, onClose);
   const [savedMessage, setSavedMessage] = useState('');
-  const [step, setStep] = useState(original && !correcting && ['En proceso', 'En espera'].includes(String(original.estado)) ? 1 : 0); const [saving, setBusy] = useState(false); const [attachmentBusy, setAttachmentBusy] = useState(false); const [error, setError] = useState(''); const busy = saving || attachmentBusy;
+  const [step, setStep] = useState(original && !correcting && ['En proceso', 'En espera'].includes(String(original.estado)) ? 1 : 0); const [saving, setBusy] = useState(false); const [attachmentBusy, setAttachmentBusy] = useState(false); const [signatureBusy, setSignatureBusy] = useState(false); const [error, setError] = useState(''); const busy = saving || attachmentBusy || signatureBusy;
   const form = useRef<HTMLFormElement>(null); const pendingFocus = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => { pendingFocus.current?.focus(); pendingFocus.current = null; }, [step]);
   const set = (key: string, value: string) => setValues(previous => ({ ...previous, [key]: value }));
@@ -66,6 +67,7 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
   async function save(event?: FormEvent, start = false) {
     event?.preventDefault(); if (busy || loading) return;
     if (['Completada', 'Cancelada'].includes(values.estado) && attachmentPending) { setError('Hay evidencia pendiente. Vuelve a cargarla o quita la selección antes de cerrar la orden.'); setStep(4); return; }
+    if (['Completada', 'Cancelada'].includes(values.estado) && signaturePending) { setError('Hay una firma sin confirmar. Confírmala o cancélala antes de cerrar la orden.'); setStep(3); return; }
     if (!validate()) return;
     setBusy(true); setError('');
     try {
@@ -121,8 +123,9 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
       </section>
       <section hidden={step !== 3} data-order-step="3" aria-label={steps[3]} className="os-form-grid">
         {choose('estado', 'Estado de la orden', allowedOperationStates('OrdenServicio', row, actor))}
-        {input('recibido_por', 'Nombre de quien recibe el servicio')}{input('fecha', 'Inicio del trabajo · Guatemala', 'datetime-local')}{input('fecha_fin', 'Final del trabajo · Guatemala', 'datetime-local', completed)}
+        {input('fecha', 'Inicio del trabajo · Guatemala', 'datetime-local')}{input('fecha_fin', 'Final del trabajo · Guatemala', 'datetime-local', completed)}
         {text('pruebas_realizadas', 'Pruebas realizadas', completed)}{text('resultado_pruebas', 'Resultado de las pruebas', completed)}
+        <ReceiverSignature orderId={row?.id} signer={values.recibido_por} completed={correcting} onBusy={setSignatureBusy} onPending={setSignaturePending} editable={!saving && !!row && row.estado !== 'Cancelada' && (manager || actor.rol === 'Técnico' && assignedTo(row, actor.tecnico_id))}>{input('recibido_por', 'Nombre de quien recibe el servicio')}</ReceiverSignature>
         {manager && !correcting && <label className="os-check os-span"><input type="checkbox" checked={values.visible_cliente === 'true'} onChange={event => set('visible_cliente', String(event.target.checked))} disabled={busy} /><span>Compartir este reporte con el cliente</span></label>}
         <p className="os-help os-span">Completar la orden documenta el servicio. La condición operativa y los hallazgos del equipo requieren su propia revisión.</p>
         {values.ticket_id && <p className="os-help os-span">La solicitud vinculada se resolverá al completar todas sus órdenes. Si alguna sigue pendiente o fue cancelada, coordinación revisará el cierre de la solicitud.</p>}
