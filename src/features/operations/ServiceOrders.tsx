@@ -7,26 +7,23 @@ import { useActor, useRows, useToast, useOperationPage } from '../../app/state';
 import { EmptyState, ErrorNotice, Modal, SectionTitle } from '../../components/ui';
 import { FilterToggle, KpiCard } from '../../components/design-system';
 import { clientDisplayName } from '../../domain/client-profile';
-import { formatNumber } from '../../domain/format';
 import type { EntityRecord } from '../../domain/model';
 import { getDataSource } from '../../data/source';
-import { ImportedReportDetails } from '../fleet/ImportedReportDetails';
 import ServiceOrderForm from './ServiceOrderForm';
 import { canCreateTicketOrder } from '../../domain/technician-work';
 import AttachmentPanel from '../attachments/AttachmentPanel';
 import TicketPhotos from '../attachments/TicketPhotos';
 import { OperationStatus } from './OperationStatus';
-import { operationFiltersFromParams, operationFilterParams, emptyOperationFilters, equipmentLabel, isOperationalOrder, operationDateLabel, serviceLabel, serviceStates } from './operations-ui';
+import { ServiceReport } from './ServiceReport';
+import { operationFiltersFromParams, operationFilterParams, emptyOperationFilters, isOperationalOrder, operationDateLabel, serviceLabel, serviceStates } from './operations-ui';
 import './operations.css';
-
-function ReportSection({ title, value }: { title: string; value: unknown }) {
-  return value ? <section className="os-report-section"><h3>{title}</h3><p>{String(value)}</p></section> : null;
-}
 
 export default function ServiceOrders() {
   const actor = useActor(); const manager = ['Administrador', 'Coordinador'].includes(actor.rol); const canCreate = manager || actor.rol === 'Técnico' && !!actor.tecnico_id;
   const notify = useToast(state => state.notify); const [sharing, setSharing] = useState(false); const [shareError, setShareError] = useState('');
   const equipment = useRows('Equipo', true); const clients = useRows('Cliente', true); const technicians = useRows('Tecnico', true);
+  // Sedes: solo para mostrar la del reporte; si no se pueden leer, el reporte dice «Sin sede registrada».
+  const sites = useRows('Sede', true);
   const [params, setParams] = useSearchParams(); const filters = operationFiltersFromParams(params);
   const setFilters = (next: typeof filters) => { setParams(operationFilterParams(next, params), { replace: true }); }; const [page, setPage] = useState(1); const [filtersOpen, setFiltersOpen] = useState(false);
   const [reopening, setReopening] = useState(false), [reason, setReason] = useState('');
@@ -101,15 +98,7 @@ export default function ServiceOrders() {
       <div className="os-detail-actions">{actor.rol !== 'Técnico' && <Link className="button" aria-disabled={attachmentBusy} onClick={event => { if (attachmentBusy) event.preventDefault(); }} to={`/${actor.rol === 'Cliente' ? 'portal' : 'flota'}?equipo=${encodeURIComponent(String(selected.equipo_id))}`}>Ficha del equipo<ArrowUpRight size={15} /></Link>}<button className="button" disabled={attachmentBusy || sharing} onClick={() => window.print()}><Printer size={15} />Imprimir / PDF</button>{isOperationalOrder(selected) && (selected.estado !== 'Cancelada' && (selected.estado !== 'Completada' || manager)) && (manager || actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id)) && <button className="button button-dark" disabled={attachmentBusy || sharing} onClick={() => setEditor(selected)}><Pencil size={15} />{selected.estado === 'Completada' ? 'Corregir reporte' : selected.estado === 'En proceso' ? 'Continuar atención' : 'Atender orden'}</button>}{manager && isOperationalOrder(selected) && selected.estado === 'Completada' && <button className="button" disabled={attachmentBusy || sharing} onClick={()=>{setReason('');setShareError('');setReopening(true);}}>Reabrir orden</button>}</div>
       {(actor.rol === 'Administrador' || manager && isOperationalOrder(selected)) && selected.cliente_id && <div className="os-sharing"><span>{selected.visible_cliente === true ? 'Visible en el portal del cliente' : 'El cliente aún no ve este reporte'}</span><button className="button button-small" disabled={sharing || attachmentBusy} onClick={share}>{selected.visible_cliente === true ? <EyeOff size={15} /> : <Eye size={15} />}{sharing ? 'Guardando…' : selected.visible_cliente === true ? 'Ocultar reporte' : 'Compartir con cliente'}</button></div>}
       <ErrorNotice message={shareError} />
-      <article className="os-print-report">
-        <header className="os-report-header"><div><span className="eyebrow">EXPERTOS EN MONTACARGAS · REPORTE DE SERVICIO</span><h2>{serviceLabel(selected)} · {selected.tipo || 'Servicio'}</h2><p>{equipmentLabel(selectedEquipment)}</p></div><OperationStatus value={selected.estado} /></header>
-        <dl className="os-report-meta"><div><dt>Cliente</dt><dd>{clientDisplayName(selectedClient)}</dd></div><div><dt>Fecha del servicio</dt><dd>{operationDateLabel(selected.fecha || selected.fecha_programada)}</dd></div><div><dt>Técnicos</dt><dd>{orderTeamLabel(selected, technicians.rows)}</dd></div><div><dt>Horómetro H1</dt><dd>{typeof selected.horometro === 'number' ? `${formatNumber(selected.horometro)} h` : 'Sin lectura'}</dd></div>{isOperationalOrder(selected) && <><div><dt>Odómetro H3</dt><dd>{typeof selected.odometro_millas === 'number' ? `${formatNumber(selected.odometro_millas)} millas` : 'Sin lectura'}</dd></div><div><dt>Recibido por</dt><dd>{selected.recibido_por || 'Sin registrar'}</dd></div></>}</dl>
-        <ReportSection title="Síntoma / solicitud" value={selected.sintoma || selected.motivo} /><ReportSection title="Diagnóstico" value={selected.diagnostico} /><ReportSection title="Causa confirmada" value={selected.causa_confirmada} /><ReportSection title="Trabajo realizado" value={selected.trabajo_realizado || selected.trabajo} /><ReportSection title="Recomendaciones" value={selected.recomendaciones} /><ReportSection title="Pruebas realizadas" value={selected.pruebas_realizadas} /><ReportSection title="Resultado de las pruebas" value={selected.resultado_pruebas} />
-        <ReportSection title="Insumos utilizados" value={selected.insumos || selected.insumos_origen} /><ReportSection title="Repuestos utilizados" value={selected.repuestos || selected.repuestos_origen} />
-        {!selected.importado && <ReportSection title="Seguridad / restricciones" value={selected.notas_seguridad} />}
-        <ImportedReportDetails report={selected} />
-        {isOperationalOrder(selected) && <p className="os-help">El cierre del servicio no reemplaza la revisión del estado operativo ni de los hallazgos de seguridad del equipo.</p>}
-      </article>
+      <ServiceReport order={selected} equipment={selectedEquipment} client={selectedClient} site={sites.rows.find(row => row.id === selected.sede_id)} technicians={technicians.rows} />
       {manager && isOperationalOrder(selected) && <OrderRevisionHistory id={selected.id} version={selected.fecha_actualizacion + String(attachmentBusy)}/> }
       {selected.ticket_id && <TicketPhotos key={selected.id} orderId={selected.id}/>}
       {isOperationalOrder(selected) && <AttachmentPanel orderId={selected.id} completed={selected.estado === 'Completada'} onBusy={setAttachmentBusy} editable={selected.estado !== 'Cancelada' && (manager || selected.estado !== 'Completada' && actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id))} />}
