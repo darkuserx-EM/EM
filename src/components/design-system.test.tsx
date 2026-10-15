@@ -74,6 +74,13 @@ describe('componentes compartidos', () => {
     expect(jump).toContain('lucide-arrow-down');
     expect(jump).not.toContain('data-discover');
   });
+
+  it('KpiCard con tone muestra el punto del estado y con meter la barra de avance', () => {
+    expect(html(<KpiCard label="Operativo" value={3} tone="success" pressed={false} onClick={() => {}} />)).toBe('<button type="button" class="kpi-card" aria-pressed="false"><span class="kpi-card-dot" data-tone="success" aria-hidden="true"></span><span class="kpi-card-label">Operativo</span><strong class="kpi-card-value">3</strong></button>');
+    expect(html(<KpiCard label="Total" value={3} icon={<svg />} tone="success" />)).not.toContain('kpi-card-dot');
+    const meter = html(<KpiCard label="Estado de la flota" value={4} meter={{ value: 140, label: '16% con estado conocido' }} hint="0 operativos" />);
+    expect(meter).toContain('<strong class="kpi-card-value">4</strong><span class="kpi-card-meter" role="img" aria-label="16% con estado conocido"><i style="width:100%"></i></span><small class="kpi-card-hint">0 operativos</small>');
+  });
 });
 
 describe('componentes compartidos · pasos y tablas', () => {

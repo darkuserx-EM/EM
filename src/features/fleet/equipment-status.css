@@ -9,12 +9,10 @@
 
 /* Resumen de la flota (tarjetas por estado) */
 .fleet-overview { margin: 0 0 20px; }
-.fleet-state-cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 9px; }
-.fleet-state-cards > button, .fleet-state-cards > div { min-width: 0; padding: 15px 13px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); text-align: left; }
-.fleet-state-cards > button:hover { background: var(--color-surface-subtle); border-color: var(--color-border-strong); }
-.fleet-state-cards > button[aria-pressed=true] { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); background: var(--color-accent-soft); }
-.fleet-state-cards span { display: block; min-height: 36px; font-size: var(--text-xs); line-height: var(--leading-normal); color: var(--color-text-muted); }
-.fleet-state-cards strong { display: block; margin-top: 7px; font-size: var(--text-2xl); font-weight: var(--weight-semibold); color: var(--color-text); font-variant-numeric: tabular-nums; }
+/* Estados de la flota (KpiCard con punto de estado): una fila de seis. La cifra va al pie para quedar alineada aunque un nombre ocupe dos líneas. */
+.kpi-grid-states { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.kpi-grid-states .kpi-card { align-content: space-between; }
+.client-inspector .kpi-grid-states { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .fleet-maintenance-count { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 11px; font-size: var(--text-xs); color: var(--color-warning-text); }
 .fleet-maintenance-count small { font-size: var(--text-xs); color: var(--color-text-muted); }
 
@@ -41,25 +39,17 @@
 .equipment-state-panel ol { padding-left: 20px; }
 
 /* Variantes en la ficha del cliente y en el portal */
-.client-inspector .fleet-state-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.client-inspector .fleet-state-cards > button, .client-inspector .fleet-state-cards > div { padding: 10px; }
-.client-inspector .fleet-state-cards strong { font-size: var(--text-xl); }
-.client-inspector .fleet-state-cards span { min-height: 0; font-size: var(--text-xs); }
 .client-inspector-equipment .equipment-status-badges { max-width: 170px; flex-shrink: 0; }
 .portal-equipment .equipment-status-note { margin-bottom: 12px; }
 .portal-equipment .equipment-status-badges { max-width: 205px; }
 /* Tonos de .status: definidos con tokens en src/design/base.css. */
 
 @media (max-width: 1100px) {
-  .fleet-state-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .fleet-state-cards span { min-height: 0; }
+  .kpi-grid-states { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 600px) {
-  .fleet-state-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .client-inspector .fleet-state-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .fleet-state-cards > button, .fleet-state-cards > div { padding: 12px; }
-  .fleet-state-cards strong { font-size: var(--text-2xl); }
+  .kpi-grid-states, .client-inspector .kpi-grid-states { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fleet-status-filters > label { flex: 1 1 100%; }
   /* 16 px evita el zoom automático de iOS al enfocar */
   .fleet-status-filters select, .fleet-client-filter select { width: 100%; font-size: 16px; }
