@@ -48,7 +48,7 @@ export function registerVideoRoutes(app,{pool,files}) {
     /** @type {import('./contracts.js').AttachmentMetadata[]} */const prior=await select(pool,`SELECT ${fields} FROM em_attachments WHERE request_id=?`,[row.id]);
     if(prior.length){const f=prior[0];if((f.ticket_id||f.order_id)!==target||f.sha256!==row.sha256||f.category!==category)throw fail(409,'El envío pertenece a otro archivo.');return res.json({offset:row.size,file:f});}
     const targetRecord=await authorize(pool,req.actor,row);if(row.target_kind==='order')evidenceReason(targetRecord,b.reason);
-    /** @type {{n:number}[]} */const capacity=await select(pool,`SELECT COUNT(*) AS n FROM em_attachments WHERE ${row.target_kind==='ticket'?'ticket_id':'order_id'}=?`,[row.target_id]);
+    /** @type {{n:number}[]} */const capacity=await select(pool,`SELECT COUNT(*) AS n FROM em_attachments WHERE ${row.target_kind==='ticket'?'ticket_id':'order_id'}=? AND category<>'Firma'`,[row.target_id]);
     if(Number(capacity[0].n)>=(row.target_kind==='ticket'?10:20))throw fail(400,'El registro alcanzó su límite de adjuntos.');
     const conn=await pool.getConnection();
     try {
@@ -92,7 +92,7 @@ export function registerVideoRoutes(app,{pool,files}) {
         await conn.beginTransaction();await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE');const targetRecord=await authorize(conn,req.actor,row);if(row.target_kind==='order')evidenceReason(targetRecord,req.body?.reason);
         /** @type {import('./contracts.js').AttachmentMetadata[]} */const prior=await select(conn,`SELECT ${fields} FROM em_attachments WHERE request_id=? OR (${row.target_kind==='ticket'?'ticket_id':'order_id'}=? AND sha256=? AND category=?)`,[row.id,row.target_id,row.sha256,row.category]);
         if(prior.length){await conn.commit();return prior[0];}
-        /** @type {{n:number}[]} */const counts=await select(conn,`SELECT COUNT(*) AS n FROM em_attachments WHERE ${row.target_kind==='ticket'?'ticket_id':'order_id'}=?`,[row.target_id]);
+        /** @type {{n:number}[]} */const counts=await select(conn,`SELECT COUNT(*) AS n FROM em_attachments WHERE ${row.target_kind==='ticket'?'ticket_id':'order_id'}=? AND category<>'Firma'`,[row.target_id]);
         if(Number(counts[0].n)>=(row.target_kind==='ticket'?10:20))throw fail(400,'El registro alcanzó su límite de adjuntos.');
         const file={id:randomUUID(),order_id:row.target_kind==='order'?row.target_id:'',ticket_id:row.target_kind==='ticket'?row.target_id:null,request_id:row.id,category:row.category,name:row.name,mime:'video/mp4',size:Number(row.size),sha256:row.sha256,uploaded_by:req.actor.id,created_at:Date.now()};
         await conn.execute('INSERT INTO em_attachments (id,order_id,ticket_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content,storage_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[file.id,file.order_id,file.ticket_id,file.request_id,file.category,file.name,file.mime,file.size,file.sha256,file.uploaded_by,file.created_at,stored.content,stored.storage_key]);

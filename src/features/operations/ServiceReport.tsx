@@ -5,7 +5,7 @@ import { formatDate, formatNumber, formatTime } from '../../domain/format';
 import type { EntityRecord } from '../../domain/model';
 import { orderTechnicians } from '../../domain/order-team';
 import { ImportedReportDetails } from '../fleet/ImportedReportDetails';
-import { signatureUrl, signedLabel, type Signature } from '../attachments/signature';
+import { revisedLabel, signatureUrl, signedLabel, type Signature } from '../attachments/signature';
 import { OperationStatus } from './OperationStatus';
 import { isOperationalOrder, operationDateLabel, serviceLabel } from './operations-ui';
 
@@ -24,7 +24,8 @@ export function serviceHours(order: EntityRecord) {
   if (!withTime(order.fecha)) return text(order.hora_programada) ? `Programado a las ${text(order.hora_programada)}` : 'Sin hora registrada';
   const start = formatTime(order.fecha);
   if (!withTime(order.fecha_fin)) return `Desde las ${start}`;
-  const minutes = Math.round((Date.parse(order.fecha_fin) - Date.parse(order.fecha)) / 60000);
+  // Minutos entre las horas que se leen (truncadas al minuto): 22:34:50 a 22:37:00 son 3 min, como dice el horario.
+  const minutes = Math.floor(Date.parse(order.fecha_fin) / 60000) - Math.floor(Date.parse(order.fecha) / 60000);
   const end = operationDateLabel(order.fecha_fin) === operationDateLabel(order.fecha) ? formatTime(order.fecha_fin) : `${formatDate(order.fecha_fin)} ${formatTime(order.fecha_fin)}`;
   return `${start} a ${end}${minutes > 0 ? ` · ${duration(minutes)}` : ''}`;
 }
@@ -39,8 +40,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  * Reporte de servicio: lo que ve el cliente en el portal y lo que se imprime o guarda en PDF.
  * Orden de lectura: quién y cuándo, qué equipo, el resultado, el detalle del trabajo, materiales, avisos y conformidad.
  * Con firma de quien recibe, la imagen reemplaza su línea y la conformidad también se ve en pantalla.
+ * `signatureUnavailable`: no se pudo leer la firma digital; el papel lo dice en lugar de parecer un reporte sin firmar.
  */
-export function ServiceReport({ order, equipment, client, site, technicians, signature }: { order: EntityRecord; equipment?: EntityRecord; client?: EntityRecord; site?: EntityRecord; technicians: EntityRecord[]; signature?: Signature | null }) {
+export function ServiceReport({ order, equipment, client, site, technicians, signature, signatureUnavailable = false }: { order: EntityRecord; equipment?: EntityRecord; client?: EntityRecord; site?: EntityRecord; technicians: EntityRecord[]; signature?: Signature | null; signatureUnavailable?: boolean }) {
   const operational = isOperationalOrder(order); const code = serviceLabel(order);
   // Al guardar como PDF, el navegador propone el título de la página como nombre del archivo.
   useEffect(() => { const previous = document.title; document.title = `Reporte de servicio ${code} · Expertos en Montacargas`; return () => { document.title = previous; }; }, [code]);
@@ -51,7 +53,8 @@ export function ServiceReport({ order, equipment, client, site, technicians, sig
   const result = text(order.resultado_pruebas), supplies = text(order.insumos) || text(order.insumos_origen), parts = text(order.repuestos) || text(order.repuestos_origen);
   const recommendations = text(order.recomendaciones), safety = order.importado ? '' : text(order.notas_seguridad);
   return <article className="os-print-report service-report">
-    <style>{`@page service-report { @top-right { content: ${pageCode(code)}; } }`}</style>
+    {/* El código de la orden y el contacto de la empresa salen de los datos (`company`), no de un texto fijo en la hoja de estilos. */}
+    <style>{`@page service-report { @top-right { content: ${pageCode(code)}; } @bottom-left { content: ${pageCode(`${company.web} · ${company.email} · Tel. ${company.phone}`)}; } }`}</style>
     <header className="sr-header">
       <div className="sr-company"><BrandMark className="sr-logo" /><strong>{company.name}</strong></div>
       <div className="sr-title"><span className="sr-kicker">Reporte de servicio</span><h2>{code}</h2><OperationStatus value={order.estado} /></div>
@@ -86,8 +89,8 @@ export function ServiceReport({ order, equipment, client, site, technicians, sig
     {operational && <section className={signature ? 'sr-sign sr-signed' : 'sr-sign'} aria-labelledby="sr-conformidad">
       <h3 id="sr-conformidad" className="sr-sign-title">Conformidad del servicio</h3>
       {/* Solo firma quien recibe: el técnico queda identificado por su usuario, el historial de la orden y el resumen. */}
-      {signature ? <div className="sr-sign-receiver"><img className="sr-signature" src={signatureUrl(signature)} alt={`Firma de ${signature.signer}`} /><div><strong>{signature.signer}</strong><small>Recibido por · {signedLabel(signature).toLocaleLowerCase('es')}</small>{signature.capturedBy && <small className="sr-sign-capture">Capturada en el portal por {signature.capturedBy}</small>}</div></div>
-        : <div className="sr-sign-receiver"><span className="sr-line" /><div><strong>{text(order.recibido_por) || 'Nombre de quien recibe'}</strong><small>Recibido por · firma</small></div></div>}
+      {signature ? <div className="sr-sign-receiver"><img className="sr-signature" src={signatureUrl(signature)} alt={`Firma de ${signature.signer}`} /><div><strong>{signature.signer}</strong><small>Recibido por · {signedLabel(signature).toLocaleLowerCase('es')}</small>{!!signature.revisedAt && <small className="sr-sign-revised">{revisedLabel(signature)}</small>}{signature.capturedBy && <small className="sr-sign-capture">Capturada en el portal por {signature.capturedBy}</small>}</div></div>
+        : <div className="sr-sign-receiver"><span className="sr-line" /><div><strong>{text(order.recibido_por) || 'Nombre de quien recibe'}</strong><small>Recibido por · firma</small>{signatureUnavailable && <small className="sr-sign-revised">Firma digital no disponible al generar este reporte. Vuelve a abrirlo para incluirla.</small>}</div></div>}
     </section>}
     <footer className="sr-footer">
       {operational && <p>El cierre del servicio no reemplaza la revisión del estado operativo ni de los hallazgos de seguridad del equipo.</p>}

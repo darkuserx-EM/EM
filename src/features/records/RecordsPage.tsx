@@ -21,11 +21,15 @@ import { assertAdmin } from '../../domain/permissions';
 import './records.css';
 
 const fleetNoticeKey = 'portal-em.aviso-flota-oculto.v1';
-/** Cómo dar de alta equipos. Se puede cerrar y no vuelve a salir en este navegador: ocupaba unos 70 px en cada visita. */
+/**
+ * Cómo dar de alta equipos. Se puede cerrar y no vuelve a salir para esa cuenta en este navegador: ocupaba unos 70 px en cada visita.
+ * La clave lleva el usuario: en una computadora compartida, cerrarlo no lo oculta a las demás cuentas (su texto puede ser otro).
+ */
 function FleetNotice({ editable }: { editable: boolean }) {
-  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(fleetNoticeKey) === '1'; } catch { return false; } });
+  const key = `${fleetNoticeKey}:${useActor().id}`;
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === '1'; } catch { return false; } });
   if (hidden) return null;
-  const hide = () => { setHidden(true); try { localStorage.setItem(fleetNoticeKey, '1'); } catch { /* Sin almacenamiento del navegador: se oculta solo en esta visita. */ } };
+  const hide = () => { setHidden(true); try { localStorage.setItem(key, '1'); } catch { /* Sin almacenamiento del navegador: se oculta solo en esta visita. */ } };
   return <div className="capture-banner"><span className="capture-banner-icon"><Plus size={19} /></span><div><strong>{editable ? 'Altas y ediciones desde la web' : 'Consulta de registros'}</strong><p>{editable ? 'Usa Nuevo equipo. Marca, modelo, serie, tipo, propiedad y estado operativo son obligatorios. Puedes dejar el horómetro pendiente.' : 'Administración puede agregar y editar clientes y equipos.'} {serverMode ? 'Los cambios se guardan en el servidor.' : 'Los cambios se guardan en este navegador.'}</p></div><IconButton label="Ocultar este aviso" icon={<X size={16} />} onClick={hide} /></div>;
 }
 const ClientImportDialog = lazy(() => import('./ClientImportDialog'));

@@ -25,7 +25,7 @@ export interface AttachmentBody {
   reason?: unknown; orderId?: string; ticketId?: string; requestId?: string; category?: string; name?: unknown; base64?: unknown;
 }
 export interface SignatureBody { signer?: unknown; base64?: unknown; requestId?: string; reason?: unknown }
-export interface SignatureReply { signature: { id: string; signer: string; signedAt: number; capturedBy?: string } | null }
+export interface SignatureReply { signature: { id: string; signer: string; signedAt: number; revisedAt?: number; capturedBy?: string } | null }
 export interface RestoreFileInput { metadata?: Partial<AttachmentMetadata>; base64?: unknown }
 export interface AttachmentRestoreBody { file?: RestoreFileInput; allowOrphan?: boolean }
 export interface MediaRestoreBody { file?: { metadata?: Partial<MediaMetadata>; base64?: unknown } }

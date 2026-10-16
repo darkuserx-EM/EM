@@ -20,7 +20,7 @@ const orders = () => [
 
 /** Base en memoria con las consultas que usan las rutas de firma y de adjuntos. */
 function memory() {
-  const records = orders(), files = [], audit = [], users = new Map([['user-tech', 'Técnico de prueba'], ['user-coord', 'Coordinación de prueba']]);
+  const records = orders(), files = [], audit = [], history = [], state = { connections: 0 }, users = new Map([['user-tech', 'Técnico de prueba'], ['user-coord', 'Coordinación de prueba']]);
   const fake = {
     async execute(sql, args = []) {
       if (sql.startsWith("SELECT payload FROM em_records WHERE entity='OrdenServicio'")) return [records.filter(row => row.id === args[0]).map(row => ({ payload: JSON.stringify(row) }))];
@@ -38,6 +38,8 @@ function memory() {
       if (sql.startsWith('SELECT id,order_id,ticket_id,category') && sql.includes('WHERE id=?')) return [files.filter(file => file.id === args[0])];
       if (sql === 'SELECT content,storage_key FROM em_attachments WHERE id=?') return [files.filter(file => file.id === args[0]).map(file => ({ content: file.content, storage_key: null }))];
       if (sql.startsWith('SELECT id,payload FROM em_audit_log')) return [[]];
+      // Correcciones y reaperturas de la orden posteriores a la firma (equipo, desde, orden).
+      if (sql.startsWith('SELECT action,created_at,payload FROM em_audit_log')) return [history.filter(row => row.equipment_id === args[0] && row.created_at > args[1] && row.orden_id === args[2]).sort((a, b) => b.created_at.localeCompare(a.created_at))];
       if (sql.startsWith('INSERT INTO em_audit_log')) { for (let i = 0; i < args.length; i += 7) audit.push(JSON.parse(args[i + 6])); return [{}]; }
       if (sql.startsWith('UPDATE em_audit_state') || sql.startsWith('UPDATE em_meta')) return [{}];
       throw new Error(`Consulta inesperada: ${sql}`);
@@ -47,9 +49,9 @@ function memory() {
       if (sql.startsWith('SELECT last_sequence')) return [[{ last_sequence: audit.length }]];
       throw new Error(`Consulta inesperada: ${sql}`);
     },
-    async getConnection() { return { ...fake, beginTransaction: async () => {}, commit: async () => {}, rollback: async () => {}, release: () => {} }; },
+    async getConnection() { state.connections++; return { ...fake, beginTransaction: async () => {}, commit: async () => {}, rollback: async () => {}, release: () => {} }; },
   };
-  return { pool: fake, files, audit };
+  return { pool: fake, files, audit, history, state };
 }
 
 async function serve(t, db, storage) {
@@ -185,6 +187,41 @@ test('el límite de 64 KB se aplica a los bytes PNG decodificados, incluido el r
   assert.equal(response.status, 201);
   assert.equal(uploads, 1); assert.equal(db.files.length, 1); assert.equal(db.audit.length, 1);
   assert.equal(db.files[0].size, SIGNATURE_MAX_BYTES); assert.deepEqual(db.files[0].content, boundary);
+});
+
+test('un reintento no bloquea la base ni sube otra copia, y con el cupo lleno no se sube el archivo', async t => {
+  const db = memory(); let uploads = 0;
+  const api = await serve(t, db, { prepare: async bytes => { uploads++; return { content: bytes, storage_key: null }; } });
+  const body = async (width, requestId = randomUUID()) => ({ signer: 'Persona de prueba', base64: (await png(width, 80)).toString('base64'), requestId });
+  const first = await body(200);
+  const saved = await (await api.sign('order-open', first)).json();
+  assert.equal(uploads, 1); assert.equal(db.state.connections, 1);
+  const retry = await api.sign('order-open', first);
+  assert.equal(retry.status, 200); assert.equal((await retry.json()).signature.id, saved.signature.id);
+  assert.equal(uploads, 1); assert.equal(db.state.connections, 1);
+  while (db.files.length < SIGNATURES_PER_ORDER) assert.equal((await api.sign('order-open', await body(201 + db.files.length))).status, 201);
+  const full = await api.sign('order-open', await body(300));
+  assert.equal(full.status, 400); assert.match((await full.json()).error, /admite hasta/);
+  assert.equal(uploads, SIGNATURES_PER_ORDER); assert.equal(db.state.connections, SIGNATURES_PER_ORDER);
+});
+
+test('la firma advierte si una corrección o reapertura posterior al cierre cambió el reporte', async t => {
+  const db = memory(); const api = await serve(t, db);
+  const saved = await (await api.sign('order-closed', { signer: 'Persona de prueba', base64: (await png(240, 80)).toString('base64'), requestId: randomUUID(), reason: 'Firma capturada al entregar el equipo' }, { 'x-role': 'Coordinador' })).json();
+  assert.equal('revisedAt' in saved.signature, false);
+  const signedAt = saved.signature.signedAt, at = offset => new Date(signedAt + offset).toISOString();
+  const read = async role => (await (await api.get('/api/orders/order-closed/signature', { 'x-role': role })).json()).signature;
+  const log = (offset, before, after, action = 'Corrección de orden completada') => db.history.push({ action, created_at: at(offset), equipment_id: 'equipment-a', orden_id: 'order-closed', payload: JSON.stringify({ orden_id: 'order-closed', version_anterior: JSON.stringify(before), version_nueva: JSON.stringify(after) }) });
+  // Antes de firmar, o sin cambiar lo que dice el reporte: la firma no lleva advertencia.
+  log(-60000, { resultado_pruebas: 'Funciona' }, { resultado_pruebas: 'Funciona correctamente' });
+  log(60000, { resultado_pruebas: 'Funciona correctamente', visible_cliente: false }, { resultado_pruebas: 'Funciona correctamente', visible_cliente: true });
+  assert.equal('revisedAt' in await read('Coordinador'), false);
+  log(120000, { resultado_pruebas: 'Funciona correctamente' }, { resultado_pruebas: 'Funciona con observaciones' });
+  assert.equal((await read('Coordinador')).revisedAt, signedAt + 120000);
+  // El cliente también lo ve: es parte del documento que recibe.
+  assert.equal((await read('Cliente')).revisedAt, signedAt + 120000);
+  log(180000, {}, {}, 'Reapertura de orden');
+  assert.equal((await read('Coordinador')).revisedAt, signedAt + 180000);
 });
 
 test('la carga general de adjuntos no acepta la categoría Firma', async t => {

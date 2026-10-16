@@ -19,12 +19,6 @@ import { ServiceReport } from './ServiceReport';
 import { operationFiltersFromParams, operationFilterParams, emptyOperationFilters, isOperationalOrder, operationDateLabel, serviceLabel, serviceStates } from './operations-ui';
 import './operations.css';
 
-/** Reporte con la firma de quien recibe. Se monta con el detalle: al cerrar el formulario vuelve a leer la firma. */
-function OrderReport(props: Parameters<typeof ServiceReport>[0]) {
-  const { signature, error } = useOrderSignature(isOperationalOrder(props.order) ? props.order.id : undefined);
-  return <><ErrorNotice message={error ? `No se pudo cargar la firma de quien recibe. ${error}` : ''} /><ServiceReport {...props} signature={signature} /></>;
-}
-
 export default function ServiceOrders() {
   const actor = useActor(); const manager = ['Administrador', 'Coordinador'].includes(actor.rol); const canCreate = manager || actor.rol === 'Técnico' && !!actor.tecnico_id;
   const notify = useToast(state => state.notify); const [sharing, setSharing] = useState(false); const [shareError, setShareError] = useState('');
@@ -45,6 +39,9 @@ export default function ServiceOrders() {
   const selected=detail.rows[0];
   const selectedEquipment = equipment.rows.find(row => row.id === selected?.equipo_id);
   const selectedClient = clients.rows.find(row => row.id === selected?.cliente_id);
+  // Firma de quien recibe. Mientras el formulario está abierto no se lee; al cerrarlo se vuelve a leer.
+  // «Imprimir / PDF» espera a que cargue: el PDF no sale con la línea vacía si la orden ya está firmada.
+  const signature = useOrderSignature(selected && !editor && isOperationalOrder(selected) ? selected.id : undefined);
   const ticket = canCreate && params.get('ticket') !== dismissedTicket ? tickets.rows.find(row => row.id === params.get('ticket') && canCreateTicketOrder(actor, row)) : undefined;
   const createFromLink = canCreate && params.get('nueva') === '1';
   useEffect(() => {
@@ -102,10 +99,11 @@ export default function ServiceOrders() {
     {params.has('orden') && !loading && !selected && !error && <ErrorNotice message="No se encontró el reporte o no tienes acceso a él." />}
     {canCreate && params.has('ticket') && params.get('ticket') !== dismissedTicket && !loading && !ticket && !editor && !error && <div><ErrorNotice message="No se puede crear una orden desde esta solicitud: revisa si ya tiene orden, está cerrada o cambió su asignación." /><Link className="button" to={`/tickets?ticket=${encodeURIComponent(params.get('ticket') || '')}`}>Revisar solicitud</Link></div>}
     {selected && !editor && <Modal title={`Reporte ${serviceLabel(selected)}`} wide className="os-detail-modal" onClose={close}>
-      <div className="os-detail-actions">{actor.rol !== 'Técnico' && <Link className="button" aria-disabled={attachmentBusy} onClick={event => { if (attachmentBusy) event.preventDefault(); }} to={`/${actor.rol === 'Cliente' ? 'portal' : 'flota'}?equipo=${encodeURIComponent(String(selected.equipo_id))}`}>Ficha del equipo<ArrowUpRight size={15} /></Link>}<button className="button" disabled={attachmentBusy || sharing} onClick={() => window.print()}><Printer size={15} />Imprimir / PDF</button>{isOperationalOrder(selected) && (selected.estado !== 'Cancelada' && (selected.estado !== 'Completada' || manager)) && (manager || actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id)) && <button className="button button-dark" disabled={attachmentBusy || sharing} onClick={() => setEditor(selected)}><Pencil size={15} />{selected.estado === 'Completada' ? 'Corregir reporte' : selected.estado === 'En proceso' ? 'Continuar atención' : 'Atender orden'}</button>}{manager && isOperationalOrder(selected) && selected.estado === 'Completada' && <button className="button" disabled={attachmentBusy || sharing} onClick={()=>{setReason('');setShareError('');setReopening(true);}}>Reabrir orden</button>}</div>
+      <div className="os-detail-actions">{actor.rol !== 'Técnico' && <Link className="button" aria-disabled={attachmentBusy} onClick={event => { if (attachmentBusy) event.preventDefault(); }} to={`/${actor.rol === 'Cliente' ? 'portal' : 'flota'}?equipo=${encodeURIComponent(String(selected.equipo_id))}`}>Ficha del equipo<ArrowUpRight size={15} /></Link>}<button className="button" disabled={attachmentBusy || sharing || !signature.ready} onClick={() => window.print()}><Printer size={15} />{signature.ready ? 'Imprimir / PDF' : 'Cargando firma…'}</button>{isOperationalOrder(selected) && (selected.estado !== 'Cancelada' && (selected.estado !== 'Completada' || manager)) && (manager || actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id)) && <button className="button button-dark" disabled={attachmentBusy || sharing} onClick={() => setEditor(selected)}><Pencil size={15} />{selected.estado === 'Completada' ? 'Corregir reporte' : selected.estado === 'En proceso' ? 'Continuar atención' : 'Atender orden'}</button>}{manager && isOperationalOrder(selected) && selected.estado === 'Completada' && <button className="button" disabled={attachmentBusy || sharing} onClick={()=>{setReason('');setShareError('');setReopening(true);}}>Reabrir orden</button>}</div>
       {(actor.rol === 'Administrador' || manager && isOperationalOrder(selected)) && selected.cliente_id && <div className="os-sharing"><span>{selected.visible_cliente === true ? 'Visible en el portal del cliente' : 'El cliente aún no ve este reporte'}</span><button className="button button-small" disabled={sharing || attachmentBusy} onClick={share}>{selected.visible_cliente === true ? <EyeOff size={15} /> : <Eye size={15} />}{sharing ? 'Guardando…' : selected.visible_cliente === true ? 'Ocultar reporte' : 'Compartir con cliente'}</button></div>}
       <ErrorNotice message={shareError} />
-      <OrderReport order={selected} equipment={selectedEquipment} client={selectedClient} site={sites.rows.find(row => row.id === selected.sede_id)} technicians={technicians.rows} />
+      <ErrorNotice message={signature.error ? `No se pudo cargar la firma de quien recibe. ${signature.error}` : ''} />
+      <ServiceReport order={selected} equipment={selectedEquipment} client={selectedClient} site={sites.rows.find(row => row.id === selected.sede_id)} technicians={technicians.rows} signature={signature.signature} signatureUnavailable={!!signature.error} />
       {manager && isOperationalOrder(selected) && <OrderRevisionHistory id={selected.id} version={selected.fecha_actualizacion + String(attachmentBusy)}/> }
       {selected.ticket_id && <TicketPhotos key={selected.id} orderId={selected.id}/>}
       {isOperationalOrder(selected) && <AttachmentPanel orderId={selected.id} completed={selected.estado === 'Completada'} onBusy={setAttachmentBusy} editable={selected.estado !== 'Cancelada' && (manager || selected.estado !== 'Completada' && actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id))} />}
