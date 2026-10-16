@@ -7,6 +7,15 @@ export function latestEquipmentReading(equipmentId: string, readings: EntityReco
     .reduce<EntityRecord | undefined>((latest, row) => !latest || Date.parse(String(row.fecha)) > Date.parse(String(latest.fecha)) ? row : latest, undefined);
 }
 export const localDay = (date: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guatemala', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(date));
+/** A historical reading repeats a kept one of the same equipment with the same hour meter, no conflicting odometer and the same Guatemala day.
+ * An estimated reading also matches its original value, since it is the same reading corrected.
+ * «Ingreso de equipo» is dated when the machine was registered, not when it was read, so the same hour meter is enough. */
+export function repeatsReading(kept: Record<string, unknown>, reading: { fecha: string; valor: number; odometro_millas: number | null }) {
+  if (kept.valor !== reading.valor && kept.valor_original !== reading.valor) return false;
+  if (typeof kept.odometro_millas === 'number' && reading.odometro_millas !== null && kept.odometro_millas !== reading.odometro_millas && kept.odometro_original !== reading.odometro_millas) return false;
+  if (kept.origen === 'Ingreso de equipo') return true;
+  return typeof kept.fecha === 'string' && Number.isFinite(Date.parse(kept.fecha)) && localDay(kept.fecha) === localDay(reading.fecha);
+}
 export function inDateRange(row: EntityRecord, from: string, to: string) {
   if (typeof row.fecha !== 'string' || !Number.isFinite(Date.parse(row.fecha))) return false;
   const date = localDay(row.fecha);

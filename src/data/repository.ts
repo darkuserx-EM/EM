@@ -11,6 +11,7 @@ import { clientImportEntities, planClientImport, type ClientImportRow } from '..
 import { administrativeState, equipmentStatusChanges, equipmentStatusValues } from '../domain/equipment-status';
 import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-images';
 import { ValidationError } from '../domain/errors';
+import { repeatsReading } from '../domain/equipment-history';
 import type { HistoricalReportsImport } from './historical-reports';
 import { enabledEquipment, validEquipmentGrant } from '../domain/technician-work';
 import { isOperationalEntity, prepareOperation, ticketsResolvedByOrder } from '../domain/operations';
@@ -306,7 +307,11 @@ export class LocalDataSource {
     const sourceIds = new Set(next.entities.OrdenServicio.filter(row => row.importado === true).map(row => String(row.origen_id)));
     const orderNos = new Set(next.entities.OrdenServicio.filter(row => row.importado === true).map(row => String(row.orden_origen)));
     const incomingIds = new Set<string>();
-    let addedReports = 0; let addedReadings = 0; const now = new Date().toISOString();
+    let addedReports = 0; let addedReadings = 0; let repeatedReadings = 0; const now = new Date().toISOString();
+    // Lecturas conservadas por equipo: las del portal y las que agrega esta misma carga.
+    const keptReadings = new Map<string, EntityRecord[]>();
+    const keptFor = (equipmentId: string) => { const rows = keptReadings.get(equipmentId) ?? []; keptReadings.set(equipmentId, rows); return rows; };
+    for (const reading of next.entities.LecturaHorometro) keptFor(String(reading.equipo_id)).push(reading);
     for (const input of payload.reportes) {
       const sourceId = String(input.origen_id || '').trim(); const orderNo = String(input.orden_origen || '').trim();
       if (!sourceId || !orderNo || incomingIds.has(sourceId)) throw new ValidationError(`ID de origen vacío o repetido: ${sourceId || '(sin ID)'}.`);
@@ -333,7 +338,9 @@ export class LocalDataSource {
         importado: true, origen_id: sourceId, orden_origen: orderNo,
       };
       next.entities.OrdenServicio.push(row); sourceIds.add(sourceId); orderNos.add(orderNo); addedReports++;
-      if (typeof input.horometro === 'number') {
+      const kept = keptFor(equipment.id);
+      if (typeof input.horometro === 'number' && kept.some(reading => repeatsReading(reading, { fecha: input.fecha, valor: input.horometro!, odometro_millas: input.odometro_millas }))) repeatedReadings++;
+      else if (typeof input.horometro === 'number') {
         const meter: EntityRecord = {
           id: crypto.randomUUID(), codigo: `HOR-H-${String(next.entities.LecturaHorometro.length + 1).padStart(4, '0')}`,
           creado_por: actor.id, fecha_creacion: now, actualizado_por: actor.id, fecha_actualizacion: now,
@@ -341,15 +348,15 @@ export class LocalDataSource {
           origen: 'Orden de servicio', orden_id: row.id, registrado_por: 'Importación histórica AppSheet', ubicacion: location,
           ...(input.odometro_millas === null ? {} : { odometro_millas: input.odometro_millas }), es_estimado: false,
         };
-        next.entities.LecturaHorometro.push(meter); addedReadings++;
+        next.entities.LecturaHorometro.push(meter); kept.push(meter); addedReadings++;
       }
     }
-    if (!addedReports && !payload.equipos.length) return { equipos: 0, reportes: 0, lecturas: 0, repetidos: payload.reportes.length };
+    if (!addedReports && !payload.equipos.length) return { equipos: 0, reportes: 0, lecturas: 0, lecturas_repetidas: 0, repetidos: payload.reportes.length };
     const newEquipment = next.entities.Equipo.length - this.database.entities.Equipo.length;
     const duplicateReports = payload.reportes.length - addedReports;
-    this.audit(next, actor, 'Historial', 'Importación histórica', `${newEquipment} equipos, ${addedReports} reportes y ${addedReadings} lecturas agregados para ${client.nombre}; ${duplicateReports} reportes ya existentes omitidos. Valores de horómetro conservados como en origen.`);
+    this.audit(next, actor, 'Historial', 'Importación histórica', `${newEquipment} equipos, ${addedReports} reportes y ${addedReadings} lecturas agregados para ${client.nombre}; ${duplicateReports} reportes ya existentes y ${repeatedReadings} lecturas ya registradas omitidos. Valores de horómetro conservados como en origen.`);
     this.commit(next);
-    return { equipos: newEquipment, reportes: addedReports, lecturas: addedReadings, repetidos: duplicateReports };
+    return { equipos: newEquipment, reportes: addedReports, lecturas: addedReadings, lecturas_repetidas: repeatedReadings, repetidos: duplicateReports };
   }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.database); }
   async backup(actor: Actor) { return this.snapshot(actor); }
