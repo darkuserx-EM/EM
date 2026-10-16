@@ -1,8 +1,9 @@
 import { lazy, Suspense, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowRight, Download, Pencil, Plus, Search, Upload } from 'lucide-react';
+import { ArrowRight, Download, Pencil, Plus, Search, Upload, X } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
 import { EmptyState, ErrorNotice, SectionTitle } from '../../components/ui';
+import { IconButton } from '../../components/design-system';
 import { type EntityRecord } from '../../domain/model';
 import { administrativeState, filterEquipmentStatus } from '../../domain/equipment-status';
 import { clientDisplayName } from '../../domain/client-profile';
@@ -18,6 +19,15 @@ import { RecordForm, type EditableRecord } from './RecordForm';
 import { getDataSource, serverMode } from '../../data/source';
 import { assertAdmin } from '../../domain/permissions';
 import './records.css';
+
+const fleetNoticeKey = 'portal-em.aviso-flota-oculto.v1';
+/** Cómo dar de alta equipos. Se puede cerrar y no vuelve a salir en este navegador: ocupaba unos 70 px en cada visita. */
+function FleetNotice({ editable }: { editable: boolean }) {
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(fleetNoticeKey) === '1'; } catch { return false; } });
+  if (hidden) return null;
+  const hide = () => { setHidden(true); try { localStorage.setItem(fleetNoticeKey, '1'); } catch { /* Sin almacenamiento del navegador: se oculta solo en esta visita. */ } };
+  return <div className="capture-banner"><span className="capture-banner-icon"><Plus size={19} /></span><div><strong>{editable ? 'Altas y ediciones desde la web' : 'Consulta de registros'}</strong><p>{editable ? 'Usa Nuevo equipo. Marca, modelo, serie, tipo, propiedad y estado operativo son obligatorios. Puedes dejar el horómetro pendiente.' : 'Administración puede agregar y editar clientes y equipos.'} {serverMode ? 'Los cambios se guardan en el servidor.' : 'Los cambios se guardan en este navegador.'}</p></div><IconButton label="Ocultar este aviso" icon={<X size={16} />} onClick={hide} /></div>;
+}
 const ClientImportDialog = lazy(() => import('./ClientImportDialog'));
 
 export function RecordsPage({ module }: { module: 'flota' | 'clientes' }) {
@@ -51,7 +61,7 @@ export function RecordsPage({ module }: { module: 'flota' | 'clientes' }) {
   return <><SectionTitle eyebrow="ESPACIO DE TRABAJO" title={module === 'flota' ? 'Flota de equipos' : 'Clientes'} description={module === 'flota' ? 'Registra tus equipos, asígnalos a un cliente y consulta su expediente.' : 'Encuentra una empresa y consulta su ficha sin salir de la lista.'}>
     {editable && (module === 'flota' ? <><button className="button" onClick={() => exportList('Equipo', filtered)}><Download size={16} />{serverMode ? "Exportar datos (sin fotos)" : "Exportar equipos"}</button><button className="button button-dark" onClick={() => open('Equipo')}><Plus size={17} />Nuevo equipo</button></> : <><a className="button" href="/templates/Plantilla-clientes-EMSA.xlsx" download><Download size={16} />Plantilla<span className="visually-hidden"> de clientes</span></a><button className="button client-import-trigger" onClick={() => setImporting(true)}><Upload size={16} />Importar<span className="visually-hidden"> clientes</span></button><button className="button" onClick={() => exportList('Cliente', filteredClients)}><Download size={16} />Exportar<span className="visually-hidden"> clientes</span></button><button className="button button-dark" onClick={() => open('Cliente')}><Plus size={17} />Nuevo cliente</button></>)}
   </SectionTitle>
-  {module === 'flota' && <div className="capture-banner"><span className="capture-banner-icon"><Plus size={19} /></span><div><strong>{editable ? 'Altas y ediciones desde la web' : 'Consulta de registros'}</strong><p>{editable ? 'Usa Nuevo equipo. Marca, modelo, serie, tipo, propiedad y estado operativo son obligatorios. Puedes dejar el horómetro pendiente.' : 'Administración puede agregar y editar clientes y equipos.'} {serverMode ? 'Los cambios se guardan en el servidor.' : 'Los cambios se guardan en este navegador.'}</p></div></div>}
+  {module === 'flota' && <FleetNotice editable={editable} />}
   <ErrorNotice message={equipmentQuery.error || clientQuery.error || readings.error} />
   {module === 'flota' && <><label className="fleet-client-filter">Cliente<select aria-label="Filtrar equipos por cliente" value={fleetClient} onChange={event => setFleetClient(event.target.value)}><option value="Todos">Todos los clientes</option>{clients.map(client => <option key={client.id} value={client.id}>{clientDisplayName(client)}</option>)}</select></label><FleetSummary equipment={fleetScope} selected={fleetStatus} onSelect={setFleetStatus} loading={equipmentQuery.loading} /><FleetFilters status={fleetStatus} onStatus={setFleetStatus} maintenance={maintenance} onMaintenance={setMaintenance} includeRetired={includeRetired} onIncludeRetired={setIncludeRetired} /></>}
   {module === 'flota' ? <section className="panel"><div className="table-toolbar"><label className="search-box"><Search size={17} /><input placeholder="Buscar código, ID del cliente, marca, modelo o serie…" aria-label="Buscar equipo" value={search} onChange={event => setSearch(event.target.value)} /></label><span className="subtle-label">{filtered.length} equipos</span></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Equipo</th><th>Tipo</th><th>Propiedad</th><th>Estado operativo</th><th className="numeric">Horómetro</th><th>Acciones</th></tr></thead><tbody>{filtered.map(row => <tr key={row.id}><td><button className="equipment-cell link-button" onClick={() => setParams({ equipo: row.id })}><EquipmentPhoto equipment={row} /><span><strong>{row.codigo}</strong><small>{row.marca} {row.modelo}</small>{row.id_interno_cliente && <small>ID cliente: {row.id_interno_cliente}</small>}</span></button></td><td>{row.tipo}</td><td>{row.propiedad}<small className="equipment-admin-state">{administrativeState(row) || 'Sin situación administrativa'}</small></td><td><EquipmentStatus equipment={row} /></td><td className="numeric mono">{readings.error ? 'No disponible' : !readings.ready ? 'Cargando…' : formatHourMeter(latestEquipmentReading(row.id, readings.rows)?.valor ?? row.horometro)}</td><td><div className="record-row-actions">{editable && <button className="icon-button" aria-label={`Editar ${row.codigo}`} onClick={() => open('Equipo', row)}><Pencil size={15} /></button>}<button className="icon-button" aria-label={`Ver ${row.codigo}`} onClick={() => setParams({ equipo: row.id })}><ArrowRight size={16} /></button></div></td></tr>)}</tbody></table>{!filtered.length && <EmptyState title={equipmentQuery.loading ? 'Cargando equipos…' : 'No encontramos equipos'} description="Agrega un equipo o prueba con otro filtro." />}</div></section>

@@ -7,6 +7,7 @@
 /* Aviso de altas y ediciones (Flota) */
 .capture-banner { border-color: var(--color-border); border-radius: var(--radius-md); background: var(--color-accent-soft); }
 .capture-banner-icon { background: var(--color-surface); color: var(--color-accent); }
+.capture-banner > .icon-button { align-self: flex-start; margin-left: auto; }
 .capture-banner strong { font-size: var(--text-sm); color: var(--color-text); }
 .capture-banner p { font-size: var(--text-sm); color: var(--color-text-muted); }
 

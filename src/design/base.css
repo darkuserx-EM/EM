@@ -25,6 +25,14 @@ small { font-size: max(var(--text-xs), .83em); }
 .nav-item { font-size: var(--text-sm); color: var(--color-text-muted); }
 .nav-item:hover { color: var(--color-text); }
 .nav-item.active { color: var(--color-text); }
+/* Menú compacto: a 1366 × 850, el menú del administrador entra completo (antes había que desplazarlo 153 px). */
+.nav-group { margin-bottom: 12px; }
+.nav-item { padding-block: 7px; margin-block: 1px; }
+.brand-link { padding-top: 22px; padding-bottom: 19px; }
+/* En escritorio con poca altura se oculta el recuadro inferior: repite el modo («Demostración» o «Pruebas en línea») que ya dice la barra superior. */
+@media (min-width: 851px) and (max-height: 900px) {
+  .sidebar-bottom { display: none; }
+}
 /* Sección plegable «Próximamente» al final del menú: módulos sin construir. Cerrada por defecto; se abre sola al entrar a uno. */
 /* El botón centra el texto en 32 px: el margen negativo lo deja a la altura de los otros títulos de grupo. */
 .nav-group-toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 32px; margin-top: -6px; padding: 0 12px; border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--weight-semibold); letter-spacing: .08em; color: var(--color-text-muted); }
