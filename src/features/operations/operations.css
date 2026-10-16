@@ -250,3 +250,11 @@
 .order-revisions summary{cursor:pointer;font-weight:600}
 .order-revisions li{padding-block:var(--space-2);overflow-wrap:anywhere}
 .order-revisions p{margin-block:var(--space-1)}
+
+.os-symptoms{display:grid;gap:var(--space-2);font-size:var(--text-sm);color:var(--color-text-muted)}
+.os-symptoms>div{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.os-symptoms .button{min-height:var(--target-min)}
+.os-symptoms small{font-size:var(--text-xs)}
+.os-extra{border-block:1px solid var(--color-border);padding-block:var(--space-2)}
+.os-extra summary{cursor:pointer;min-height:var(--target-min);align-content:center;font-weight:600;font-size:var(--text-sm)}
+.os-extra>div{padding-block:var(--space-3)}

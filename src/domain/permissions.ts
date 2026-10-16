@@ -63,6 +63,8 @@ export function filterVisible(actor: Actor, entity: EntityName, rows: EntityReco
   }
   if (actor.rol === 'Técnico') {
     if (!actor.tecnico_id) return [];
+    // Read-only suggestions for capture; no access to other administrative catalogs.
+    if (entity === 'Catalogos') return rows.filter(row => row.categoria === 'Síntomas' && row.activo !== false).map(row => Object.fromEntries(Object.entries(row).filter(([key]) => ['id', 'codigo', 'nombre', 'categoria', 'activo', 'fecha_creacion', 'fecha_actualizacion'].includes(key))) as EntityRecord);
     const assigned = entities?.OrdenServicio.filter(row => assignedTo(row, actor.tecnico_id)) || [];
     const tickets = entities?.Ticket?.filter(row => row.responsable_id === actor.tecnico_id) || [];
     const equipmentIds = new Set(assigned.map(row => row.equipo_id));

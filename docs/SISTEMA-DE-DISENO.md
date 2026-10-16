@@ -235,7 +235,7 @@ Una orden conserva `tecnico_id` como responsable y admite `tecnico_apoyo_1_id` y
 
 Cada participante consulta la misma orden en Inicio, Órdenes, Calendario y Planificador. La paginación y los filtros del servidor aplican la pertenencia al equipo de trabajo sin multiplicar registros. Las fotos y videos se autorizan contra la orden compartida y conservan sus referencias originales. Las ediciones conservan autoría y versión; un guardado desactualizado se rechaza.
 
-El alta en estado «En proceso» registra el inicio actual en Guatemala. No cambia automáticamente el estado operativo del equipo. La migración 11 agrega los apoyos al índice operativo y reconstruye esa proyección por lotes reanudables, sin modificar los registros originales, el historial ni los archivos; las órdenes anteriores sin apoyos siguen funcionando.
+El alta en estado «En proceso» registra el inicio indicado; si está vacío, usa el instante actual. El formulario presenta las horas en Guatemala. No cambia automáticamente el estado operativo del equipo. La migración 11 agrega los apoyos al índice operativo y reconstruye esa proyección por lotes reanudables, sin modificar los registros originales, el historial ni los archivos; las órdenes anteriores sin apoyos siguen funcionando.
 
 ## Coordinadores en campo y revisión de órdenes completadas
 
@@ -244,3 +244,13 @@ El coordinador mantiene su perfil y puede tener un registro de técnico activo, 
 Las órdenes operativas completadas admiten dos acciones exclusivas de administración y coordinación: Corregir reporte (mantiene estado, fechas, identidad, equipo, participantes y lecturas) y Reabrir orden (En proceso, retira la publicación al cliente y devuelve las solicitudes resueltas vinculadas a En revisión). Ambas requieren motivo de 8 a 500 caracteres y versión esperada; conservan la versión completa anterior y posterior en bitácora. Los reportes importados no se reescriben. Un segundo cierre no duplica una lectura original idéntica.
 
 Coordinación también puede agregar evidencias a sus órdenes, incluso completadas con motivo obligatorio. Se conservan los archivos anteriores y se registra el autor y motivo del adjunto. El detalle muestra hasta 100 revisiones recientes para administración y coordinación. Técnicos y clientes no acceden a la corrección ni reapertura ni a las evidencias posteriores al cierre como escritores.
+
+## Captura en tres secciones
+
+La orden se captura en Inicio (equipo, participantes, visita, inicio y motivo), Atención (diagnóstico, trabajo, lecturas, seguridad y evidencias) y Cierre (pruebas, resultado, fin y conformidad). Se puede iniciar y guardar avances sin cerrar el editor. Materiales y recomendaciones son opcionales y se despliegan al consultar registros que ya contienen esos datos. Los campos de cierre siguen siendo obligatorios para completar.
+
+Los síntomas activos del catálogo se agregan al motivo mediante botones; no reemplazan el texto previo ni completan diagnóstico, trabajo o pruebas. El técnico recibe únicamente ese catálogo en lectura; se conservan las restricciones de edición de solicitudes, órdenes y demás catálogos. El cliente conserva su vista de consulta de reportes compartidos.
+
+Causa confirmada desaparece de la captura. No se elimina el campo persistido ni su contenido en reportes anteriores, exportaciones o auditoría. Los guardados parciales no envían ese campo.
+
+Al abrir una orden nueva se sugieren el día, la hora de visita y el inicio del trabajo usando America/Guatemala. Son editables con los permisos existentes. Abrir una orden guardada no cambia ni rellena sus horas; al iniciar una atención sin inicio, el servidor registra el instante actual. En una visita futura debe dejarse el inicio vacío hasta comenzar. Las correcciones de reportes completados siguen conservando sus fechas y exigiendo motivo.
