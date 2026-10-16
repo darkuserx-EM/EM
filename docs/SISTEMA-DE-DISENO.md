@@ -149,7 +149,8 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
 
 - **Menú del cliente:** `clientNavigation` en `Shell.tsx`. La ruta de navegación del cliente usa estos nombres, no los del personal.
 - **Inicio** es la excepción: su título saluda según el perfil («Operación», «Tu operación, bajo control», «Tu jornada, en orden»). La ruta de navegación sigue diciendo «Inicio».
-- **Módulos en preparación:** el antetítulo es el grupo del menú al que pertenecen.
+- **Antetítulo** (el texto pequeño sobre el título): el grupo del menú al que pertenece la pantalla, con `sectionOf(módulo)` de `navigation.ts`. Por ejemplo, «ADMINISTRACIÓN» en Catálogos, Datos, Roles y accesos y Plan de trabajo, que antes llevaban lemas («Configura tu operación», «Tu información, organizada»…). Los módulos en preparación también usan su grupo. Inicio es la excepción: saluda según el perfil.
+- **Menú compacto:** entradas de 34 px con mouse (44 px en pantallas táctiles) y 12 px entre grupos. En escritorio con poca altura (hasta 900 px) se oculta el recuadro inferior del menú, que repite el modo que ya dice la barra superior. Así, a 1366 × 850 el menú del administrador entra completo; antes había que desplazarlo 153 px.
 - **Sección «Próximamente»:** los módulos sin construir (`upcoming: true` en `navigation`: Contratos, Checklist diario, Horas de técnicos y Viáticos) van en una sección plegable al final del menú, con el número de módulos. Está cerrada por defecto y se abre sola al entrar a uno de ellos. El botón usa `aria-expanded` y `aria-controls`. Al construir un módulo, se le quita `upcoming` y vuelve a su grupo.
 
 ## Primero el trabajo

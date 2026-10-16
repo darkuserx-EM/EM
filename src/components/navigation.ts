@@ -9,6 +9,8 @@ export const navigation: { label: string; items: NavItem[] }[] = [
   { label: 'SERVICIO Y OPERACIÓN', items: [{ module: 'tickets', title: 'Solicitudes', icon: Ticket, stage: 4 }, { module: 'ordenes', title: 'Órdenes de servicio', icon: ClipboardList, stage: 5 }, { module: 'preventivos', title: 'Mantenimiento', icon: Wrench, stage: 6 }, { module: 'calendario', title: 'Calendario', icon: CalendarDays }, { module: 'planificador', title: 'Planificador', icon: LayoutGrid }, { module: 'checklists', title: 'Checklist diario', icon: ListChecks, stage: 7, upcoming: true }, { module: 'horas', title: 'Horas de técnicos', icon: Clock3, stage: 8, upcoming: true }, { module: 'viaticos', title: 'Viáticos', icon: Wallet, stage: 8, upcoming: true }, { module: 'reportes', title: 'Reportes', icon: ChartNoAxesColumn, stage: 8 }] },
   { label: 'ADMINISTRACIÓN', items: [{ module: 'catalogos', title: 'Catálogos', icon: Settings2 }, { module: 'datos', title: 'Datos y respaldos', icon: Database }, { module: 'accesos', title: 'Roles y accesos', icon: ShieldCheck }, { module: 'plan', title: 'Plan de trabajo', icon: Route }] },
 ];
+/** Antetítulo de una pantalla: el grupo del menú al que pertenece (por ejemplo, «ADMINISTRACIÓN»). */
+export const sectionOf = (module: string) => navigation.find(group => group.items.some(item => item.module === module))?.label ?? 'ESPACIO DE TRABAJO';
 /** Módulos sin construir que el perfil puede abrir: van en la sección «Próximamente». */
 export const upcomingItems = (actor: Parameters<typeof canAccessModule>[0]) => navigation.flatMap(group => group.items).filter(item => item.upcoming && canAccessModule(actor, item.module));
 /** Menú del cliente: sus nombres también se usan en la ruta de navegación. */
