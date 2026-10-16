@@ -64,26 +64,28 @@ describe('importación histórica de AppSheet', () => {
     expect(result.newReadingCount).toBe(2);
     expect(result.repeatedReadings).toBe(1);
   });
-  it('no duplica lecturas conservadas en el portal: mismo día, o igual a la de ingreso', () => {
+  it('no duplica lecturas conservadas en el portal: mismo día, igual a la de ingreso o al valor original de una estimada', () => {
     const client = createSeed().entities.Cliente[0];
     const machine = seedRecord('machine-1', 'TCE-901', { serie: '9A196405', modelo: 'FC4500', id_interno_cliente: 'FC#1', cliente_id: client.id });
-    const reading = (id: string, fields: Record<string, string | number>) => seedRecord(id, id, { equipo_id: machine.id, cliente_id: client.id, ...fields });
+    const reading = (id: string, fields: Record<string, string | number | boolean>) => seedRecord(id, id, { equipo_id: machine.id, cliente_id: client.id, ...fields });
     const kept = [
       reading('HOR-1', { fecha: '2026-10-01T15:00:00.000Z', valor: 300, origen: 'Ingreso de equipo' }),
       reading('HOR-2', { fecha: '2025-02-08T22:00:00.000Z', valor: 100, origen: 'Lectura de cierre' }),
       reading('HOR-3', { fecha: '2025-02-09T22:00:00.000Z', valor: 200, odometro_millas: 50, origen: 'Lectura de cierre' }),
+      reading('HOR-4', { fecha: '2025-02-11T22:00:00.000Z', valor: 150, valor_original: 100, es_estimado: true, nota_estimacion: 'Corrección de prueba', origen: 'Lectura de cierre' }),
     ];
     const result = parseHistoricalReports(tabular(
       row('source-1','08/02/2025 09:00:00','100'),
       row('source-2','01/03/2025 09:00:00','300'),
       withValue(row('source-3','09/02/2025 09:00:00','200'), 'Odometro (H3)', '60'),
       row('source-4','10/02/2025 09:00:00','100'),
+      row('source-5','11/02/2025 09:00:00','100'),
     ), client.id, '', [machine], [], kept);
     expect(result.errors).toEqual([]);
     expect(result.newEquipmentCount).toBe(0);
-    expect(result.repeatedReadings).toBe(2);
+    expect(result.repeatedReadings).toBe(3);
     expect(result.newReadingCount).toBe(2);
-    expect(historicalReadingNotice(result.repeatedReadings)).toBe('2 lecturas de horómetro ya están registradas para esos equipos y no se duplicarán.');
+    expect(historicalReadingNotice(result.repeatedReadings)).toBe('3 lecturas de horómetro ya están registradas para esos equipos y no se duplicarán.');
     expect(historicalReadingNotice(1)).toBe('Una lectura de horómetro ya está registrada para ese equipo y no se duplicará.');
     expect(historicalReadingNotice(0)).toBe('');
   });
