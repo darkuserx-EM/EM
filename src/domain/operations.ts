@@ -185,8 +185,8 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
       row.motivo = row.sintoma || ''; row.trabajo = row.trabajo_realizado || '';
       row.tecnico = orderTeamLabel(row as EntityRecord, entities.Tecnico);
       if (!original && row.estado === 'En proceso') {
-        row.fecha = new Date().toISOString();
-        row.fecha_programada = todayGT();
+        row.fecha = row.fecha || new Date().toISOString();
+        row.fecha_programada = row.fecha_programada || todayGT();
       }
       if (!row.fecha && ['En proceso', 'Completada'].includes(text(row.estado))) row.fecha = new Date().toISOString();
       if (row.estado === 'Completada' && !row.fecha_fin) row.fecha_fin = new Date().toISOString();
