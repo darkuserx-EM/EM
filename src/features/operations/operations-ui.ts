@@ -34,7 +34,7 @@ export function dateTimeInput(value: unknown): string {
 export const fromDateTimeInput = (value: string) => value ? new Date(`${value}-06:00`).toISOString() : '';
 
 /** Campos del formulario de la orden (ServiceOrderForm): los que se documentan en campo y los de asignación. */
-export const orderExecutionFields = ['estado', 'fecha', 'fecha_fin', 'sintoma', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'recomendaciones', 'insumos', 'repuestos', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'horometro', 'odometro_millas'];
+export const orderExecutionFields = ['estado', 'fecha', 'fecha_fin', 'sintoma', 'diagnostico', 'trabajo_realizado', 'recomendaciones', 'insumos', 'repuestos', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'horometro', 'odometro_millas'];
 export const orderAssignmentFields = [...supportFields, 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tipo', 'prioridad', 'fecha_programada', 'hora_programada'];
 /** «Guardar avance» envía solo lo que cambió desde el último guardado: no reescribe lo que otra persona del equipo cambió entretanto. */
 export function changedFields(fields: Record<string, Scalar>, values: Record<string, string>, saved: Record<string, string>): Record<string, Scalar> {
