@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type PointerEvent } from 'react';
 import { Check, Eraser } from 'lucide-react';
 import { Button } from '../../components/design-system';
-import { exportScale, inkLength, MIN_INK, signatureUrl, signedLabel, strokeBounds, type Point, type Signature } from './signature';
+import { exportScale, fitStrokes, inkLength, MIN_INK, revisedLabel, signatureUrl, signedLabel, strokeBounds, type Point, type Signature } from './signature';
 
 const LINE = 2.5;
 function paint(context: CanvasRenderingContext2D, strokes: Point[][], ink: string) {
@@ -18,7 +18,7 @@ function paint(context: CanvasRenderingContext2D, strokes: Point[][], ink: strin
 export function SignatureSummary({ signature }: { signature: Signature }) {
   return <figure className="receiver-signature-current">
     <img src={signatureUrl(signature)} alt={`Firma de ${signature.signer}`} />
-    <figcaption><strong>{signature.signer}</strong><small>{signedLabel(signature)}{signature.capturedBy ? ` · Capturada por ${signature.capturedBy}` : ''}</small></figcaption>
+    <figcaption><strong>{signature.signer}</strong><small>{signedLabel(signature)}{signature.capturedBy ? ` · Capturada por ${signature.capturedBy}` : ''}</small>{!!signature.revisedAt && <small className="signature-revised">{revisedLabel(signature)}. Pide una firma nueva si quien recibe debe confirmar la corrección.</small>}</figcaption>
   </figure>;
 }
 
@@ -31,11 +31,14 @@ export function SignaturePad({ signer, busy = false, onConfirm, onCancel, onChan
   const [drawn, setDrawn] = useState(false);
   const help = `${useId()}-ayuda`;
   const ink = () => canvas.current ? getComputedStyle(canvas.current).color : '';
-  // El lienzo se dibuja a la resolución de la pantalla; al girar el teléfono se vuelve a pintar con los mismos trazos.
+  const size = useRef({ width: 0, height: 0 });
+  // El lienzo se dibuja a la resolución de la pantalla. Al girar el teléfono, los trazos se escalan al recuadro nuevo
+  // y la firma se guarda completa. Oculto en otro paso (0 × 0), conserva el último tamaño.
   useEffect(() => {
     const element = canvas.current; if (!element) return;
     const fit = () => {
       const ratio = Math.min(window.devicePixelRatio || 1, 3), rect = element.getBoundingClientRect();
+      if (rect.width && rect.height) { strokes.current = fitStrokes(strokes.current, size.current, rect); size.current = { width: rect.width, height: rect.height }; }
       element.width = Math.round(rect.width * ratio); element.height = Math.round(rect.height * ratio);
       const context = element.getContext('2d'); if (!context) return;
       context.setTransform(ratio, 0, 0, ratio, 0, 0); paint(context, strokes.current, ink());

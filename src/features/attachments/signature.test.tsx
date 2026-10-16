@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { exportScale, inkLength, MIN_INK, signatureUrl, signedLabel, signerOrEmpty, strokeBounds } from './signature';
+import { exportScale, fitStrokes, inkLength, MIN_INK, revisedLabel, signatureUrl, signedLabel, signerOrEmpty, strokeBounds } from './signature';
 import { SignaturePad, SignatureSummary } from './SignaturePad';
 
 const signature = { id: 'firma 1', signer: 'Persona de prueba', signedAt: Date.parse('2026-10-13T17:50:00.000Z') };
@@ -29,6 +29,20 @@ describe('firma de quien recibe · cálculos', () => {
     expect(signerOrEmpty('A')).toBe('');
     expect(signedLabel(signature)).toBe('Firmado el 13/10/2026 a las 11:50');
     expect(signatureUrl(signature)).toBe('/api/attachments/firma%201/file');
+    expect(revisedLabel({})).toBe('');
+    expect(revisedLabel({ revisedAt: Date.parse('2026-10-15T15:15:00.000Z') })).toBe('Firmado antes de la corrección del reporte del 15/10/2026 a las 09:15');
+  });
+
+  it('al girar el teléfono, la firma se escala completa al recuadro nuevo, sin deformarse', () => {
+    const strokes = [[{ x: 20, y: 40 }, { x: 680, y: 160 }]];
+    // De horizontal (700 × 200) a vertical (340 × 180): todo el trazo sigue dentro del recuadro.
+    const rotated = fitStrokes(strokes, { width: 700, height: 200 }, { width: 340, height: 180 });
+    const bounds = strokeBounds(rotated, 0, 340, 180)!;
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(340);
+    expect(rotated[0][1].x / rotated[0][1].y).toBeCloseTo(680 / 160);
+    // Sin tamaño previo (primer dibujo) o con el mismo tamaño, no cambia nada.
+    expect(fitStrokes(strokes, { width: 0, height: 0 }, { width: 340, height: 180 })).toBe(strokes);
+    expect(fitStrokes(strokes, { width: 700, height: 200 }, { width: 700, height: 200 })).toBe(strokes);
   });
 });
 

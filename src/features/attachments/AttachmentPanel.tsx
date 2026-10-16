@@ -7,13 +7,16 @@ import PrivateAttachment from './PrivateAttachment';
 import { prepareEquipmentImage } from '../records/equipment-image-upload';
 type Attachment={id:string;category:string;name:string;mime:string;size:number};
 export default function AttachmentPanel({orderId,editable=false,onBusy,onPending,preferredCategory,completed=false}:{orderId:string;editable?:boolean;completed?:boolean;preferredCategory?:'Antes'|'Después';onBusy?:(busy:boolean)=>void;onPending?:(pending:boolean)=>void}) {
-  const [files,setFiles]=useState<Attachment[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[category,setCategory]=useState('Antes');
+  const [files,setFiles]=useState<Attachment[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[category,setCategory]=useState<string>(preferredCategory??'Antes');
   const [reason,setReason]=useState('');
   const [progress,setProgress]=useState<number|null>(null);
   const [selected,setSelected]=useState<File|null>(null); const attempt=useRef(crypto.randomUUID()); const input=useRef<HTMLInputElement>(null);
   const [savedMessage,setSavedMessage]=useState('');
   useEffect(()=>{onPending?.(!!selected);},[selected,onPending]);
-  useEffect(()=>{if(preferredCategory&&!selected&&!busy)setCategory(preferredCategory);},[preferredCategory,selected,busy]);
+  // El tipo sugerido por el paso (Antes o Después) se aplica solo cuando cambia el paso, y nunca sobre un archivo pendiente:
+  // después de cada carga se conserva el tipo que eligió la persona (por ejemplo, «Documento»).
+  const appliedCategory=useRef(preferredCategory);
+  useEffect(()=>{if(preferredCategory&&preferredCategory!==appliedCategory.current&&!selected&&!busy){appliedCategory.current=preferredCategory;setCategory(preferredCategory);}},[preferredCategory,selected,busy]);
   useEffect(()=>{let active=true;setFiles([]);setError('');if(serverMode) api<{files:Attachment[]}>(`attachments?orderId=${encodeURIComponent(orderId)}`).then(result=>{if(active)setFiles(result.files);}).catch(cause=>{if(active)setError(cause.message);});return()=>{active=false;};},[orderId]);
   async function upload(){
     if(!selected||busy)return;if(completed&&(reason.trim().length<8||reason.trim().length>500)){setError('Explica el motivo de agregar evidencia después del cierre (8 a 500 caracteres).');return;}setBusy(true);onBusy?.(true);setError('');

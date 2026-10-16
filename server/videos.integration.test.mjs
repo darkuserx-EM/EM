@@ -111,4 +111,13 @@ test('Videos privados: cuatro perfiles, reintentos, rangos y recuperación',{ski
     const reopened=await call(`attachments/${file.id}/file?orderId=${order.id}`,undefined,sessions.tech);
     assert.deepEqual(reopened.data,bytes);assert.match(reopened.headers.get('content-security-policy'),/media-src 'self'/);assert.ok(!reopened.headers.get('content-security-policy').includes('sandbox'));
   });
+  await t.test('las firmas de quien recibe no ocupan el cupo de 20 evidencias de la orden',async()=>{
+    const add=async(category,count)=>{for(let i=0;i<count;i++)await pool.execute('INSERT INTO em_attachments (id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content,storage_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL)',[randomUUID(),order.id,randomUUID(),category,`${category} ${i}.png`,'image/png',1,'0'.repeat(64),'qa',Date.now(),Buffer.from([0])]);};
+    const [[{n}]]=await pool.execute("SELECT COUNT(*) AS n FROM em_attachments WHERE order_id=? AND category<>'Firma'",[order.id]);
+    await add('Firma',5);await add('Antes',19-Number(n));
+    const input=()=>({...body,ticketId:undefined,orderId:order.id,category:'Después',requestId:randomUUID()});
+    assert.equal((await call('videos/start',input(),sessions.tech)).status,200,'19 evidencias y 5 firmas: el video aún cabe');
+    await add('Antes',1);
+    const full=await call('videos/start',input(),sessions.tech);assert.equal(full.status,400);assert.equal(full.data.error,'El registro alcanzó su límite de adjuntos.');
+  });
 });

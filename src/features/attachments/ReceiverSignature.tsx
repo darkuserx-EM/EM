@@ -11,14 +11,18 @@ import { saveSignature, useOrderSignature } from './signature-api';
  * «Recibido por» en «Pruebas y cierre»: el nombre (children, el campo del formulario) y la firma en pantalla.
  * La firma se guarda al confirmarla, como las evidencias: no depende de «Guardar avance».
  * Si la orden ya está completada (corrección), pide el motivo para la bitácora.
+ * Con una firma guardada, `onSigner` entrega su nombre: el formulario lo copia en «Recibido por» y lo fija,
+ * para que la orden y la firma digan lo mismo. Se libera al pulsar «Volver a firmar».
  */
-export function ReceiverSignature({ orderId, signer, editable, completed = false, onBusy, onPending, children }: { orderId?: string; signer: string; editable: boolean; completed?: boolean; onBusy?: (busy: boolean) => void; onPending?: (pending: boolean) => void; children?: ReactNode }) {
+export function ReceiverSignature({ orderId, signer, editable, completed = false, onBusy, onPending, onSigner, children }: { orderId?: string; signer: string; editable: boolean; completed?: boolean; onBusy?: (busy: boolean) => void; onPending?: (pending: boolean) => void; onSigner?: (signer: string | null) => void; children?: ReactNode }) {
   const current = useOrderSignature(orderId);
   const [capturing, setCapturing] = useState(false); const [busy, setBusy] = useState(false); const [drawn, setDrawn] = useState(false);
   const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [reason, setReason] = useState('');
   const attempt = useRef(crypto.randomUUID());
   const name = signerOrEmpty(signer);
+  const signedBy = current.signature && !capturing ? current.signature.signer : null;
   useEffect(() => { onPending?.(capturing && drawn); }, [capturing, drawn, onPending]);
+  useEffect(() => { onSigner?.(signedBy); }, [signedBy, onSigner]);
   function start() {
     setMessage('');
     if (!name) { setError('Escribe arriba el nombre de quien recibe el servicio para pedir su firma.'); return; }
@@ -44,6 +48,7 @@ export function ReceiverSignature({ orderId, signer, editable, completed = false
       : !orderId ? <p className="os-help">Pulsa «Iniciar atención» para registrar la orden; después podrás pedir la firma aquí.</p>
       : <>
         <ErrorNotice message={current.error} />
+        {current.signature && !capturing && editable && <p className="os-help">El nombre queda fijado por la firma. Para cambiarlo, pulsa «Volver a firmar».</p>}
         {current.signature ? <SignatureSummary signature={current.signature} /> : current.ready && !capturing && <p className="receiver-signature-pending"><Badge tone="warning">Firma pendiente</Badge><span>Si quien recibe no puede firmar en la pantalla, la firma queda pendiente y el reporte impreso conserva la línea para firmar a mano.</span></p>}
         {capturing ? <>
           {completed && <label className="os-field">Motivo de la firma posterior al cierre *<textarea maxLength={500} value={reason} onChange={event => setReason(event.target.value)} disabled={busy} /><small>Queda en el historial de la orden, junto con quién capturó la firma.</small></label>}

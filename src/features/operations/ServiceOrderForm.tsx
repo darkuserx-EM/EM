@@ -1,5 +1,6 @@
 import { assignedTo, supportFields } from '../../domain/order-team';
-import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useActor, useRows, useToast } from '../../app/state';
 import { ErrorNotice, Modal, useUnsavedChanges } from '../../components/ui';
@@ -12,12 +13,9 @@ import { todayGT } from '../../domain/maintenance-plan';
 import AttachmentPanel from '../attachments/AttachmentPanel';
 import { ReceiverSignature } from '../attachments/ReceiverSignature';
 import TicketPhotos from '../attachments/TicketPhotos';
-import { dateTimeInput, equipmentLabel, fromDateTimeInput, optionalMeterFields, priorities, serviceTypes } from './operations-ui';
+import { changedFields, dateTimeInput, equipmentLabel, fromDateTimeInput, optionalMeterFields, orderAssignmentFields as assignmentFields, orderExecutionFields as executionFields, priorities, savedFormValues, serviceTypes } from './operations-ui';
 import './operations.css';
 import { addSymptom, orderEntryTimes, orderSections as steps, symptomOptions } from './order-entry';
-
-const executionFields = ['estado', 'fecha', 'fecha_fin', 'sintoma', 'diagnostico', 'trabajo_realizado', 'recomendaciones', 'insumos', 'repuestos', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'horometro', 'odometro_millas'];
-const assignmentFields = [...supportFields, 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tipo', 'prioridad', 'fecha_programada', 'hora_programada'];
 
 export default function ServiceOrderForm({ row: original, ticket, onClose, onSaved }: { row?: EntityRecord; ticket?: EntityRecord; onClose: () => void; onSaved: (row: EntityRecord) => void }) {
   // Keep the version actually loaded/saved by this editor. Background refreshes must
@@ -56,6 +54,13 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
   const queries = [equipment, clients, sites, technicians]; const loading = queries.some(query => !query.ready); const queryError = queries.find(query => query.error)?.error || '';
   const completed = values.estado === 'Completada';
   const requiredAssignment = ['Programada', 'En proceso', 'En espera', 'Completada'].includes(values.estado);
+  // «Iniciar atención» deja la orden en proceso: exige el técnico responsable aunque el formulario aún diga «Borrador»
+  // (el día programado se completa solo). El botón lo aplica con flushSync, para que la validación del navegador ya lo vea.
+  const [starting, setStarting] = useState(false);
+  const requiredTechnician = requiredAssignment || starting;
+  // Con una firma guardada, «Recibido por» toma su nombre y queda fijo: la orden y la firma dicen lo mismo.
+  const [signedName, setSignedName] = useState<string | null>(null);
+  useEffect(() => { if (signedName) setValues(previous => previous.recibido_por === signedName ? previous : { ...previous, recibido_por: signedName }); }, [signedName]);
   function validate(onlyStep = false) {
     const controls = Array.from(form.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input,select,textarea') || []);
     const invalid = controls.find(control => !control.disabled && (!onlyStep || Number(control.closest('[data-order-step]')?.getAttribute('data-order-step')) === step) && !control.checkValidity());
@@ -74,8 +79,8 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
     setBusy(true); setError('');
     try {
       const keys = (canIdentify || correcting ? [...assignmentFields, ...executionFields] : [...(canEditTeam ? supportFields : []), ...executionFields.filter(key => key !== 'sintoma'), ...(canSchedule ? ['fecha_programada', 'hora_programada'] : [])]).filter(key => !['horometro', 'odometro_millas'].includes(key));
-      const fields: Record<string, Scalar> = { ...Object.fromEntries(keys.map(key => [key, ['fecha', 'fecha_fin'].includes(key) ? fromDateTimeInput(values[key]) : values[key]])), ...optionalMeterFields(values, row) };
-      if (row) for (const key of Object.keys(fields)) if (values[key] === initialValues[key]) delete fields[key];
+      const all: Record<string, Scalar> = { ...Object.fromEntries(keys.map(key => [key, ['fecha', 'fecha_fin'].includes(key) ? fromDateTimeInput(values[key]) : values[key]])), ...optionalMeterFields(values, row) };
+      const fields = row ? changedFields(all, values, initialValues) : all;
       if (start) { fields.estado = 'En proceso'; if (!row?.fecha_programada && !values.fecha_programada) fields.fecha_programada = todayGT(); }
       if (correcting) {
         const allowed = ['sintoma','diagnostico','trabajo_realizado','recomendaciones','pruebas_realizadas','resultado_pruebas','recibido_por','notas_seguridad','insumos','repuestos'];
@@ -88,7 +93,7 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
       if (row) fields.expected_updated_at = row.fecha_actualizacion;
       const repo = getDataSource().repository('OrdenServicio', actor);
       const saved = row ? await repo.update(row.id, fields) : await repo.create(fields);
-      const next = { ...values, ...Object.fromEntries([...assignmentFields, ...executionFields].map(key => [key, String(saved[key] ?? '')])), fecha: dateTimeInput(saved.fecha), fecha_fin: dateTimeInput(saved.fecha_fin), visible_cliente: saved.visible_cliente === true ? 'true' : 'false' };
+      const next = savedFormValues(saved, values);
       setRow(saved); setValues(next); setInitialValues(next); setReason('');
       setSavedMessage(`${saved.codigo} · ${start ? 'Atención iniciada' : 'Avance guardado'} en el portal.`);
       if (start) setStep(1);
@@ -111,7 +116,7 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
         <label className="os-field">Cliente / patio<select value={values.cliente_id} disabled={busy || !canIdentify || !!row || !!ticket || loading} onChange={event => setValues(previous => ({ ...previous, cliente_id: event.target.value, equipo_id: '', sede_id: '' }))}><option value="">Patio EMSA · sin cliente asignado</option>{clients.rows.map(client => <option value={client.id} key={client.id}>{clientDisplayName(client)}</option>)}</select></label>
         <label className="os-field">Equipo *<select value={values.equipo_id} disabled={busy || !canIdentify || !!row || !!ticket || loading} required onChange={event => { const machine = equipment.rows.find(item => item.id === event.target.value); setValues(previous => ({ ...previous, equipo_id: event.target.value, sede_id: String(machine?.sede_id || '') })); }}><option value="">Selecciona un equipo</option>{eligibleEquipment.filter(item => String(item.cliente_id || '') === values.cliente_id).map(item => <option value={item.id} key={item.id}>{equipmentLabel(item)}</option>)}</select></label>
         <label className="os-field">Sede<select value={values.sede_id} disabled={busy || !manager || correcting || loading} onChange={event => set('sede_id', event.target.value)}><option value="">Sin sede asignada</option>{sites.rows.filter(site => site.cliente_id === values.cliente_id).map(site => <option value={site.id} key={site.id}>{site.nombre}</option>)}</select></label>
-        <label className="os-field">Técnico responsable{requiredAssignment ? ' *' : ''}<select value={values.tecnico_id} disabled={busy || !manager || correcting || loading} required={requiredAssignment} onChange={event => set('tecnico_id', event.target.value)}><option value="">Sin asignar</option>{technicians.rows.map(technician => <option value={technician.id} key={technician.id}>{technician.nombre}</option>)}</select></label>
+        <label className="os-field">Técnico responsable{requiredTechnician ? ' *' : ''}<select value={values.tecnico_id} disabled={busy || !manager || correcting || loading} required={requiredTechnician} onChange={event => set('tecnico_id', event.target.value)}><option value="">Sin asignar</option>{technicians.rows.map(technician => <option value={technician.id} key={technician.id}>{technician.nombre}</option>)}</select></label>
         {supportFields.map((key, index) => <label className="os-field" key={key}>Técnico de apoyo {index + 1}<select value={values[key]} disabled={busy || !canEditTeam || loading} onChange={event => set(key, event.target.value)}><option value="">Sin apoyo</option>{technicians.rows.filter(person => person.activo !== false && person.id !== values.tecnico_id && !supportFields.some(other => other !== key && values[other] === person.id)).map(person => <option key={person.id} value={person.id}>{person.nombre}</option>)}</select></label>)}
         {choose('tipo', 'Tipo de servicio', serviceTypes, !canIdentify)}{choose('prioridad', 'Prioridad', priorities, !canIdentify)}
         {input('fecha_programada', 'Día de visita', 'date', requiredAssignment, !canSchedule)}{input('hora_programada', 'Hora de visita · Guatemala', 'time', false, !canSchedule)}
@@ -131,7 +136,7 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
         {choose('estado', 'Estado de la orden', allowedOperationStates('OrdenServicio', row, actor))}
         {input('fecha_fin', 'Final del trabajo · Guatemala', 'datetime-local', completed)}
         {text('pruebas_realizadas', 'Pruebas realizadas', completed)}{text('resultado_pruebas', 'Resultado de las pruebas', completed)}
-        <ReceiverSignature orderId={row?.id} signer={values.recibido_por} completed={correcting} onBusy={setSignatureBusy} onPending={setSignaturePending} editable={!saving && !!row && row.estado !== 'Cancelada' && (manager || actor.rol === 'Técnico' && assignedTo(row, actor.tecnico_id))}>{input('recibido_por', 'Nombre de quien recibe el servicio')}</ReceiverSignature>
+        <ReceiverSignature orderId={row?.id} signer={values.recibido_por} completed={correcting} onBusy={setSignatureBusy} onPending={setSignaturePending} onSigner={setSignedName} editable={!saving && !!row && row.estado !== 'Cancelada' && (manager || actor.rol === 'Técnico' && assignedTo(row, actor.tecnico_id))}>{input('recibido_por', 'Nombre de quien recibe el servicio', 'text', false, !!signedName)}</ReceiverSignature>
         {manager && !correcting && <label className="os-check os-span"><input type="checkbox" checked={values.visible_cliente === 'true'} onChange={event => set('visible_cliente', String(event.target.checked))} disabled={busy} /><span>Compartir este reporte con el cliente</span></label>}
         <p className="os-help os-span">Completar la orden documenta el servicio. La condición operativa y los hallazgos del equipo requieren su propia revisión.</p>
         {values.ticket_id && <p className="os-help os-span">La solicitud vinculada se resolverá al completar todas sus órdenes. Si alguna sigue pendiente o fue cancelada, coordinación revisará el cierre de la solicitud.</p>}
@@ -141,7 +146,7 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
         {row ? <div className="os-span"><AttachmentPanel orderId={row.id} completed={correcting} preferredCategory="Antes" onBusy={setAttachmentBusy} onPending={setAttachmentPending} editable={!saving && (manager || actor.rol === 'Técnico' && assignedTo(row, actor.tecnico_id))} /></div> : <div className="os-evidence-note os-span"><h3>Fotografías antes y después</h3><p>Pulsa «Iniciar atención» después de indicar el equipo, el responsable y el motivo. Las evidencias se cargarán en esta misma ventana.</p></div>}
       </section>
       <ErrorNotice message={error} />
-      <footer className="modal-actions os-form-actions"><button type="button" className="button" onClick={guard.requestClose} disabled={busy}>{row ? 'Salir de la orden' : 'Cancelar'}</button><div>{step > 0 && <button type="button" className="button" onClick={() => setStep(step - 1)} disabled={busy}><ChevronLeft size={16} />Anterior</button>}{step < steps.length - 1 && <button type="button" className="button" disabled={busy} onClick={() => { if (validate(true)) { setStep(step + 1); setError(''); } }}>Siguiente<ChevronRight size={16} /></button>}{!correcting && (!row || ['Borrador', 'Programada', 'En espera'].includes(String(row.estado))) && <button type="button" className="button button-dark" disabled={busy || loading || !!queryError} onClick={() => void save(undefined, true)}>{row?.estado === 'En espera' ? 'Reanudar atención' : 'Iniciar atención'}</button>}<button type="submit" className="button button-dark" disabled={busy || loading || !!queryError}><Check size={16} />{busy ? 'Guardando…' : correcting ? 'Guardar corrección' : completed ? 'Completar orden' : row ? 'Guardar avance' : 'Guardar orden'}</button></div></footer>
+      <footer className="modal-actions os-form-actions"><button type="button" className="button" onClick={guard.requestClose} disabled={busy}>{row ? 'Salir de la orden' : 'Cancelar'}</button><div>{step > 0 && <button type="button" className="button" onClick={() => setStep(step - 1)} disabled={busy}><ChevronLeft size={16} />Anterior</button>}{step < steps.length - 1 && <button type="button" className="button" disabled={busy} onClick={() => { if (validate(true)) { setStep(step + 1); setError(''); } }}>Siguiente<ChevronRight size={16} /></button>}{!correcting && (!row || ['Borrador', 'Programada', 'En espera'].includes(String(row.estado))) && <button type="button" className="button button-dark" disabled={busy || loading || !!queryError} onClick={() => { flushSync(() => setStarting(true)); void save(undefined, true); setStarting(false); }}>{row?.estado === 'En espera' ? 'Reanudar atención' : 'Iniciar atención'}</button>}<button type="submit" className="button button-dark" disabled={busy || loading || !!queryError}><Check size={16} />{busy ? 'Guardando…' : correcting ? 'Guardar corrección' : completed ? 'Completar orden' : row ? 'Guardar avance' : 'Guardar orden'}</button></div></footer>
     </form>
   </Modal>;
 }

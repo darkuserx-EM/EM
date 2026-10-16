@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { EntityRecord } from '../../domain/model';
-import { ServiceReport, serviceHours } from './ServiceReport';
+import { company, ServiceReport, serviceHours } from './ServiceReport';
 
 const record = (values: Record<string, unknown>) => ({ id: 'a', codigo: 'OS-1', creado_por: '', fecha_creacion: '', actualizado_por: '', fecha_actualizacion: '', ...values }) as EntityRecord;
 const order = record({ codigo: 'OS-180', schema_operacion: 1, estado: 'Completada', tipo: 'Correctivo', equipo_id: 'm1', tecnico_id: 't1', tecnico_apoyo_1_id: 't2', fecha: '2026-10-13T16:30:00.000Z', fecha_fin: '2026-10-13T17:45:00.000Z', sintoma: 'Cadena floja', diagnostico: 'Requiere ajuste', trabajo_realizado: 'Ajuste de cadenas', resultado_pruebas: 'Funciona correctamente', insumos: 'Grasa', repuestos: '', recibido_por: 'Persona de prueba', horometro: 4206 });
@@ -12,9 +12,11 @@ describe('reporte de servicio', () => {
   it.each(['OS-180', 'OS-"\\\n</style><script>alert(1)</script>'])('imprime el código %s en el margen sin permitir inyección de CSS o HTML', codigo => {
     const html = renderToStaticMarkup(<ServiceReport order={record({ codigo })} technicians={[]} />);
     const style = html.match(/<style>(.*?)<\/style>/s)?.[1] ?? '';
-    expect(style).toMatch(/^@page service-report \{ @top-right \{ content: "(?:\\[0-9a-f]+ )+"; \} \}$/);
-    const encoded = style.match(/content: "(.*?)"/s)?.[1] ?? '';
-    expect(encoded.replace(/\\([0-9a-f]+) /g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))).toBe(codigo);
+    expect(style).toMatch(/^@page service-report \{ @top-right \{ content: "(?:\\[0-9a-f]+ )+"; \} @bottom-left \{ content: "(?:\\[0-9a-f]+ )+"; \} \}$/);
+    const [code, contact] = Array.from(style.matchAll(/content: "(.*?)"/gs), match => match[1].replace(/\\([0-9a-f]+) /g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16))));
+    expect(code).toBe(codigo);
+    // El pie de cada hoja sale de `company`: cambiar el teléfono ahí cambia el PDF.
+    expect(contact).toBe(`${company.web} · ${company.email} · Tel. ${company.phone}`);
     expect(html.match(/<style>/g)).toHaveLength(1);
     expect(html).not.toContain('<script>');
   });
@@ -23,6 +25,8 @@ describe('reporte de servicio', () => {
     expect(serviceHours(order)).toBe('10:30 a 11:45 · 1 h 15 min');
     expect(serviceHours(record({ fecha: '2026-10-13T16:30:00.000Z' }))).toBe('Desde las 10:30');
     expect(serviceHours(record({ fecha: '2026-10-13T16:30:00.000Z', fecha_fin: '2026-10-14T15:00:00.000Z' }))).toBe('10:30 a 14/10/2026 09:00 · 22 h 30 min');
+    // Con segundos (inicio registrado por el servidor), la duración cuadra con las horas que se leen.
+    expect(serviceHours(record({ fecha: '2026-10-13T16:34:50.000Z', fecha_fin: '2026-10-13T16:37:00.000Z' }))).toBe('10:34 a 10:37 · 3 min');
     expect(serviceHours(record({ fecha_programada: '2026-10-13', hora_programada: '08:30' }))).toBe('Programado a las 08:30');
     expect(serviceHours(record({}))).toBe('Sin hora registrada');
   });
@@ -69,6 +73,16 @@ describe('reporte de servicio', () => {
     const client = renderToStaticMarkup(<ServiceReport order={order} equipment={equipment} technicians={[]} signature={{ ...signature, capturedBy: undefined }} />);
     expect(client).toContain('alt="Firma de Persona que firmó"');
     expect(client).not.toContain('sr-sign-capture');
+    expect(html).not.toContain('sr-sign-revised');
+  });
+
+  it('advierte en el reporte si la firma es anterior a una corrección o si no se pudo leer', () => {
+    const revised = { id: 'sig-1', signer: 'Persona que firmó', signedAt: Date.parse('2026-10-13T17:50:00.000Z'), revisedAt: Date.parse('2026-10-15T15:15:00.000Z') };
+    expect(renderToStaticMarkup(<ServiceReport order={order} technicians={technicians} signature={revised} />)).toContain('<small class="sr-sign-revised">Firmado antes de la corrección del reporte del 15/10/2026 a las 09:15</small>');
+    const unavailable = renderToStaticMarkup(<ServiceReport order={order} technicians={technicians} signature={null} signatureUnavailable />);
+    expect(unavailable).toContain('class="sr-line"');
+    expect(unavailable).toContain('Firma digital no disponible al generar este reporte.');
+    expect(renderToStaticMarkup(<ServiceReport order={order} technicians={technicians} signature={null} />)).not.toContain('Firma digital no disponible');
   });
 
   it('sin acceso a los nombres de los técnicos (cliente) no dice que la orden no tiene técnico', () => {

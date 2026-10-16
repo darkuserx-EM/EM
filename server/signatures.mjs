@@ -42,10 +42,30 @@ export async function decodeSignature(body,signer) {
   return file;
 }
 
-/** @param {{id:string,name:string,created_at:number|string,captured_by?:string|null}} row @param {import('../src/domain/model.js').Actor} actor */
-function present(row,actor) {
+const full = () => fail(400,`La orden admite hasta ${SIGNATURES_PER_ORDER} firmas. Pide a coordinación que revise la orden.`);
+// Lo que el reporte muestra como trabajo y conformidad: si una corrección posterior lo cambia, la firma lo advierte.
+const reportFields = ['sintoma','diagnostico','causa_confirmada','trabajo_realizado','pruebas_realizadas','resultado_pruebas','insumos','repuestos','recomendaciones','notas_seguridad','recibido_por'];
+
+/** @param {{id:string,name:string,created_at:number|string,captured_by?:string|null}} row @param {import('../src/domain/model.js').Actor} actor @param {number} [revisedAt] */
+function present(row,actor,revisedAt) {
   // Quién la capturó es dato interno: el cliente ve quién firmó y cuándo.
-  return { id:row.id, signer:signerOf(row.name), signedAt:Number(row.created_at), ...(actor.rol === 'Cliente' ? {} : { capturedBy:row.captured_by || 'Usuario del portal' }) };
+  return { id:row.id, signer:signerOf(row.name), signedAt:Number(row.created_at), ...(revisedAt ? { revisedAt } : {}), ...(actor.rol === 'Cliente' ? {} : { capturedBy:row.captured_by || 'Usuario del portal' }) };
+}
+
+/**
+ * Última corrección o reapertura de la orden completada posterior a la firma que cambió el reporte, en milisegundos.
+ * Las ediciones antes del cierre forman parte de la misma atención; las de después ya no las vio quien firmó.
+ * @param {import('./contracts.js').SqlConnection} conn @param {import('../src/domain/model.js').EntityRecord} order @param {number} signedAt
+ */
+async function revisedAfter(conn,order,signedAt) {
+  /** @type {{action:string,created_at:string,payload:string}[]} */
+  const rows = await select(conn,"SELECT action,created_at,payload FROM em_audit_log WHERE entity='OrdenServicio' AND equipment_id=? AND action IN ('Corrección de orden completada','Reapertura de orden') AND created_at>? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.orden_id'))=? ORDER BY created_at DESC,id DESC LIMIT 50",[order.equipo_id,new Date(signedAt).toISOString(),order.id]);
+  const revision = rows.find(row => {
+    if (row.action === 'Reapertura de orden') return true;
+    const entry = JSON.parse(row.payload), before = JSON.parse(entry.version_anterior || '{}'), after = JSON.parse(entry.version_nueva || '{}');
+    return reportFields.some(key => (before[key] ?? '') !== (after[key] ?? ''));
+  });
+  return revision ? Date.parse(revision.created_at) : undefined;
 }
 
 /** @param {import('express').Express} app @param {{pool:import('mysql2/promise').Pool,files?:import('./file-storage.mjs').FileStore}} options */
@@ -56,11 +76,15 @@ export function registerSignatureRoutes(app,{pool,files:storage=localFiles}) {
     const rows = await select(conn,"SELECT a.id,a.name,a.created_at,u.name AS captured_by FROM em_attachments a LEFT JOIN em_users u ON u.id=a.uploaded_by WHERE a.order_id=? AND a.category='Firma' ORDER BY a.created_at DESC,a.id DESC LIMIT 1",[orderId]);
     return rows[0];
   };
+  /** Firma vigente de la orden, con la advertencia de una corrección posterior. @param {import('../src/domain/model.js').EntityRecord} order @param {import('../src/domain/model.js').Actor} actor */
+  const current = async (order,actor) => {
+    const row = await latest(pool,order.id);
+    return row ? present(row,actor,await revisedAfter(pool,order,Number(row.created_at))) : null;
+  };
   // Lectura: quien puede ver la orden (técnico asignado, administración, coordinación o el cliente si está compartida).
   app.get('/api/orders/:id/signature',/** @param {import('./http-contracts.js').PortalRequest} req @param {import('./http-contracts.js').PortalResponse<import('./http-contracts.js').SignatureReply>} res */ async (req,res) => {
     const order = permitted(await readOrder(pool,req.params.id),req.actor);
-    const row = await latest(pool,order.id);
-    res.json({ signature:row ? present(row,req.actor) : null });
+    res.json({ signature:await current(order,req.actor) });
   });
   // Escritura: mismas reglas que las evidencias. Orden abierta: técnico asignado o administración;
   // orden completada: solo administración o coordinación, con motivo en la bitácora.
@@ -72,8 +96,16 @@ export function registerSignatureRoutes(app,{pool,files:storage=localFiles}) {
     const signer = signerName(body.signer), file = await decodeSignature(body,signer);
     /** @type {import('./contracts.js').AttachmentMetadata[]} */
     const prior = await select(pool,'SELECT id,order_id,category,sha256 FROM em_attachments WHERE request_id=?',[file.requestId]);
-    if (prior.length && (prior[0].order_id !== initialOrder.id || prior[0].sha256 !== file.sha256 || prior[0].category !== 'Firma')) throw fail(409,'El identificador del envío ya pertenece a otro archivo.');
-    const stored = prior.length ? undefined : await storage.prepare(file.bytes,file.mime);
+    if (prior.length) {
+      // Reintento del mismo envío: devuelve la firma vigente sin bloquear la base ni volver a subir el archivo.
+      if (prior[0].order_id !== initialOrder.id || prior[0].sha256 !== file.sha256 || prior[0].category !== 'Firma') throw fail(409,'El identificador del envío ya pertenece a otro archivo.');
+      return res.json({ signature:await current(initialOrder,req.actor) });
+    }
+    // El cupo se revisa antes de subir el archivo a Drive: con la orden llena no queda un original sin registro.
+    /** @type {{n:number}[]} */
+    const total = await select(pool,"SELECT COUNT(*) AS n FROM em_attachments WHERE order_id=? AND category='Firma'",[initialOrder.id]);
+    if (Number(total[0].n) >= SIGNATURES_PER_ORDER) throw full();
+    const stored = await storage.prepare(file.bytes,file.mime);
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction(); await conn.query('SELECT id FROM em_meta WHERE id=1 FOR UPDATE');
@@ -81,15 +113,16 @@ export function registerSignatureRoutes(app,{pool,files:storage=localFiles}) {
       /** @type {import('./contracts.js').AttachmentMetadata[]} */
       const existing = await select(conn,'SELECT id,order_id,category,sha256 FROM em_attachments WHERE request_id=?',[file.requestId]);
       if (existing.length) {
-        // Reintento del mismo envío: devuelve la firma ya guardada, sin duplicarla.
+        // Dos envíos simultáneos del mismo intento: devuelve la firma ya guardada, sin duplicarla.
         if (existing[0].order_id !== order.id || existing[0].sha256 !== file.sha256 || existing[0].category !== 'Firma') throw fail(409,'El identificador del envío ya pertenece a otro archivo.');
-        await conn.commit(); const row = await latest(pool,order.id); return res.json({ signature:row ? present(row,req.actor) : null });
+        await conn.commit(); return res.json({ signature:await current(order,req.actor) });
       }
       /** @type {{n:number}[]} */
       const count = await select(conn,"SELECT COUNT(*) AS n FROM em_attachments WHERE order_id=? AND category='Firma'",[order.id]);
-      if (Number(count[0].n) >= SIGNATURES_PER_ORDER) throw fail(400,`La orden admite hasta ${SIGNATURES_PER_ORDER} firmas. Pide a coordinación que revise la orden.`);
-      const id = randomUUID(), created = Date.now(), prepared = stored ?? await storage.prepare(file.bytes,file.mime);
-      await conn.execute('INSERT INTO em_attachments (id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content,storage_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',[id,order.id,file.requestId,'Firma',file.name,file.mime,file.bytes.length,file.sha256,req.actor.id,created,prepared.content,prepared.storage_key]);
+      if (Number(count[0].n) >= SIGNATURES_PER_ORDER) throw full();
+      // Ninguna petición a Google ocurre aquí: el archivo ya se preparó antes de bloquear em_meta.
+      const id = randomUUID(), created = Date.now();
+      await conn.execute('INSERT INTO em_attachments (id,order_id,request_id,category,name,mime,size,sha256,uploaded_by,created_at,content,storage_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',[id,order.id,file.requestId,'Firma',file.name,file.mime,file.bytes.length,file.sha256,req.actor.id,created,stored.content,stored.storage_key]);
       await auditEvidence(conn,req.actor,order,id,file.name,body.reason,actions);
       await conn.commit();
       res.status(201).json({ signature:present({ id, name:file.name, created_at:created, captured_by:req.actor.nombre },req.actor) });
