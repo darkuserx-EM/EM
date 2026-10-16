@@ -173,14 +173,33 @@ test('historical report import is administrator-only, revision-checked and addit
   const clientId=before.entities.Cliente[0].id;
   const payload={cliente_id:clientId,sede_id:'site-hist',equipos:[{serie:'HIST-SERIAL-1',id_interno_cliente:'FC#1',marca:'Yale',modelo:'FC4500'}],reportes:[{origen_id:'source-1',orden_origen:'21',serie:'HIST-SERIAL-1',fecha:'2025-02-08T20:00:00.000Z',fecha_fin:'',estado:'Completado',prioridad:'Programada',tipo:'Correctivo',diagnostico:'Hidráulica',trabajo:'Cambio de manguera',notas_seguridad:'',tecnicos:'Técnico',recibido_por:'Contacto',inspector:'inspector@example.com',horometro:100,odometro_millas:125,ubicacion:'Ubicación enviada por el navegador',insumos_origen:'',repuestos_origen:'',adjuntos_referencias:'Foto Antes: antes.jpg',firma_cliente_referencia:'',checklist_origen:'',bocina_origen:'',mes_origen:'febrero',semana_origen:'Semana 6',dia_origen:'sábado',ubicacion_coordenadas:'14.6, -90.4'}]};
   const response=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload,revision:before.revision})});
-  assert.equal(response.status,200);const saved=await response.json();assert.deepEqual(saved.result,{equipos:1,reportes:1,lecturas:1,repetidos:0});
+  assert.equal(response.status,200);const saved=await response.json();assert.deepEqual(saved.result,{equipos:1,reportes:1,lecturas:1,lecturas_repetidas:0,repetidos:0});
   const after=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
   assert.equal(after.entities.Equipo.length,before.entities.Equipo.length+1);assert.equal(after.entities.OrdenServicio.length,before.entities.OrdenServicio.length+1);assert.equal(after.entities.LecturaHorometro.length,before.entities.LecturaHorometro.length+1);
   assert.equal(after.entities.OrdenServicio.at(-1).importado,true);assert.equal(after.entities.OrdenServicio.at(-1).origen_id,'source-1');assert.equal(after.entities.LecturaHorometro.at(-1).valor,100);
   assert.equal(after.entities.OrdenServicio.at(-1).ubicacion,'Planta de prueba');assert.equal(after.entities.LecturaHorometro.at(-1).ubicacion,'Planta de prueba');
   assert.equal(after.entities.Equipo.at(-1).marca,'Yale');assert.equal(after.entities.Equipo.at(-1).tipo,'Clasificación pendiente');assert.equal(after.entities.Equipo.at(-1).sede_id,'site-hist');
   const repeated=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload:{...payload,equipos:[]},revision:after.revision})});
-  assert.equal(repeated.status,200);assert.deepEqual((await repeated.json()).result,{equipos:0,reportes:0,lecturas:0,repetidos:1});
+  assert.equal(repeated.status,200);assert.deepEqual((await repeated.json()).result,{equipos:0,reportes:0,lecturas:0,lecturas_repetidas:0,repetidos:1});
+});
+test('historical report import keeps existing hour-meter readings without duplicating them',async t=>{
+  const intake={id:'intake-hist',codigo:'HOR-901',creado_por:'test-admin',fecha_creacion:'2026-10-01T15:00:00Z',actualizado_por:'test-admin',fecha_actualizacion:'2026-10-01T15:00:00Z',equipo_id:'',cliente_id:'',fecha:'2026-10-01T15:00:00Z',valor:4321,origen:'Ingreso de equipo',orden_id:'',registrado_por:'Prueba',es_estimado:false};
+  const request=await fixture(t,{...coordinator,role:'Administrador'},db=>{const owned=db.entities.Equipo.find(row=>row.cliente_id);intake.equipo_id=owned.id;intake.cliente_id=owned.cliente_id;db.entities.LecturaHorometro.push(intake);});
+  const before=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  const machine=before.entities.Equipo.find(row=>row.id===intake.equipo_id);assert.ok(machine.cliente_id);
+  const blank={fecha_fin:'',estado:'Completado',prioridad:'',tipo:'Preventivo',diagnostico:'',trabajo:'',notas_seguridad:'',tecnicos:'',recibido_por:'',inspector:'',odometro_millas:null,insumos_origen:'',repuestos_origen:'',adjuntos_referencias:'',firma_cliente_referencia:'',checklist_origen:'',bocina_origen:'',mes_origen:'',semana_origen:'',dia_origen:'',ubicacion_coordenadas:''};
+  const payload={cliente_id:machine.cliente_id,sede_id:'',equipos:[],reportes:[{...blank,origen_id:'R-1',orden_origen:'R-1',serie:machine.serie,fecha:'2025-08-01T15:00:00.000Z',horometro:4200},{...blank,origen_id:'R-2',orden_origen:'R-2',serie:machine.serie,fecha:'2025-08-01T21:00:00.000Z',horometro:4200},{...blank,origen_id:'R-3',orden_origen:'R-3',serie:machine.serie,fecha:'2025-09-15T15:00:00.000Z',horometro:4321}]};
+  const first=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload,revision:before.revision})});
+  assert.equal(first.status,200);assert.deepEqual((await first.json()).result,{equipos:0,reportes:3,lecturas:1,lecturas_repetidas:2,repetidos:0});
+  const after=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  assert.equal(after.entities.LecturaHorometro.length,before.entities.LecturaHorometro.length+1);
+  assert.deepEqual(after.entities.LecturaHorometro.find(row=>row.id==='intake-hist'),before.entities.LecturaHorometro.find(row=>row.id==='intake-hist'));
+  assert.equal(after.entities.LecturaHorometro.filter(row=>row.equipo_id===machine.id&&row.valor===4321).length,1);
+  assert.match(after.entities.Bitacora.find(row=>row.accion==='Importación histórica').detalle,/2 lecturas ya registradas omitidos/);
+  const second=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload,revision:after.revision})});
+  assert.equal(second.status,200);assert.deepEqual((await second.json()).result,{equipos:0,reportes:0,lecturas:0,lecturas_repetidas:0,repetidos:3});
+  const again=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  assert.equal(again.entities.LecturaHorometro.length,after.entities.LecturaHorometro.length);assert.equal(again.entities.OrdenServicio.length,after.entities.OrdenServicio.length);
 });
 test('historical report import rejects stale revision and non-admin users',async t=>{
   const request=await fixture(t,{...coordinator,role:'Administrador'});const before=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();

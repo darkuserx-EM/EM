@@ -22,4 +22,9 @@ describe('importación de historial', () => {
     expect(html).not.toContain('Los reportes se vincularán');
     expect(html).toMatch(/<button class="button" disabled="">Seleccionar archivo<\/button>/);
   });
+  it('ofrece la plantilla Excel y acepta .xlsx además del archivo de AppSheet', () => {
+    const html = renderToStaticMarkup(<HistoricalReportsImport onClose={() => {}} />);
+    expect(html).toMatch(/<a class="button" href="\/templates\/Plantilla-historial-reportes-EMSA\.xlsx" download="">.*Descargar plantilla<\/a>/);
+    expect(html).toContain('accept=".xlsx,.txt,.tsv,.csv,');
+  });
 });

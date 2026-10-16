@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { EntityRecord } from '../domain/model';
+import { repeatsReading } from '../domain/equipment-history';
 
 export interface HistoricalEquipmentInput {
   serie: string;
@@ -51,23 +52,44 @@ const number = (value: string): number | null => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 };
 
+/** Encabezados que lee el importador, en el orden de la plantilla Excel. */
+export const historicalReportColumns = ['ID', 'Orden de Servicio', 'Date/Time', 'Hora_Final', 'Equipo', 'ID_Equipo', 'Marca', 'Modelo', 'Horometro (H1)', 'Odometro (H3)', 'Prioridad', 'Estado del Servicio', 'Tipo de Trabajo', 'Falla', 'Descripción del Trabajo', 'Notas de Seguridad', 'Técnico', 'Nombre de Cliente', 'Inspector', 'Insumos', 'Repuestos', 'Location', 'Mes', 'Semana', 'Día', 'Adjuntos', 'Foto Antes', 'Foto Despues', 'Checklist', 'Firma Cliente', 'Bocina'] as const;
+export const historicalRequiredColumns = ['ID', 'Orden de Servicio', 'Date/Time', 'Equipo', 'Marca', 'Modelo'] as const;
+export const historicalTemplatePath = '/templates/Plantilla-historial-reportes-EMSA.xlsx';
+const dateColumns = new Set(['Date/Time', 'Hora_Final']);
+
 function sourceDate(value: string) {
-  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/.exec(value);
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
   if (!match) throw new Error(`Fecha no reconocida: ${value || '(vacía)'}`);
-  const [, day, month, year, hour, minute, second] = match;
+  const [, day, month, year, hour, minute, second = '00'] = match;
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
   if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day) || Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59) throw new Error(`Fecha no válida: ${value}`);
   const local = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute}:${second}-06:00`;
   return new Date(local).toISOString();
 }
 
-export function parseHistoricalReports(textContent: string, clienteId: string, sedeId: string, existingEquipment: EntityRecord[], existingReports: EntityRecord[]) {
-  const workbook = XLSX.read(textContent, { type: 'string', FS: '\t' });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+// Excel guarda las fechas como número de serie sin zona horaria: se pasan a día/mes/año como en AppSheet.
+function excelDate(serial: number) {
+  const date = XLSX.SSF.parse_date_code(serial);
+  if (!date) return String(serial);
+  return `${date.d}/${date.m}/${date.y} ${date.H}:${String(date.M).padStart(2, '0')}:${String(Math.floor(date.S)).padStart(2, '0')}`;
+}
+
+function sourceRows(source: string | ArrayBuffer) {
+  const workbook = typeof source === 'string' ? XLSX.read(source, { type: 'string', FS: '\t' }) : XLSX.read(new Uint8Array(source), { type: 'array' });
+  const sheet = workbook.Sheets[workbook.SheetNames.includes('Historial') ? 'Historial' : workbook.SheetNames[0]];
   if (!sheet) throw new Error('No se encontró una tabla en el archivo.');
+  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1');
+  if (range.e.r > 10000 || range.e.c > 100) throw new Error('El rango del archivo es demasiado grande. Conserva solo las columnas y filas del historial.');
   // Formatted text preserves the source's Guatemala date order (DD/MM/YYYY).
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
-  const rows = raw.filter(row => text(row, 'ID') && text(row, 'Date/Time'));
+  if (typeof source === 'string') return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
+  return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: true })
+    .map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, dateColumns.has(key) && typeof value === 'number' ? excelDate(value) : value])));
+}
+
+/** Lee el TSV de AppSheet (texto) o la plantilla Excel (.xlsx, como ArrayBuffer). */
+export function parseHistoricalReports(source: string | ArrayBuffer, clienteId: string, sedeId: string, existingEquipment: EntityRecord[], existingReports: EntityRecord[], existingReadings: EntityRecord[] = []) {
+  const rows = sourceRows(source).filter(row => text(row, 'ID') && text(row, 'Date/Time'));
   if (!rows.length) throw new Error('No se encontraron reportes con ID y fecha.');
   if (rows.length > 2000) throw new Error('Esta importación admite hasta 2,000 reportes por archivo.');
   const sourceIds = new Set<string>(); const serials = new Map<string, HistoricalEquipmentInput>();
@@ -119,7 +141,25 @@ export function parseHistoricalReports(textContent: string, clienteId: string, s
   if (repeatedOrders.length) errors.push(`Las órdenes originales ya están registradas con otro ID: ${repeatedOrders.map(row => row.orden_origen).join(', ')}.`);
   const newReports = reports.filter(row => !duplicateReports.has(row.origen_id));
   const equipment = [...serials.values()].filter(row => !equipmentBySerial.has(row.serie.toLocaleLowerCase()));
-  return { payload: { cliente_id: clienteId, sede_id: sedeId, equipos: equipment, reportes: newReports } satisfies HistoricalReportsImport, errors, sourceRows: rows.length, repeatedReports: repeatedSource.length, newReportCount: newReports.length, newEquipmentCount: equipment.length };
+  // Misma regla que el servidor: no se agrega una lectura igual a otra conservada en el portal o anterior en este archivo.
+  const serialById = new Map(existingEquipment.map(row => [row.id, String(row.serie).toLocaleLowerCase()]));
+  const kept = new Map<string, Record<string, unknown>[]>();
+  const keptFor = (serial: string) => { const rows = kept.get(serial) ?? []; kept.set(serial, rows); return rows; };
+  for (const reading of existingReadings) { const serial = serialById.get(String(reading.equipo_id)); if (serial && serials.has(serial)) keptFor(serial).push(reading); }
+  let newReadingCount = 0; let repeatedReadings = 0;
+  for (const report of newReports) {
+    if (report.horometro === null) continue;
+    const reading = { fecha: report.fecha, valor: report.horometro, odometro_millas: report.odometro_millas, origen: 'Orden de servicio' };
+    const rows = keptFor(report.serie.toLocaleLowerCase());
+    if (rows.some(row => repeatsReading(row, reading))) repeatedReadings++;
+    else { rows.push(reading); newReadingCount++; }
+  }
+  return { payload: { cliente_id: clienteId, sede_id: sedeId, equipos: equipment, reportes: newReports } satisfies HistoricalReportsImport, errors, sourceRows: rows.length, repeatedReports: repeatedSource.length, newReportCount: newReports.length, newEquipmentCount: equipment.length, newReadingCount, repeatedReadings };
+}
+
+export function historicalReadingNotice(repeatedReadings: number) {
+  if (!repeatedReadings) return '';
+  return repeatedReadings === 1 ? 'Una lectura de horómetro ya está registrada para ese equipo y no se duplicará.' : `${repeatedReadings} lecturas de horómetro ya están registradas para esos equipos y no se duplicarán.`;
 }
 
 export function historicalStatusCounts(reports: HistoricalReportInput[]) {
