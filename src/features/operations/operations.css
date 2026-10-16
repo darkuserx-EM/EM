@@ -77,6 +77,8 @@
 /* Datos del equipo en cuadrícula con líneas, como una tabla */
 .sr-equipment { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-border); }
 .sr-equipment > div { padding: var(--space-2) var(--space-3); background: var(--color-surface); }
+/* Cinco datos: el último ocupa dos espacios, para que no quede un hueco en la cuadrícula. */
+.sr-equipment > div:last-child { grid-column: span 2; }
 /* Lo primero que busca el cliente: cómo quedó el equipo */
 .sr-result { margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border-left: 4px solid var(--color-accent); border-radius: var(--radius-sm); background: var(--color-accent-soft); }
 .sr-result h3 { margin-bottom: var(--space-1); color: var(--color-accent); }
@@ -93,13 +95,13 @@
 .sr-note p { font-size: var(--text-sm); line-height: var(--leading-normal); white-space: pre-wrap; overflow-wrap: anywhere; }
 .sr-warning { border-color: var(--color-warning-bg); background: var(--color-warning-bg); }
 .sr-warning h3 { color: var(--color-warning-text); }
-/* Conformidad: en papel, siempre, con las dos líneas para firmar. En pantalla, solo cuando quien recibe firmó en el portal:
- * su firma, nombre, fecha y hora (y, para el personal de EMSA, quién la capturó). */
+/* Conformidad de quien recibe: en papel, siempre (su firma o la línea para firmar a mano). En pantalla, solo cuando firmó en el portal:
+ * su firma, nombre, fecha y hora (y, para el personal de EMSA, quién la capturó). En una fila: la firma a la izquierda y los datos al lado. */
 .sr-sign { display: none; }
 .sr-signed { display: grid; gap: var(--space-2); margin-top: var(--space-4); }
-.sr-signed .sr-sign-tech { display: none; }
-.sr-signed > div { display: grid; gap: 2px; max-width: 360px; }
-.sr-signature { display: block; width: 100%; height: 80px; object-fit: contain; object-position: left bottom; margin-bottom: var(--space-1); border-bottom: 1px solid var(--color-text); }
+.sr-sign-receiver { display: grid; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); align-items: end; gap: var(--space-4); }
+.sr-sign-receiver > div { display: grid; gap: 2px; }
+.sr-signature { display: block; width: 100%; height: 80px; object-fit: contain; object-position: left bottom; border-bottom: 1px solid var(--color-text); }
 .sr-sign strong { font-size: var(--text-sm); }
 .sr-sign small { font-size: var(--text-xs); color: var(--color-text-muted); }
 .sr-footer { margin-top: var(--space-5); padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
@@ -111,6 +113,7 @@
   .sr-summary, .sr-equipment { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sr-detail > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .sr-materials { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+  .sr-sign-receiver { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 }
 .os-evidence-note { padding: 18px; border: 1px dashed var(--color-border-strong); background: var(--color-surface-subtle); border-radius: 9px; margin-top: 18px; color: var(--color-text-muted); }
 .os-evidence-note h3 { font-size: var(--text-md); color: var(--color-text); margin-bottom: 7px; }
@@ -197,12 +200,12 @@
   .sr-detail > div { padding: 6px 0; }
   /* Mantener los avisos completos y junto al cierre del reporte, sin una hoja solo para el pie. */
   .sr-footer { margin-top: var(--space-3); padding-top: var(--space-2); break-before: avoid; break-inside: avoid; }
-  .sr-sign { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 16mm; margin-top: 6mm; }
-  .sr-sign > div { display: grid; gap: 2px; max-width: none; }
-  .sr-line { display: block; height: 11mm; margin-bottom: var(--space-1); border-bottom: 1px solid var(--color-text); }
+  /* Una sola fila baja: así un reporte habitual entra en una hoja con la firma y el aviso. */
+  .sr-sign { display: block; margin-top: 4mm; }
+  .sr-sign-receiver { grid-template-columns: 75mm minmax(0, 1fr); }
+  .sr-line { display: block; height: 10mm; border-bottom: 1px solid var(--color-text); }
   /* La firma digital ocupa el lugar de la línea, un poco más alta para que se lea. */
-  .sr-signed .sr-sign-tech { display: grid; }
-  .sr-signature { height: 15mm; }
+  .sr-signature { height: 13mm; }
   .sr-sign-title, .sr-sign-capture { display: none; }
   /* Anexo: las fotos de evidencia (Antes y Después) se imprimen después del reporte; controles, videos y documentos no. */
   body:has(.os-print-report) .os-detail-modal > .attachment-panel:has(img) { display: block !important; page: service-report; break-before: page; margin-top: 0; padding: 0; border: 0; }

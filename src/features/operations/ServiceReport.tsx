@@ -47,7 +47,7 @@ export function ServiceReport({ order, equipment, client, site, technicians, sig
   const assigned = orderTechnicians(order); const names = assigned.map(id => text(technicians.find(row => row.id === id)?.nombre));
   // Sin acceso a los nombres (por ejemplo, el cliente), el reporte no dice «sin técnico» si la orden sí lo tiene.
   const [lead, ...support] = names.length && names.every(Boolean) ? names : [text(order.tecnico) || (assigned.length ? `Técnico de ${company.name}` : 'Sin técnico asignado')];
-  const detail = [['Síntoma o solicitud', text(order.sintoma) || text(order.motivo)], ['Diagnóstico', text(order.diagnostico)], ['Causa confirmada', text(order.causa_confirmada)], ['Trabajo realizado', text(order.trabajo_realizado) || text(order.trabajo)], ['Pruebas realizadas', text(order.pruebas_realizadas)]].filter(([, value]) => value);
+  const detail = [['Solicitud', text(order.sintoma) || text(order.motivo)], ['Diagnóstico', text(order.diagnostico)], ['Causa confirmada', text(order.causa_confirmada)], ['Trabajo realizado', text(order.trabajo_realizado) || text(order.trabajo)], ['Pruebas realizadas', text(order.pruebas_realizadas)]].filter(([, value]) => value);
   const result = text(order.resultado_pruebas), supplies = text(order.insumos) || text(order.insumos_origen), parts = text(order.repuestos) || text(order.repuestos_origen);
   const recommendations = text(order.recomendaciones), safety = order.importado ? '' : text(order.notas_seguridad);
   return <article className="os-print-report service-report">
@@ -70,7 +70,6 @@ export function ServiceReport({ order, equipment, client, site, technicians, sig
         <Field label="Marca y modelo">{equipment ? `${text(equipment.marca)} ${text(equipment.modelo)}`.trim() || 'Sin dato' : 'Equipo no disponible'}</Field>
         <Field label="Serie">{text(equipment?.serie) || 'Sin dato'}</Field>
         <Field label="ID del cliente">{text(equipment?.id_interno_cliente) || 'Sin ID'}</Field>
-        <Field label="Código EMSA">{text(equipment?.codigo) || 'Sin código'}</Field>
         <Field label="Horómetro">{reading(order.horometro, 'h')}</Field>
         <Field label="Odómetro">{reading(order.odometro_millas, 'millas')}</Field>
       </dl>
@@ -86,9 +85,9 @@ export function ServiceReport({ order, equipment, client, site, technicians, sig
     <ImportedReportDetails report={order} />
     {operational && <section className={signature ? 'sr-sign sr-signed' : 'sr-sign'} aria-labelledby="sr-conformidad">
       <h3 id="sr-conformidad" className="sr-sign-title">Conformidad del servicio</h3>
-      <div className="sr-sign-tech"><span className="sr-line" /><strong>{lead}</strong><small>Técnico responsable · firma</small></div>
-      {signature ? <div><img className="sr-signature" src={signatureUrl(signature)} alt={`Firma de ${signature.signer}`} /><strong>{signature.signer}</strong><small>Recibido por · {signedLabel(signature).toLocaleLowerCase('es')}</small>{signature.capturedBy && <small className="sr-sign-capture">Capturada en el portal por {signature.capturedBy}</small>}</div>
-        : <div><span className="sr-line" /><strong>{text(order.recibido_por) || 'Nombre de quien recibe'}</strong><small>Recibido por · firma</small></div>}
+      {/* Solo firma quien recibe: el técnico queda identificado por su usuario, el historial de la orden y el resumen. */}
+      {signature ? <div className="sr-sign-receiver"><img className="sr-signature" src={signatureUrl(signature)} alt={`Firma de ${signature.signer}`} /><div><strong>{signature.signer}</strong><small>Recibido por · {signedLabel(signature).toLocaleLowerCase('es')}</small>{signature.capturedBy && <small className="sr-sign-capture">Capturada en el portal por {signature.capturedBy}</small>}</div></div>
+        : <div className="sr-sign-receiver"><span className="sr-line" /><div><strong>{text(order.recibido_por) || 'Nombre de quien recibe'}</strong><small>Recibido por · firma</small></div></div>}
     </section>}
     <footer className="sr-footer">
       {operational && <p>El cierre del servicio no reemplaza la revisión del estado operativo ni de los hallazgos de seguridad del equipo.</p>}

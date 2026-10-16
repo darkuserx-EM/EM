@@ -166,12 +166,12 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
 - **Orden de lectura:**
   1. encabezado con el logotipo, el código y el estado;
   2. resumen: cliente, sede, tipo, fecha, horario con duración y técnicos con su rol;
-  3. equipo en cuadrícula: marca y modelo, serie, ID del cliente, código EMSA, horómetro y odómetro;
+  3. equipo en cuadrícula: marca y modelo, serie, ID del cliente, horómetro y odómetro. El código EMSA no va: es interno y el personal lo ve en la ficha del equipo;
   4. **resultado** destacado;
-  5. detalle del trabajo, con la etiqueta a la izquierda;
+  5. detalle del trabajo, con la etiqueta a la izquierda («Solicitud», «Diagnóstico», «Causa confirmada», «Trabajo realizado» y «Pruebas realizadas»);
   6. materiales: «Ninguno registrado» si no hay;
   7. recomendaciones y seguridad, solo si tienen texto;
-  8. conformidad: en papel, siempre, con las dos firmas; en pantalla, solo cuando quien recibe firmó en el portal;
+  8. conformidad de quien recibe: en papel, siempre; en pantalla, solo cuando firmó en el portal;
   9. aviso de cierre.
 - **Etiquetas para el cliente:** «Horómetro» y «Odómetro», sin «H1» ni «H3», que son nombres internos de AppSheet.
 - **Papel:** página con nombre `service-report`, tamaño carta, 16 × 14 mm de margen.
@@ -179,10 +179,10 @@ En `base.css`, los colores de `.button` (y sus variantes `button-dark`, `button-
   - Al guardar con una impresora PDF del sistema, seleccionar también papel Carta (216 × 279 mm): el controlador puede reemplazar el tamaño indicado por la página.
   - El pie del reporte conserva sus párrafos juntos y unidos al bloque anterior. Si no cabe el cierre, se mueve completo con las firmas; no se agrega una hoja solo para el aviso o la fecha de generación.
   - `print-color-adjust: exact` conserva los fondos del resultado y de la cuadrícula del equipo, aunque «Gráficos de fondo» esté apagado.
-- **Firmas:** dos líneas para firmar a mano, una del técnico responsable y otra de quien recibe, con sus nombres.
-  - **Firma digital de quien recibe** (prop `signature` de `ServiceReport`): la imagen ocupa el lugar de la línea de «Recibido por», con el nombre de quien firmó y «firmado el 15/10/2026 a las 10:42». En papel mide 15 mm de alto y las dos columnas se alinean abajo. En pantalla aparece el apartado «Conformidad del servicio» solo con esa firma (la línea del técnico no tiene sentido en pantalla), también en el portal del cliente.
+- **Firma:** solo firma quien recibe. El técnico no tiene línea para firmar: lo identifican su usuario del portal, el historial de la orden y el resumen («Técnicos»). Va en una fila baja: la firma (o la línea para firmar a mano, de 10 mm) a la izquierda, con 75 mm de ancho en papel, y al lado el nombre con «Recibido por». En el teléfono, una debajo del otro.
+  - **Firma digital de quien recibe** (prop `signature` de `ServiceReport`): la imagen ocupa el lugar de la línea, con el nombre de quien firmó y «firmado el 15/10/2026 a las 10:42». En papel mide 13 mm de alto. En pantalla aparece el apartado «Conformidad del servicio» solo cuando hay firma, también en el portal del cliente.
   - «Capturada en el portal por …» solo se ve en pantalla y solo para el personal de EMSA: el servidor no envía ese dato al cliente y no se imprime.
-  - Sin firma digital, el reporte queda como antes: líneas para firmar a mano, solo en papel.
+  - Sin firma digital: la línea para firmar a mano con el nombre de «Recibido por», solo en papel.
 - **Recuadro para firmar** (`SignaturePad` y `ReceiverSignature` en `src/features/attachments`, estilos en `operations.css`):
   - lienzo de 200 px de alto (180 px en el teléfono) con borde punteado `--color-border-strong` (3.14:1) y la guía «Firma aquí»; `touch-action: none` evita que la página se mueva mientras se firma;
   - la tinta toma el `color` del lienzo (`--color-text`), sin colores fijos en el código;

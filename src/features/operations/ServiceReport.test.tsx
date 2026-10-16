@@ -30,10 +30,14 @@ describe('reporte de servicio', () => {
   it('ordena la información para el cliente: resumen, equipo, resultado, detalle, materiales y firmas', () => {
     const html = renderToStaticMarkup(<ServiceReport order={order} equipment={equipment} technicians={technicians} />);
     expect(html).toContain('<h2>OS-180</h2>');
-    const order_ = ['Expertos en Montacargas, S.A.', 'Técnico Uno, responsable\nTécnico Dos, apoyo', 'UN01', 'TCE-007', '4,206 h', 'Funciona correctamente', 'Ajuste de cadenas', 'Ninguno registrado', 'Persona de prueba'].map(text => html.indexOf(text));
+    const order_ = ['Expertos en Montacargas, S.A.', 'Técnico Uno, responsable\nTécnico Dos, apoyo', 'UN01', '4,206 h', 'Funciona correctamente', 'Ajuste de cadenas', 'Ninguno registrado', 'Persona de prueba'].map(text => html.indexOf(text));
     expect(order_.every(index => index > -1)).toBe(true);
     expect([...order_].sort((a, b) => a - b)).toEqual(order_);
     expect(html).toContain('<dt>Horómetro</dt>');
+    // El código EMSA es interno: no va en el reporte del cliente ni en el PDF.
+    expect(html).not.toMatch(/TCE-007|Código EMSA/);
+    expect(html).toContain('<dt>Solicitud</dt><dd>Cadena floja</dd>');
+    expect(html).not.toContain('Síntoma');
     expect(html).not.toMatch(/Horómetro H1|Odómetro H3/);
   });
 
@@ -44,11 +48,12 @@ describe('reporte de servicio', () => {
     expect(html).toContain('Equipo no disponible');
   });
 
-  it('sin firma digital, las dos líneas para firmar a mano solo salen en papel', () => {
+  it('sin firma digital, solo la línea de quien recibe sale en papel; el técnico no firma', () => {
     const html = renderToStaticMarkup(<ServiceReport order={order} equipment={equipment} technicians={technicians} signature={null} />);
     expect(html).toContain('<section class="sr-sign" aria-labelledby="sr-conformidad">');
-    expect(html.match(/class="sr-line"/g)).toHaveLength(2);
-    expect(html).toContain('Recibido por · firma');
+    expect(html.match(/class="sr-line"/g)).toHaveLength(1);
+    expect(html).toContain('<div class="sr-sign-receiver"><span class="sr-line"></span><div><strong>Persona de prueba</strong><small>Recibido por · firma</small></div></div>');
+    expect(html).not.toContain('Técnico responsable · firma');
     expect(html).not.toContain('<img');
   });
 
@@ -56,9 +61,9 @@ describe('reporte de servicio', () => {
     const signature = { id: 'sig-1', signer: 'Persona que firmó', signedAt: Date.parse('2026-10-13T17:50:00.000Z'), capturedBy: 'Técnico Uno' };
     const html = renderToStaticMarkup(<ServiceReport order={order} equipment={equipment} technicians={technicians} signature={signature} />);
     expect(html).toContain('<section class="sr-sign sr-signed" aria-labelledby="sr-conformidad"><h3 id="sr-conformidad" class="sr-sign-title">Conformidad del servicio</h3>');
-    expect(html.match(/class="sr-line"/g)).toHaveLength(1);
-    expect(html).toContain('<div class="sr-sign-tech"><span class="sr-line"></span><strong>Técnico Uno</strong>');
-    expect(html).toContain('<img class="sr-signature" src="/api/attachments/sig-1/file" alt="Firma de Persona que firmó"/><strong>Persona que firmó</strong><small>Recibido por · firmado el 13/10/2026 a las 11:50</small>');
+    expect(html).not.toContain('class="sr-line"');
+    expect(html).not.toContain('Técnico responsable · firma');
+    expect(html).toContain('<div class="sr-sign-receiver"><img class="sr-signature" src="/api/attachments/sig-1/file" alt="Firma de Persona que firmó"/><div><strong>Persona que firmó</strong><small>Recibido por · firmado el 13/10/2026 a las 11:50</small>');
     expect(html).toContain('<small class="sr-sign-capture">Capturada en el portal por Técnico Uno</small>');
     // El servidor no envía al cliente quién capturó la firma; el reporte no inventa ese dato.
     const client = renderToStaticMarkup(<ServiceReport order={order} equipment={equipment} technicians={[]} signature={{ ...signature, capturedBy: undefined }} />);
