@@ -49,6 +49,7 @@ function poolFor(user, prepare = () => {}) {
         return [row?[{payload:JSON.stringify(row)}]:[]];
       }
       if(sql.startsWith('INSERT INTO em_audit_index')) return [{}];
+      if(sql.startsWith('DELETE FROM em_records WHERE entity=? AND id IN')) {const [entity,...ids]=args;db.entities[entity]=db.entities[entity].filter(row=>!ids.includes(row.id));return [{}];}
       if(sql.startsWith('INSERT INTO em_records')) {
         for(let i=0;i<args.length;i+=3) {
           const [entity,id,payload]=args.slice(i,i+3); const row=JSON.parse(payload); const index=db.entities[entity].findIndex(item=>item.id===id);
@@ -200,6 +201,30 @@ test('historical report import keeps existing hour-meter readings without duplic
   assert.equal(second.status,200);assert.deepEqual((await second.json()).result,{equipos:0,reportes:0,lecturas:0,lecturas_repetidas:0,repetidos:3});
   const again=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
   assert.equal(again.entities.LecturaHorometro.length,after.entities.LecturaHorometro.length);assert.equal(again.entities.OrdenServicio.length,after.entities.OrdenServicio.length);
+});
+test('historical reading cleanup removes only the reviewed duplicates and is administrator-only',async t=>{
+  const stamp={creado_por:'test-admin',fecha_creacion:'2026-01-01T12:00:00Z',actualizado_por:'test-admin',fecha_actualizacion:'2026-01-01T12:00:00Z'};
+  let machine;
+  const prepare=db=>{
+    machine=db.entities.Equipo.find(row=>row.cliente_id);
+    const order=(id,fecha,horometro)=>({id,codigo:`OS-H-${id}`,...stamp,equipo_id:machine.id,cliente_id:machine.cliente_id,tecnico_id:'',tecnico:'',fecha,fecha_fin:'',tipo:'Preventivo',estado:'Completado',motivo:'Preventivo',diagnostico:'',trabajo:'',prioridad:'',horometro,ubicacion:'',recibido_por:'',inspector:'',importado:true,origen_id:id,orden_origen:id});
+    const reading=(id,orderId,fecha,valor,extra={})=>({id,codigo:`HOR-${id}`,...stamp,equipo_id:machine.id,cliente_id:machine.cliente_id,fecha,valor,origen:'Orden de servicio',orden_id:orderId,registrado_por:'Importación histórica AppSheet',ubicacion:'',es_estimado:false,...extra});
+    db.entities.OrdenServicio.push(order('H-1','2025-07-01T15:00:00.000Z',4100),order('H-2','2025-07-01T21:00:00.000Z',4100),order('H-3','2025-08-01T15:00:00.000Z',8059));
+    db.entities.LecturaHorometro.push(reading('kept-1','','2025-07-01T23:00:00.000Z',4100,{origen:'Lectura manual',registrado_por:'Administración'}),reading('dup-1','H-1','2025-07-01T15:00:00.000Z',4100),reading('dup-2','H-2','2025-07-01T21:00:00.000Z',4100),reading('odd-3','H-3','2025-08-01T15:00:00.000Z',8059));
+  };
+  const request=await fixture(t,{...coordinator,role:'Administrador'},prepare);
+  const before=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  const clean=input=>request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'cleanHistoricalReadings',input:{cliente_id:machine.cliente_id,...input},revision:before.revision})});
+  assert.equal((await clean({excluir:[],lecturas:['dup-1','kept-1']})).status,400);
+  const response=await clean({excluir:['H-3'],lecturas:['dup-1','dup-2','odd-3']});
+  assert.equal(response.status,200);assert.deepEqual((await response.json()).result,{eliminadas:3});
+  const after=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  assert.deepEqual(after.entities.LecturaHorometro.map(row=>row.id).filter(id=>['kept-1','dup-1','dup-2','odd-3'].includes(id)),['kept-1']);
+  assert.equal(after.entities.LecturaHorometro.length,before.entities.LecturaHorometro.length-3);
+  assert.equal(after.entities.OrdenServicio.length,before.entities.OrdenServicio.length);
+  assert.match(after.entities.Bitacora.find(row=>row.accion==='Depuración de lecturas').detalle,/3 lecturas de la importación histórica eliminadas .*2 repetían una lectura conservada, 0 repetían otra importada y 1 eran de reportes excluidos \(órdenes H-3\)/);
+  const clientRequest=await fixture(t,client);
+  assert.equal((await clientRequest('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'cleanHistoricalReadings',input:{cliente_id:'client-1',excluir:[],lecturas:['x']},revision:0})})).status,403);
 });
 test('historical report import rejects stale revision and non-admin users',async t=>{
   const request=await fixture(t,{...coordinator,role:'Administrador'});const before=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();

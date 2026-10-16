@@ -12,6 +12,7 @@ import { administrativeState, equipmentStatusChanges, equipmentStatusValues } fr
 import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-images';
 import { ValidationError } from '../domain/errors';
 import { repeatsReading } from '../domain/equipment-history';
+import { historicalReadingAuthor, planHistoricalReadingCleanup } from '../domain/historical-readings';
 import type { HistoricalReportsImport } from './historical-reports';
 import { enabledEquipment, validEquipmentGrant } from '../domain/technician-work';
 import { isOperationalEntity, prepareOperation, ticketsResolvedByOrder } from '../domain/operations';
@@ -345,7 +346,7 @@ export class LocalDataSource {
           id: crypto.randomUUID(), codigo: `HOR-H-${String(next.entities.LecturaHorometro.length + 1).padStart(4, '0')}`,
           creado_por: actor.id, fecha_creacion: now, actualizado_por: actor.id, fecha_actualizacion: now,
           equipo_id: equipment.id, cliente_id: client.id, fecha: input.fecha, valor: input.horometro,
-          origen: 'Orden de servicio', orden_id: row.id, registrado_por: 'Importación histórica AppSheet', ubicacion: location,
+          origen: 'Orden de servicio', orden_id: row.id, registrado_por: historicalReadingAuthor, ubicacion: location,
           ...(input.odometro_millas === null ? {} : { odometro_millas: input.odometro_millas }), es_estimado: false,
         };
         next.entities.LecturaHorometro.push(meter); kept.push(meter); addedReadings++;
@@ -357,6 +358,26 @@ export class LocalDataSource {
     this.audit(next, actor, 'Historial', 'Importación histórica', `${newEquipment} equipos, ${addedReports} reportes y ${addedReadings} lecturas agregados para ${client.nombre}; ${duplicateReports} reportes ya existentes y ${repeatedReadings} lecturas ya registradas omitidos. Valores de horómetro conservados como en origen.`);
     this.commit(next);
     return { equipos: newEquipment, reportes: addedReports, lecturas: addedReadings, lecturas_repetidas: repeatedReadings, repetidos: duplicateReports };
+  }
+  /** Elimina lecturas de la importación histórica que la revisión propuso (planHistoricalReadingCleanup); nunca otras. */
+  cleanHistoricalReadings(actor: Actor, input: { cliente_id: string; excluir: string[]; lecturas: string[] }, expectedRevision: number) {
+    assertAdmin(actor);
+    if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron desde la revisión. Vuelve a revisar las lecturas antes de eliminarlas.');
+    if (!input || !Array.isArray(input.excluir) || !Array.isArray(input.lecturas) || input.excluir.length > 200 || input.lecturas.length > 5000 || [...input.excluir, ...input.lecturas].some(value => typeof value !== 'string')) throw new ValidationError('La depuración no es válida.');
+    const next = structuredClone(this.database);
+    const client = next.entities.Cliente.find(row => row.id === input.cliente_id);
+    if (!client) throw new ValidationError('Selecciona un cliente existente.');
+    const requested = new Set(input.lecturas);
+    if (!requested.size) throw new ValidationError('No hay lecturas para eliminar.');
+    const plan = planHistoricalReadingCleanup(next.entities, client.id, input.excluir);
+    const removed = plan.filter(item => requested.has(item.reading.id));
+    if (removed.length !== requested.size) throw new ValidationError('Algunas lecturas ya no corresponden a la revisión. Vuelve a revisar antes de eliminar.');
+    next.entities.LecturaHorometro = next.entities.LecturaHorometro.filter(row => !requested.has(row.id));
+    const count = (reason: string) => removed.filter(item => item.reason === reason).length;
+    const excluded = [...new Set(removed.filter(item => item.reason === 'Reporte excluido').map(item => String(item.order.orden_origen)))];
+    this.audit(next, actor, 'LecturaHorometro', 'Depuración de lecturas', `${removed.length} lecturas de la importación histórica eliminadas para ${client.nombre}: ${count('Repite una lectura conservada')} repetían una lectura conservada, ${count('Repite otra lectura importada')} repetían otra importada y ${count('Reporte excluido')} eran de reportes excluidos${excluded.length ? ` (órdenes ${excluded.join(', ')})` : ''}. Códigos: ${removed.map(item => item.reading.codigo).join(', ')}`);
+    this.commit(next);
+    return { eliminadas: removed.length };
   }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.database); }
   async backup(actor: Actor) { return this.snapshot(actor); }

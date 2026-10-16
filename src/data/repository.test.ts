@@ -98,6 +98,32 @@ describe('importación aditiva de equipos e historial', () => {
     expect(source.importHistoricalReports(admin, payload, source.getRevision())).toEqual({ equipos: 0, reportes: 0, lecturas: 0, lecturas_repetidas: 0, repetidos: 4 });
     expect(source.snapshot(admin).entities.LecturaHorometro).toHaveLength(after.entities.LecturaHorometro.length);
   });
+  it('depura las lecturas que la importación anterior repitió, solo con la revisión confirmada', async () => {
+    const { source } = fixture(); const client = source.snapshot(admin).entities.Cliente[0];
+    const machine = await source.repository('Equipo', admin).create({ marca: 'Yale', modelo: 'ERP 050', serie: 'SERIE-DEPURAR-1', tipo: 'Contrabalanceado eléctrico', propiedad: 'De cliente', estado: 'Disponible', cliente_id: client.id, horometro: 1500 });
+    const blank = { fecha_fin: '', estado: 'Completado', prioridad: '', tipo: 'Preventivo', diagnostico: '', trabajo: '', notas_seguridad: '', tecnicos: '', recibido_por: '', inspector: '', odometro_millas: null, insumos_origen: '', repuestos_origen: '', adjuntos_referencias: '', firma_cliente_referencia: '', checklist_origen: '', bocina_origen: '', mes_origen: '', semana_origen: '', dia_origen: '', ubicacion_coordenadas: '' };
+    const report = (id: string, fecha: string, horometro: number) => ({ ...blank, origen_id: id, orden_origen: id, serie: 'SERIE-DEPURAR-1', fecha, horometro });
+    source.importHistoricalReports(admin, { cliente_id: client.id, sede_id: '', equipos: [], reportes: [report('D-1', '2025-05-01T15:00:00.000Z', 1400), report('D-2', '2025-06-01T15:00:00.000Z', 1500), report('D-3', '2025-05-01T22:00:00.000Z', 1400)] }, source.getRevision());
+    const clean = source.snapshot(admin);
+    // Lo que dejaba el importador publicado antes: una lectura por reporte, aunque repitiera otra.
+    const legacy = structuredClone(clean); const first = legacy.entities.LecturaHorometro.find(row => row.registrado_por === 'Importación histórica AppSheet' && row.equipo_id === machine.id)!;
+    const orderOf = (id: string) => legacy.entities.OrdenServicio.find(row => row.origen_id === id)!;
+    for (const [id, fecha, valor] of [['D-2', '2025-06-01T15:00:00.000Z', 1500], ['D-3', '2025-05-01T22:00:00.000Z', 1400]] as const) legacy.entities.LecturaHorometro.push({ ...first, id: `legacy-${id}`, codigo: `HOR-L-${id}`, orden_id: orderOf(id).id, fecha, valor });
+    source.restore(admin, legacy, source.getRevision());
+    expect(() => source.cleanHistoricalReadings(admin, { cliente_id: client.id, excluir: [], lecturas: ['legacy-D-2', 'legacy-D-3'] }, source.getRevision() - 1)).toThrow('Los datos cambiaron');
+    expect(() => source.cleanHistoricalReadings(admin, { cliente_id: client.id, excluir: [], lecturas: ['legacy-D-2', first.id] }, source.getRevision())).toThrow('ya no corresponden');
+    expect(() => source.cleanHistoricalReadings(demoUsers[1], { cliente_id: client.id, excluir: [], lecturas: ['legacy-D-2'] }, source.getRevision())).toThrow('administración');
+    expect(source.cleanHistoricalReadings(admin, { cliente_id: client.id, excluir: [], lecturas: ['legacy-D-2', 'legacy-D-3'] }, source.getRevision())).toEqual({ eliminadas: 2 });
+    const after = source.snapshot(admin);
+    expect(after.entities.LecturaHorometro).toEqual(clean.entities.LecturaHorometro);
+    expect(after.entities.OrdenServicio).toEqual(clean.entities.OrdenServicio);
+    expect(after.entities.Bitacora.at(-1)).toMatchObject({ accion: 'Depuración de lecturas' });
+    expect(after.entities.Bitacora.at(-1)?.detalle).toContain('2 lecturas de la importación histórica eliminadas para');
+    expect(after.entities.Bitacora.at(-1)?.detalle).toContain('1 repetían una lectura conservada, 1 repetían otra importada y 0 eran de reportes excluidos. Códigos: HOR-L-D-3, HOR-L-D-2');
+    expect(source.cleanHistoricalReadings(admin, { cliente_id: client.id, excluir: ['d-1'], lecturas: [first.id] }, source.getRevision())).toEqual({ eliminadas: 1 });
+    expect(source.snapshot(admin).entities.Bitacora.at(-1)?.detalle).toContain('(órdenes D-1)');
+    expect(source.snapshot(admin).entities.LecturaHorometro.filter(row => row.equipo_id === machine.id).map(row => row.origen)).toEqual(['Ingreso de equipo']);
+  });
   it('rechaza errores sin guardar parcialmente', () => {
     const { source } = fixture(); const before = source.snapshot(admin); const client = before.entities.Cliente[0];
     expect(() => source.importHistoricalReports(admin, { cliente_id: client.id, sede_id: '', equipos: [{ serie: 'SERIE-IMPORT-1', id_interno_cliente: '', marca: 'Crown', modelo: 'FC4500' }], reportes: [{ origen_id: 'invalid-report', orden_origen: 'X', serie: 'OTHER', fecha: 'bad', fecha_fin: '', estado: 'Completado', prioridad: '', tipo: 'Correctivo', diagnostico: '', trabajo: '', notas_seguridad: '', tecnicos: '', recibido_por: '', inspector: '', horometro: null, odometro_millas: null, insumos_origen: '', repuestos_origen: '', adjuntos_referencias: '', firma_cliente_referencia: '', checklist_origen: '', bocina_origen: '', mes_origen: '', semana_origen: '', dia_origen: '', ubicacion_coordenadas: '' }] }, source.getRevision())).toThrow('No hay equipo');
