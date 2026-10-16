@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AlertTriangle, FileUp, LoaderCircle } from 'lucide-react';
 import { useActor, useRevision, useRows, useToast } from '../../app/state';
 import { ErrorNotice, Modal } from '../../components/ui';
 import { remoteSource, serverMode } from '../../data/source';
-import { historicalMeterRegressions, parseHistoricalReports } from '../../data/historical-reports';
+import { historicalMeterRegressions, historicalPendingNotice, historicalStatusCounts, parseHistoricalReports } from '../../data/historical-reports';
 import type { EntityRecord } from '../../domain/model';
 
 function byName(rows: EntityRecord[], id: string) { return rows.find(row => row.id === id); }
@@ -16,27 +16,12 @@ export function HistoricalReportsImport({ onClose }: { onClose: () => void }) {
   const [clienteId, setClienteId] = useState(''); const [sedeId, setSedeId] = useState('');
   const [parsed, setParsed] = useState<ReturnType<typeof parseHistoricalReports> | null>(null);
   const [filename, setFilename] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  const client = byName(clients, clienteId);
+  const client = byName(clients, clienteId); const site = byName(sites, sedeId);
   const clientSites = sites.filter(row => row.cliente_id === clienteId);
   const regressions = useMemo(() => parsed ? historicalMeterRegressions(parsed.payload.reportes) : [], [parsed]);
-  const statusCounts = useMemo(() => {
-    if (!parsed) return [];
-    const counts = new Map<string, number>();
-    for (const row of parsed.payload.reportes) counts.set(row.estado, (counts.get(row.estado) ?? 0) + 1);
-    return [...counts].sort((a, b) => b[1] - a[1]);
-  }, [parsed]);
+  const statusCounts = useMemo(() => parsed ? historicalStatusCounts(parsed.payload.reportes) : [], [parsed]);
 
-  const chooseClient = (id: string) => {
-    setClienteId(id); setParsed(null);
-    const site = sites.find(row => row.cliente_id === id && /unisur/i.test(`${row.nombre} ${row.direccion}`));
-    setSedeId(site?.id ?? '');
-  };
-  useEffect(() => {
-    if (!clienteId && clients.length) {
-      const distelsa = clients.find(row => /distelsa/i.test(`${row.nombre} ${row.nombre_comercial}`));
-      if (distelsa) chooseClient(distelsa.id);
-    }
-  }, [clients, clienteId]);
+  const chooseClient = (id: string) => { setClienteId(id); setSedeId(''); setParsed(null); };
   const selectFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]; if (!file) return;
     setError(''); setParsed(null); setFilename(file.name);
@@ -66,13 +51,13 @@ export function HistoricalReportsImport({ onClose }: { onClose: () => void }) {
       <label>Cliente<select value={clienteId} onChange={event => chooseClient(event.target.value)} disabled={busy}><option value="">Selecciona el cliente</option>{clients.map(row => <option key={row.id} value={row.id}>{row.nombre_comercial || row.nombre} · {row.codigo}</option>)}</select></label>
       <label>Sede (opcional)<select value={sedeId} onChange={event => { setSedeId(event.target.value); setParsed(null); }} disabled={!clienteId || busy}><option value="">Sin sede asignada</option>{clientSites.map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></label>
     </div>
-    {client && <p className="field-help">Los reportes se vincularán a <strong>{client.nombre_comercial || client.nombre}</strong>. Los equipos nuevos quedarán como “Pendiente de revisión” hasta confirmar su estado actual.</p>}
+    {client && <p className="field-help">Los reportes se vincularán a <strong>{client.nombre_comercial || client.nombre}</strong>{site ? <> y mostrarán la ubicación <strong>{site.nombre}</strong></> : ' y quedarán sin ubicación'}. Los equipos nuevos quedarán como “Pendiente de revisión” hasta confirmar su estado actual.</p>}
     <div className="historical-file-picker"><FileUp size={21} /><div><strong>{filename || 'Archivo de reportes (TSV o TXT)'}</strong><span>Fechas en formato día/mes/año · hasta 8 MB</span></div><button className="button" onClick={() => input.current?.click()} disabled={!clienteId || busy}>Seleccionar archivo</button><input ref={input} type="file" accept=".txt,.tsv,.csv,text/plain,text/tab-separated-values" onChange={selectFile} className="visually-hidden" aria-label="Archivo histórico de reportes" /></div>
     {parsed && <>
       <div className="historical-import-stats"><div><strong>{parsed.newEquipmentCount}</strong><span>equipos nuevos</span></div><div><strong>{parsed.newReportCount}</strong><span>reportes nuevos</span></div><div><strong>{parsed.payload.reportes.filter(row => row.horometro !== null).length}</strong><span>lecturas H1</span></div><div><strong>{parsed.repeatedReports}</strong><span>ya registrados</span></div></div>
       {!!statusCounts.length && <div className="historical-status-list"><strong>Estados del archivo</strong>{statusCounts.map(([state, count]) => <span key={state}>{state}: {count}</span>)}</div>}
       {!!regressions.length && <div className="historical-warning"><AlertTriangle size={17} /><span>{regressions.length} descensos de horómetro detectados en {new Set(regressions.map(item => item.serie)).size} equipos. Se conservarán los datos originales; los tramos con retroceso quedarán sin cálculo de uso hasta revisar la lectura.</span></div>}
-      <p className="field-help">Las 30 órdenes que figuran como “Pendiente” conservarán ese estado histórico; no se marcarán como pendientes actuales. H3 se guardará en millas. El archivo incluye nombres de fotos, pero no los archivos de imagen.</p>
+      <p className="field-help">{[historicalPendingNotice(statusCounts), 'H3 se guardará en millas. El archivo incluye nombres de fotos, pero no los archivos de imagen.'].filter(Boolean).join(' ')}</p>
       {parsed.errors.length > 0 && <div className="historical-warning"><AlertTriangle size={17} /><span>Se encontraron inconsistencias. Corrige el archivo antes de importar.</span></div>}
     </>}
     <ErrorNotice message={error} />

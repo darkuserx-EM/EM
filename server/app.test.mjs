@@ -168,15 +168,17 @@ test('operational status persists independently through the HTTP API with truste
 });
 
 test('historical report import is administrator-only, revision-checked and additive',async t=>{
-  const request=await fixture(t,{...coordinator,role:'Administrador'});
+  const request=await fixture(t,{...coordinator,role:'Administrador'},db=>{db.entities.Sede.push({id:'site-hist',codigo:'SED-901',creado_por:'test-admin',fecha_creacion:'2026-01-01T12:00:00Z',actualizado_por:'test-admin',fecha_actualizacion:'2026-01-01T12:00:00Z',cliente_id:db.entities.Cliente[0].id,nombre:'Planta de prueba'});});
   const before=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
   const clientId=before.entities.Cliente[0].id;
-  const payload={cliente_id:clientId,sede_id:'',equipos:[{serie:'HIST-SERIAL-1',id_interno_cliente:'FC#1',marca:'Crown',modelo:'FC4500'}],reportes:[{origen_id:'source-1',orden_origen:'21',serie:'HIST-SERIAL-1',fecha:'2025-02-08T20:00:00.000Z',fecha_fin:'',estado:'Completado',prioridad:'Programada',tipo:'Correctivo',diagnostico:'Hidráulica',trabajo:'Cambio de manguera',notas_seguridad:'',tecnicos:'Técnico',recibido_por:'Contacto',inspector:'inspector@example.com',horometro:100,odometro_millas:125,ubicacion:'Unisur 4',insumos_origen:'',repuestos_origen:'',adjuntos_referencias:'Foto Antes: antes.jpg',firma_cliente_referencia:'',checklist_origen:'',bocina_origen:'',mes_origen:'febrero',semana_origen:'Semana 6',dia_origen:'sábado',ubicacion_coordenadas:'14.6, -90.4'}]};
+  const payload={cliente_id:clientId,sede_id:'site-hist',equipos:[{serie:'HIST-SERIAL-1',id_interno_cliente:'FC#1',marca:'Yale',modelo:'FC4500'}],reportes:[{origen_id:'source-1',orden_origen:'21',serie:'HIST-SERIAL-1',fecha:'2025-02-08T20:00:00.000Z',fecha_fin:'',estado:'Completado',prioridad:'Programada',tipo:'Correctivo',diagnostico:'Hidráulica',trabajo:'Cambio de manguera',notas_seguridad:'',tecnicos:'Técnico',recibido_por:'Contacto',inspector:'inspector@example.com',horometro:100,odometro_millas:125,ubicacion:'Ubicación enviada por el navegador',insumos_origen:'',repuestos_origen:'',adjuntos_referencias:'Foto Antes: antes.jpg',firma_cliente_referencia:'',checklist_origen:'',bocina_origen:'',mes_origen:'febrero',semana_origen:'Semana 6',dia_origen:'sábado',ubicacion_coordenadas:'14.6, -90.4'}]};
   const response=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload,revision:before.revision})});
   assert.equal(response.status,200);const saved=await response.json();assert.deepEqual(saved.result,{equipos:1,reportes:1,lecturas:1,repetidos:0});
   const after=await (await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
   assert.equal(after.entities.Equipo.length,before.entities.Equipo.length+1);assert.equal(after.entities.OrdenServicio.length,before.entities.OrdenServicio.length+1);assert.equal(after.entities.LecturaHorometro.length,before.entities.LecturaHorometro.length+1);
   assert.equal(after.entities.OrdenServicio.at(-1).importado,true);assert.equal(after.entities.OrdenServicio.at(-1).origen_id,'source-1');assert.equal(after.entities.LecturaHorometro.at(-1).valor,100);
+  assert.equal(after.entities.OrdenServicio.at(-1).ubicacion,'Planta de prueba');assert.equal(after.entities.LecturaHorometro.at(-1).ubicacion,'Planta de prueba');
+  assert.equal(after.entities.Equipo.at(-1).marca,'Yale');assert.equal(after.entities.Equipo.at(-1).tipo,'Clasificación pendiente');assert.equal(after.entities.Equipo.at(-1).sede_id,'site-hist');
   const repeated=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'importHistoricalReports',payload:{...payload,equipos:[]},revision:after.revision})});
   assert.equal(repeated.status,200);assert.deepEqual((await repeated.json()).result,{equipos:0,reportes:0,lecturas:0,repetidos:1});
 });

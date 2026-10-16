@@ -25,7 +25,6 @@ export interface HistoricalReportInput {
   inspector: string;
   horometro: number | null;
   odometro_millas: number | null;
-  ubicacion: string;
   insumos_origen: string;
   repuestos_origen: string;
   adjuntos_referencias: string;
@@ -82,7 +81,8 @@ export function parseHistoricalReports(textContent: string, clienteId: string, s
     if (sourceIds.has(sourceId)) { errors.push(`Fila ${line}: el ID ${sourceId} está repetido en el archivo.`); continue; }
     sourceIds.add(sourceId);
     if (!order || !serial) { errors.push(`Fila ${line}: falta la orden de servicio o la serie del equipo.`); continue; }
-    const equipment: HistoricalEquipmentInput = { serie: serial, id_interno_cliente: text(row, 'ID_Equipo'), marca: text(row, 'Marca') || 'Crown', modelo: text(row, 'Modelo') };
+    const equipment: HistoricalEquipmentInput = { serie: serial, id_interno_cliente: text(row, 'ID_Equipo'), marca: text(row, 'Marca'), modelo: text(row, 'Modelo') };
+    if (!equipment.marca) { errors.push(`Fila ${line}: el equipo ${serial} no tiene marca.`); continue; }
     if (!equipment.modelo) { errors.push(`Fila ${line}: el equipo ${serial} no tiene modelo.`); continue; }
     const previous = serials.get(serial.toLocaleLowerCase());
     if (previous && (previous.modelo !== equipment.modelo || previous.id_interno_cliente !== equipment.id_interno_cliente)) { errors.push(`Fila ${line}: los datos de la serie ${serial} no coinciden entre reportes.`); continue; }
@@ -102,7 +102,7 @@ export function parseHistoricalReports(textContent: string, clienteId: string, s
         tipo: text(row, 'Tipo de Trabajo') || 'Sin clasificar', diagnostico: text(row, 'Falla'),
         trabajo: text(row, 'Descripción del Trabajo'), notas_seguridad: text(row, 'Notas de Seguridad'),
         tecnicos: text(row, 'Técnico'), recibido_por: text(row, 'Nombre de Cliente'), inspector: text(row, 'Inspector'),
-        horometro: h1, odometro_millas: h3, ubicacion: 'Distelsa Unisur 4',
+        horometro: h1, odometro_millas: h3,
         insumos_origen: text(row, 'Insumos'), repuestos_origen: text(row, 'Repuestos'), adjuntos_referencias: attachments,
         firma_cliente_referencia: text(row, 'Firma Cliente'), checklist_origen: text(row, 'Checklist'), bocina_origen: text(row, 'Bocina'),
         mes_origen: text(row, 'Mes'), semana_origen: text(row, 'Semana'), dia_origen: text(row, 'Día'), ubicacion_coordenadas: text(row, 'Location'),
@@ -120,6 +120,18 @@ export function parseHistoricalReports(textContent: string, clienteId: string, s
   const newReports = reports.filter(row => !duplicateReports.has(row.origen_id));
   const equipment = [...serials.values()].filter(row => !equipmentBySerial.has(row.serie.toLocaleLowerCase()));
   return { payload: { cliente_id: clienteId, sede_id: sedeId, equipos: equipment, reportes: newReports } satisfies HistoricalReportsImport, errors, sourceRows: rows.length, repeatedReports: repeatedSource.length, newReportCount: newReports.length, newEquipmentCount: equipment.length };
+}
+
+export function historicalStatusCounts(reports: HistoricalReportInput[]) {
+  const counts = new Map<string, number>();
+  for (const row of reports) counts.set(row.estado, (counts.get(row.estado) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]);
+}
+
+export function historicalPendingNotice(statusCounts: [string, number][]) {
+  const pending = statusCounts.find(([state]) => state === 'Pendiente')?.[1] ?? 0;
+  if (!pending) return '';
+  return pending === 1 ? 'La orden que figura como “Pendiente” conservará ese estado histórico; no se marcará como pendiente actual.' : `Las ${pending} órdenes que figuran como “Pendiente” conservarán ese estado histórico; no se marcarán como pendientes actuales.`;
 }
 
 export function historicalMeterRegressions(reports: HistoricalReportInput[]) {

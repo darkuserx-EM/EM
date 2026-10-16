@@ -278,6 +278,8 @@ export class LocalDataSource {
     if (!client) throw new ValidationError('Selecciona un cliente existente antes de importar.');
     const site = payload.sede_id ? next.entities.Sede.find(row => row.id === payload.sede_id) : undefined;
     if (payload.sede_id && (!site || site.cliente_id !== client.id)) throw new ValidationError('La sede seleccionada no pertenece al cliente.');
+    // La ubicación de reportes y lecturas sale de la sede elegida; el archivo de AppSheet no la trae.
+    const location = site ? String(site.nombre || '').trim() : '';
     const equipmentBySerial = new Map(next.entities.Equipo.map(row => [normalize(row.serie), row]));
     const incomingSerials = new Set<string>();
     for (const input of payload.equipos) {
@@ -290,8 +292,8 @@ export class LocalDataSource {
         continue;
       }
       const fields = {
-        marca: String(input.marca || 'Crown').trim(), modelo: String(input.modelo || '').trim(), serie: serial,
-        id_interno_cliente: String(input.id_interno_cliente || '').trim(), tipo: 'Equipo Crown · clasificación pendiente',
+        marca: String(input.marca || '').trim(), modelo: String(input.modelo || '').trim(), serie: serial,
+        id_interno_cliente: String(input.id_interno_cliente || '').trim(), tipo: 'Clasificación pendiente',
         propiedad: 'De cliente', estado: 'Pendiente de revisión', estado_operativo: 'Pendiente de revisión',
         estado_mantenimiento: 'Por revisar', motivo_estado: 'Estado actual pendiente de confirmar. Ficha creada desde el historial de reportes.',
         cliente_id: client.id, sede_id: site?.id || '',
@@ -323,7 +325,7 @@ export class LocalDataSource {
         fecha: input.fecha, fecha_fin: input.fecha_fin, tipo: input.tipo, estado: input.estado,
         motivo: input.diagnostico || input.tipo, diagnostico: input.diagnostico, trabajo: input.trabajo,
         prioridad: input.prioridad, ...(input.horometro === null ? {} : { horometro: input.horometro }), ...(input.odometro_millas === null ? {} : { odometro_millas: input.odometro_millas }),
-        ubicacion: input.ubicacion, recibido_por: input.recibido_por, inspector: input.inspector,
+        ubicacion: location, recibido_por: input.recibido_por, inspector: input.inspector,
         notas_seguridad: input.notas_seguridad, insumos_origen: input.insumos_origen, repuestos_origen: input.repuestos_origen,
         adjuntos_referencias: input.adjuntos_referencias, firma_cliente_referencia: input.firma_cliente_referencia,
         checklist_origen: input.checklist_origen, bocina_origen: input.bocina_origen, mes_origen: input.mes_origen,
@@ -336,7 +338,7 @@ export class LocalDataSource {
           id: crypto.randomUUID(), codigo: `HOR-H-${String(next.entities.LecturaHorometro.length + 1).padStart(4, '0')}`,
           creado_por: actor.id, fecha_creacion: now, actualizado_por: actor.id, fecha_actualizacion: now,
           equipo_id: equipment.id, cliente_id: client.id, fecha: input.fecha, valor: input.horometro,
-          origen: 'Orden de servicio', orden_id: row.id, registrado_por: 'Importación histórica AppSheet', ubicacion: input.ubicacion,
+          origen: 'Orden de servicio', orden_id: row.id, registrado_por: 'Importación histórica AppSheet', ubicacion: location,
           ...(input.odometro_millas === null ? {} : { odometro_millas: input.odometro_millas }), es_estimado: false,
         };
         next.entities.LecturaHorometro.push(meter); addedReadings++;
