@@ -42,7 +42,7 @@ describe('Excel y restauración', () => {
 describe('importación aditiva de equipos e historial', () => {
   it('agrega el equipo, órdenes y lecturas sin modificar filas previas y omite repetidos', () => {
     const { source } = fixture(); const before = source.snapshot(admin); const client = before.entities.Cliente[0];
-    const payload = { cliente_id: client.id, sede_id: '', equipos: [{ serie: 'SERIE-IMPORT-1', id_interno_cliente: 'FC#1', marca: 'Crown', modelo: 'FC4500' }], reportes: [{ origen_id: 'source-report-1', orden_origen: 'OS-21', serie: 'SERIE-IMPORT-1', fecha: '2025-02-08T20:00:00.000Z', fecha_fin: '', estado: 'Completado', prioridad: 'Programada', tipo: 'Correctivo', diagnostico: 'Hidráulica', trabajo: 'Cambio de manguera', notas_seguridad: '', tecnicos: 'Raul Perez', recibido_por: 'Cliente', inspector: 'admin@example.com', horometro: 100, odometro_millas: 125, ubicacion: 'Unisur 4', insumos_origen: 'Wipe', repuestos_origen: 'Manguera', adjuntos_referencias: 'Foto Antes: antes.jpg', firma_cliente_referencia: '', checklist_origen: '', bocina_origen: '', mes_origen: 'febrero', semana_origen: 'Semana 6', dia_origen: 'sábado', ubicacion_coordenadas: '14.6, -90.4' }] };
+    const payload = { cliente_id: client.id, sede_id: '', equipos: [{ serie: 'SERIE-IMPORT-1', id_interno_cliente: 'FC#1', marca: 'Crown', modelo: 'FC4500' }], reportes: [{ origen_id: 'source-report-1', orden_origen: 'OS-21', serie: 'SERIE-IMPORT-1', fecha: '2025-02-08T20:00:00.000Z', fecha_fin: '', estado: 'Completado', prioridad: 'Programada', tipo: 'Correctivo', diagnostico: 'Hidráulica', trabajo: 'Cambio de manguera', notas_seguridad: '', tecnicos: 'Raul Perez', recibido_por: 'Cliente', inspector: 'admin@example.com', horometro: 100, odometro_millas: 125, ubicacion: 'Ubicación enviada por el navegador', insumos_origen: 'Wipe', repuestos_origen: 'Manguera', adjuntos_referencias: 'Foto Antes: antes.jpg', firma_cliente_referencia: '', checklist_origen: '', bocina_origen: '', mes_origen: 'febrero', semana_origen: 'Semana 6', dia_origen: 'sábado', ubicacion_coordenadas: '14.6, -90.4' }] };
     const result = source.importHistoricalReports(admin, payload, source.getRevision());
     expect(result).toEqual({ equipos: 1, reportes: 1, lecturas: 1, repetidos: 0 });
     const after = source.snapshot(admin);
@@ -52,13 +52,28 @@ describe('importación aditiva de equipos e historial', () => {
     expect(after.entities.LecturaHorometro).toHaveLength(before.entities.LecturaHorometro.length + 1);
     expect(after.entities.OrdenServicio.at(-1)).toMatchObject({ importado: true, origen_id: 'source-report-1', orden_origen: 'OS-21', horometro: 100, odometro_millas: 125 });
     expect(after.entities.LecturaHorometro.at(-1)).toMatchObject({ valor: 100, orden_id: after.entities.OrdenServicio.at(-1)?.id, es_estimado: false });
-    expect(after.entities.Equipo.at(-1)).toMatchObject({ propiedad: 'De cliente', estado_operativo: 'Pendiente de revisión', cliente_id: client.id });
+    expect(after.entities.Equipo.at(-1)).toMatchObject({ propiedad: 'De cliente', estado_operativo: 'Pendiente de revisión', cliente_id: client.id, sede_id: '', marca: 'Crown', tipo: 'Clasificación pendiente' });
+    // Sin sede elegida no hay ubicación, aunque el navegador envíe una.
+    expect(after.entities.OrdenServicio.at(-1)?.ubicacion).toBe('');
+    expect(after.entities.LecturaHorometro.at(-1)?.ubicacion).toBe('');
     expect(source.importHistoricalReports(admin, { ...payload, equipos: [] }, source.getRevision())).toEqual({ equipos: 0, reportes: 0, lecturas: 0, repetidos: 1 });
     expect(source.snapshot(admin).entities.OrdenServicio).toHaveLength(before.entities.OrdenServicio.length + 1);
   });
+  it('usa el nombre de la sede elegida como ubicación y la marca del archivo', async () => {
+    const { source } = fixture(); const client = source.snapshot(admin).entities.Cliente[0];
+    const site = await source.repository('Sede', admin).create({ cliente_id: client.id, nombre: 'Planta de prueba' });
+    const report = { origen_id: 'source-report-2', orden_origen: 'OS-22', serie: 'SERIE-IMPORT-2', fecha: '2025-02-09T20:00:00.000Z', fecha_fin: '', estado: 'Pendiente', prioridad: '', tipo: 'Preventivo', diagnostico: '', trabajo: '', notas_seguridad: '', tecnicos: '', recibido_por: '', inspector: '', horometro: 250, odometro_millas: null, insumos_origen: '', repuestos_origen: '', adjuntos_referencias: '', firma_cliente_referencia: '', checklist_origen: '', bocina_origen: '', mes_origen: '', semana_origen: '', dia_origen: '', ubicacion_coordenadas: '' };
+    expect(source.importHistoricalReports(admin, { cliente_id: client.id, sede_id: site.id, equipos: [{ serie: 'SERIE-IMPORT-2', id_interno_cliente: '', marca: 'Yale', modelo: 'ERP 050' }], reportes: [report] }, source.getRevision())).toEqual({ equipos: 1, reportes: 1, lecturas: 1, repetidos: 0 });
+    const after = source.snapshot(admin);
+    expect(after.entities.Equipo.at(-1)).toMatchObject({ marca: 'Yale', tipo: 'Clasificación pendiente', sede_id: site.id });
+    expect(after.entities.OrdenServicio.at(-1)).toMatchObject({ ubicacion: 'Planta de prueba', estado: 'Pendiente' });
+    expect(after.entities.LecturaHorometro.at(-1)).toMatchObject({ ubicacion: 'Planta de prueba', valor: 250 });
+    expect(() => source.importHistoricalReports(admin, { cliente_id: client.id, sede_id: '', equipos: [{ serie: 'SERIE-IMPORT-3', id_interno_cliente: '', marca: '', modelo: 'ERP 050' }], reportes: [] }, source.getRevision())).toThrow('obligatorio');
+    expect(source.snapshot(admin)).toEqual(after);
+  });
   it('rechaza errores sin guardar parcialmente', () => {
     const { source } = fixture(); const before = source.snapshot(admin); const client = before.entities.Cliente[0];
-    expect(() => source.importHistoricalReports(admin, { cliente_id: client.id, sede_id: '', equipos: [{ serie: 'SERIE-IMPORT-1', id_interno_cliente: '', marca: 'Crown', modelo: 'FC4500' }], reportes: [{ origen_id: 'invalid-report', orden_origen: 'X', serie: 'OTHER', fecha: 'bad', fecha_fin: '', estado: 'Completado', prioridad: '', tipo: 'Correctivo', diagnostico: '', trabajo: '', notas_seguridad: '', tecnicos: '', recibido_por: '', inspector: '', horometro: null, odometro_millas: null, ubicacion: '', insumos_origen: '', repuestos_origen: '', adjuntos_referencias: '', firma_cliente_referencia: '', checklist_origen: '', bocina_origen: '', mes_origen: '', semana_origen: '', dia_origen: '', ubicacion_coordenadas: '' }] }, source.getRevision())).toThrow('No hay equipo');
+    expect(() => source.importHistoricalReports(admin, { cliente_id: client.id, sede_id: '', equipos: [{ serie: 'SERIE-IMPORT-1', id_interno_cliente: '', marca: 'Crown', modelo: 'FC4500' }], reportes: [{ origen_id: 'invalid-report', orden_origen: 'X', serie: 'OTHER', fecha: 'bad', fecha_fin: '', estado: 'Completado', prioridad: '', tipo: 'Correctivo', diagnostico: '', trabajo: '', notas_seguridad: '', tecnicos: '', recibido_por: '', inspector: '', horometro: null, odometro_millas: null, insumos_origen: '', repuestos_origen: '', adjuntos_referencias: '', firma_cliente_referencia: '', checklist_origen: '', bocina_origen: '', mes_origen: '', semana_origen: '', dia_origen: '', ubicacion_coordenadas: '' }] }, source.getRevision())).toThrow('No hay equipo');
     expect(source.snapshot(admin)).toEqual(before);
   });
 });
