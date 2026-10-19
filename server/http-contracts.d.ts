@@ -52,6 +52,8 @@ export type MutationBody = MutationCommon & (
   | { action:'import'; entity:EntityName; rows:ImportRow[] }
   | { action:'importClients'; rows:ClientImportRow[] }
   | { action:'importHistoricalReports'; payload:HistoricalReportsImport }
+  | { action:'submitReadings'; payload:import('../src/domain/reading-submissions.js').ReadingSubmission }
+  | { action:'reviewReading'; decision:import('../src/domain/reading-submissions.js').ReadingDecision }
   | { action:'reconcileHistoricalReadings'; pairs:import('../src/domain/historical-readings.js').ReadingReconciliation[] }
   | { action:'reviseImportedReport'; report:import('../src/domain/imported-reports.js').ImportedReportRevision }
   | { action:'restore'; database:unknown; exportedAt?:string }
@@ -75,7 +77,7 @@ export interface PublicDatabase extends Database {
   syncToken:string; access:Actor; pagedEntities?:EntityName[]; counts?:Record<string,number>;
 }
 export interface MutationReply {
-  result?: EntityRecord | ReturnType<import('../src/data/repository.js').LocalDataSource['importClients']>
+  result?: { enviadas:number; repetidas:number } | { revisadas:number } | EntityRecord | ReturnType<import('../src/data/repository.js').LocalDataSource['importClients']>
     | ReturnType<import('../src/data/repository.js').LocalDataSource['importHistoricalReports']>
     | ReturnType<import('../src/data/repository.js').LocalDataSource['reconcileHistoricalReadings']>
     | ReturnType<import('../src/data/repository.js').LocalDataSource['reviseImportedReport']>;

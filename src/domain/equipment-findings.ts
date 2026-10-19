@@ -36,6 +36,6 @@ export function findingLinkErrors(row: EntityRecord, equipment: Map<string, Enti
 export function upgradeFindingCollection(value: unknown): unknown {
   if (!value || typeof value !== 'object' || !('schemaVersion' in value) || value.schemaVersion !== 1 || !('entities' in value)) return value;
   const entities = value.entities;
-  if (!entities || typeof entities !== 'object' || Array.isArray(entities) || Object.hasOwn(entities, 'Hallazgo')) return value;
-  return { ...value, entities: { ...entities, Hallazgo: [] } };
+  if (!entities || typeof entities !== 'object' || Array.isArray(entities)) return value;
+  return { ...value, entities: { Hallazgo: [], LecturaEnviada: [], ...entities } };
 }

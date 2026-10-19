@@ -117,7 +117,7 @@ export async function readDatabase(conn, lock = false, {includeAudit=true}={}) {
   /** @type {{entity:import("../src/domain/model.js").EntityName,payload:string}[]} */
   const rows = await selectQuery(conn,`SELECT entity, payload FROM em_records${includeAudit?'':" WHERE entity<>'Bitacora'"} ORDER BY entity,id`);
   /** @type {import("../src/domain/model.js").Database["entities"]} */
-  const entities = {Cliente:[],Contacto:[],Sede:[],Contrato:[],ContratoEquipo:[],Equipo:[],LecturaHorometro:[],PlanPM:[],Hallazgo:[],Ticket:[],OrdenServicio:[],OTRepuesto:[],OTHoras:[],CheckList:[],CheckListItem:[],Tecnico:[],Gasto:[],Liquidacion:[],Usuario:[],Catalogos:[],Bitacora:[]};
+  const entities = {Cliente:[],Contacto:[],Sede:[],Contrato:[],ContratoEquipo:[],Equipo:[],LecturaEnviada:[],LecturaHorometro:[],PlanPM:[],Hallazgo:[],Ticket:[],OrdenServicio:[],OTRepuesto:[],OTHoras:[],CheckList:[],CheckListItem:[],Tecnico:[],Gasto:[],Liquidacion:[],Usuario:[],Catalogos:[],Bitacora:[]};
   for (const row of rows) entities[row.entity]?.push(JSON.parse(row.payload));
   if(includeAudit) {
     /** @type {{payload:string}[]} */

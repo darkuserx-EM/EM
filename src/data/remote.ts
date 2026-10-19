@@ -173,6 +173,8 @@ export class RemoteDataSource {
   }
   importClients(actor: Actor, rows: ClientImportRow[], revision: number) { assertAdmin(actor); return this.mutate<string | undefined>({ action: 'importClients', rows, revision }); }
   importHistoricalReports(actor: Actor, payload: HistoricalReportsImport, revision: number) { assertAdmin(actor); return this.mutate<{ equipos: number; reportes: number; lecturas: number; lecturas_reutilizadas?: number; repetidos: number }>({ action: 'importHistoricalReports', payload, revision }); }
+  submitReadings(payload: import('../domain/reading-submissions').ReadingSubmission, revision: number) { return this.mutate<{enviadas:number; repetidas:number}>({ action: 'submitReadings', payload, revision }); }
+  reviewReading(decision: import('../domain/reading-submissions').ReadingDecision, revision: number) { return this.mutate<{revisadas:number}>({ action: 'reviewReading', decision, revision }); }
   async restore(actor: Actor, database: unknown, revision: number, exportedAt?: string) { assertAdmin(actor); await this.mutate({ action: 'restore', database, revision, exportedAt }); }
   reviseImportedReport(actor: Actor, report: ImportedReportRevision, revision: number) { assertAdmin(actor); return this.mutate<{ accion: 'anular' | 'reasignar'; orden: string; lecturas: number }>({ action: 'reviseImportedReport', report, revision }); }
 }

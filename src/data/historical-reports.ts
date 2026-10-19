@@ -1,5 +1,12 @@
 import * as XLSX from 'xlsx';
 import type { EntityRecord } from '../domain/model';
+export function downloadHistoricalTemplate() {
+  const book = XLSX.utils.book_new();
+  const headers = ['ID','Date/Time','Orden de Servicio','Equipo','ID_Equipo','Marca','Modelo','Hora_Final','Horometro (H1)','Odometro (H3)','Estado del Servicio','Tipo de Trabajo','Falla','Descripción del Trabajo','Técnico','Nombre de Cliente','Prioridad','Notas de Seguridad','Inspector','Insumos','Repuestos','Adjuntos','Foto Antes','Foto Despues','Checklist','Firma Cliente','Bocina','Mes','Semana','Día','Location'];
+  const sheet = XLSX.utils.aoa_to_sheet([headers]); sheet['!cols'] = headers.map(() => ({ wch: 25 }));
+  XLSX.utils.book_append_sheet(book,sheet,'Carga');
+  XLSX.writeFile(book,'Plantilla-historial-Portal-EM.xlsx');
+}
 
 export interface HistoricalEquipmentInput {
   serie: string;
