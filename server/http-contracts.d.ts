@@ -52,6 +52,7 @@ export type MutationBody = MutationCommon & (
   | { action:'import'; entity:EntityName; rows:ImportRow[] }
   | { action:'importClients'; rows:ClientImportRow[] }
   | { action:'importHistoricalReports'; payload:HistoricalReportsImport }
+  | { action:'reconcileHistoricalReadings'; pairs:import('../src/domain/historical-readings.js').ReadingReconciliation[] }
   | { action:'restore'; database:unknown; exportedAt?:string }
 );
 export interface AppOptions {
@@ -74,6 +75,7 @@ export interface PublicDatabase extends Database {
 }
 export interface MutationReply {
   result?: EntityRecord | ReturnType<import('../src/data/repository.js').LocalDataSource['importClients']>
-    | ReturnType<import('../src/data/repository.js').LocalDataSource['importHistoricalReports']>;
+    | ReturnType<import('../src/data/repository.js').LocalDataSource['importHistoricalReports']>
+    | ReturnType<import('../src/data/repository.js').LocalDataSource['reconcileHistoricalReadings']>;
   database:PublicDatabase;
 }
