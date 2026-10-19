@@ -1,4 +1,5 @@
 import { assignedTo } from '../domain/order-team';
+import { checkSubmittedReading, readingWarnings, type ReadingSubmission, type ReadingDecision } from '../domain/reading-submissions';
 import { reusableHistoricalReading, sameHistoricalReading, type ReadingReconciliation } from '../domain/historical-readings';
 import {localAuditPage, type AuditQuery} from './audit-log';
 import {localOperationPage,isPagedEntity,type OperationQuery,type PagedEntity} from './operation-page';
@@ -360,6 +361,46 @@ export class LocalDataSource {
     this.audit(next, actor, 'Historial', 'Importación histórica', `${newEquipment} equipos, ${addedReports} reportes y ${addedReadings} lecturas agregados para ${client.nombre}; ${reusedReadings} lecturas reutilizadas; ${duplicateReports} reportes ya existentes omitidos. Valores de horómetro conservados como en origen.`);
     this.commit(next);
     return { equipos: newEquipment, reportes: addedReports, lecturas: addedReadings, repetidos: duplicateReports, ...(reusedReadings ? { lecturas_reutilizadas: reusedReadings } : {}) };
+  }
+  submitReadings(actor: Actor, payload: ReadingSubmission, expectedRevision: number) {
+    if (actor.rol !== 'Cliente') throw new ValidationError('Solo el cliente puede enviar este lote.');
+    if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron. Recarga y revisa el lote.');
+    if (!payload || typeof payload.archivo !== 'string' || payload.archivo.length > 200 || !Array.isArray(payload.filas) || !payload.filas.length || payload.filas.length > 200) throw new ValidationError('Envía entre 1 y 200 lecturas por archivo.');
+    const next = structuredClone(this.database); const batch = crypto.randomUUID(); let sent = 0; let repeated = 0;
+    for (const input of payload.filas) {
+      checkSubmittedReading(input, actor, next);
+      const fecha = new Date(input.fecha).toISOString();
+      const existing = next.entities.LecturaEnviada.find(row => row.equipo_id === input.equipo_id && Date.parse(String(row.fecha)) === Date.parse(fecha) && row.estado !== 'Rechazada');
+      const official = next.entities.LecturaHorometro.find(row => row.equipo_id === input.equipo_id && Date.parse(String(row.fecha)) === Date.parse(fecha));
+      if (existing || official) {
+        if ((existing && existing.valor !== input.valor) || (official && official.valor !== input.valor)) throw new ValidationError('Hay otra lectura para ese equipo y momento con distinto valor. Revisa el historial.');
+        repeated++; continue;
+      }
+      next.entities.LecturaEnviada.push(this.record('LecturaEnviada', actor, { equipo_id: input.equipo_id, cliente_id: actor.cliente_id!, fecha, valor: input.valor, observacion: input.observacion, archivo: payload.archivo, lote_id: batch, estado: 'Pendiente' }, next.entities.LecturaEnviada)); sent++;
+    }
+    if (sent) { this.audit(next, actor, 'LecturaEnviada', 'Lecturas enviadas', `${batch}: ${sent} pendientes; ${repeated} repetidas omitidas.`); this.commit(next); }
+    return { enviadas: sent, repetidas: repeated };
+  }
+  reviewReading(actor: Actor, decision: ReadingDecision, expectedRevision: number) {
+    assertAdmin(actor);
+    if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron. Recarga antes de revisar.');
+    if (!decision || typeof decision.aprobar !== 'boolean' || typeof decision.motivo !== 'string' || !decision.motivo.trim() || decision.motivo.length > 300) throw new ValidationError('Indica el motivo de la decisión (hasta 300 caracteres).');
+    const next = structuredClone(this.database); const row = next.entities.LecturaEnviada.find(item => item.id === decision.id);
+    if (!row) throw new ValidationError('No existe la lectura enviada.');
+    if (row.estado !== 'Pendiente') throw new ValidationError('La lectura ya fue revisada.');
+    if (decision.aprobar) {
+      const equipment = next.entities.Equipo.find(item => item.id === row.equipo_id);
+      if (!equipment || equipment.cliente_id !== row.cliente_id) throw new ValidationError('El equipo cambió de cliente. Rechaza el envío y solicita revisión.');
+      const same = next.entities.LecturaHorometro.filter(item => item.equipo_id === row.equipo_id && Date.parse(String(item.fecha)) === Date.parse(String(row.fecha)));
+      if (same.length) throw new ValidationError('Ya existe una lectura en ese momento. Rechaza este envío para evitar duplicados.');
+      const warnings = readingWarnings({ equipo_id: String(row.equipo_id), fecha: String(row.fecha), valor: Number(row.valor) }, next.entities.LecturaHorometro);
+      if (warnings.length) throw new ValidationError(`${warnings.join('. ')}. Rechaza el envío y revisa el contador antes de registrar una corrección.`);
+      const reading = this.record('LecturaHorometro', actor, { schema_operacion: 1, equipo_id: row.equipo_id, cliente_id: row.cliente_id, fecha: row.fecha, valor: row.valor, origen: 'Registro manual', registrado_por: actor.nombre, es_estimado: false }, next.entities.LecturaHorometro);
+      next.entities.LecturaHorometro.push(reading); row.lectura_id = reading.id;
+    }
+    row.estado = decision.aprobar ? 'Aprobada' : 'Rechazada'; row.motivo = decision.motivo.trim(); row.revisado_por = actor.id; row.revisado_el = new Date().toISOString(); row.actualizado_por = actor.id; row.fecha_actualizacion = String(row.revisado_el);
+    this.audit(next, actor, 'LecturaEnviada', `Lectura ${row.estado.toLowerCase()}`, `${row.codigo} · ${row.valor} h · ${row.motivo}`);
+    this.commit(next); return { revisadas: 1 };
   }
   reconcileHistoricalReadings(actor: Actor, pairs: ReadingReconciliation[], expectedRevision: number) {
     assertAdmin(actor);

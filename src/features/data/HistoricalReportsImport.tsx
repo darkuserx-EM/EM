@@ -3,7 +3,7 @@ import { AlertTriangle, FileUp, LoaderCircle } from 'lucide-react';
 import { useActor, useRevision, useRows, useToast } from '../../app/state';
 import { ErrorNotice, Modal } from '../../components/ui';
 import { remoteSource, serverMode } from '../../data/source';
-import { historicalMeterRegressions, historicalPendingNotice, historicalStatusCounts, parseHistoricalReports } from '../../data/historical-reports';
+import { downloadHistoricalTemplate, historicalMeterRegressions, historicalPendingNotice, historicalStatusCounts, parseHistoricalReports } from '../../data/historical-reports';
 import type { EntityRecord } from '../../domain/model';
 import { reusableHistoricalReading } from '../../domain/historical-readings';
 import { normalize } from '../../domain/validation';
@@ -70,7 +70,7 @@ export function HistoricalReportsImport({ onClose }: { onClose: () => void }) {
       <label>Sede (opcional)<select value={sedeId} onChange={event => { setSedeId(event.target.value); setParsed(null); }} disabled={!clienteId || busy}><option value="">Sin sede asignada</option>{clientSites.map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></label>
     </div>
     {client && <p className="field-help">Los reportes se vincularán a <strong>{client.nombre_comercial || client.nombre}</strong>{site ? <> y mostrarán la ubicación <strong>{site.nombre}</strong></> : ' y quedarán sin ubicación'}. Los equipos nuevos quedarán como “Pendiente de revisión” hasta confirmar su estado actual.</p>}
-    <div className="historical-file-picker"><FileUp size={21} /><div><strong>{filename || 'Archivo de reportes (Excel, TSV o TXT)'}</strong><span>Excel: solo hoja Carga · fechas de Guatemala · hasta 8 MB</span></div><button className="button" onClick={() => input.current?.click()} disabled={!clienteId || busy}>Seleccionar archivo</button><input ref={input} type="file" accept=".xlsx,.txt,.tsv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/tab-separated-values" onChange={selectFile} className="visually-hidden" aria-label="Archivo histórico de reportes" /></div>
+    <button className="button" onClick={downloadHistoricalTemplate} disabled={busy}>Descargar plantilla Excel</button><div className="historical-file-picker"><FileUp size={21} /><div><strong>{filename || 'Archivo de reportes (Excel, TSV o TXT)'}</strong><span>Excel: solo hoja Carga · fechas de Guatemala · hasta 8 MB</span></div><button className="button" onClick={() => input.current?.click()} disabled={!clienteId || busy}>Seleccionar archivo</button><input ref={input} type="file" accept=".xlsx,.txt,.tsv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/tab-separated-values" onChange={selectFile} className="visually-hidden" aria-label="Archivo histórico de reportes" /></div>
     {parsed && <>
       <p role="status">{readings.loading ? 'Revisando lecturas existentes…' : `${reconciliation.added} lecturas nuevas · ${reconciliation.reused} reutilizadas · ${reconciliation.conflicts.length} conflictos por revisar`}</p>
       <ErrorNotice message={readings.error || reconciliation.conflicts.slice(0, 5).join(' ')} />

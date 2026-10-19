@@ -73,6 +73,20 @@ async function fixture(t,user,prepare,options={}) {
   return (path,options={})=>fetch(url+path,options);
 }
 const jsonHeaders = {'Content-Type':'application/json',Origin:origin,Cookie:'em_session=example','X-CSRF-Token':csrf};
+test('client readings remain pending, scoped and cannot be approved by client, technician or coordinator',async t=>{
+  let equipment;let revision;
+  const request=await fixture(t,client,db=>{equipment=db.entities.Equipo.find(r=>r.cliente_id===client.client_id);revision=db.revision;});
+  const payload={archivo:'flota.xlsx',filas:[{equipo_id:equipment.id,fecha:'2025-01-02T14:00:00.000Z',valor:100,observacion:''}]};
+  const response=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'submitReadings',payload,revision})});
+  assert.equal(response.status,200);const result=await response.json();assert.equal(result.result.enviadas,1);assert.equal(result.database.entities.LecturaEnviada[0].estado,'Pendiente');
+  for(const user of [client,coordinator,{...coordinator,role:'Técnico'}]) {
+    const call=await fixture(t,user);
+    const denied=await call('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'reviewReading',decision:{id:'x',aprobar:true,motivo:'x'},revision:0})});
+    assert.equal(denied.status,403);
+  }
+  const foreign={...payload,filas:[{...payload.filas[0],equipo_id:'other-client-equipment'}]};
+  const denied=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'submitReadings',payload:foreign,revision:result.database.revision})});assert.equal(denied.status,400);
+});
 test('data requires an authenticated session even if an administrator is supplied',async t=>{
   const request=await fixture(t,null);
   assert.equal((await request('/api/database?actor=user-admin')).status,401);

@@ -1,3 +1,4 @@
+import { ReadingSubmissions } from './ReadingSubmissions';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, CalendarDays, FileText, Forklift, QrCode, Ticket } from 'lucide-react';
@@ -38,7 +39,7 @@ export function ClientPortal() {
   const unknown = scope.filter(row => operationalState(row) === 'Pendiente de revisión').length;
   return <div className="client-portal em-client-portal">
     <SectionTitle eyebrow="PORTAL DEL CLIENTE" title={company ? clientDisplayName(company) : 'Mi flota'} description="Consulta tus equipos, revisa los trabajos realizados y solicita atención."><Link className="button button-dark" to="/tickets"><Ticket size={16} />Solicitar servicio</Link></SectionTitle>
-    <div className="client-access-cards"><Link to="/tickets"><Ticket size={20} /><div><strong>{loading ? '…' : activeTickets.length}</strong><span>Solicitudes en atención</span></div><ArrowUpRight size={17} /></Link><Link to="/ordenes"><FileText size={20} /><div><strong>{loading ? '…' : visibleReports.length}</strong><span>Reportes disponibles</span></div><ArrowUpRight size={17} /></Link><Link to="/calendario"><CalendarDays size={20} /><div><strong>{scheduled[0] ? operationDateLabel(scheduled[0].fecha_programada) : 'Sin visita programada'}</strong><span>{scheduled[0] ? 'Próxima atención compartida' : 'Consulta el calendario de tu flota'}</span></div><ArrowUpRight size={17} /></Link></div>
+    <ReadingSubmissions /><div className="client-access-cards"><Link to="/tickets"><Ticket size={20} /><div><strong>{loading ? '…' : activeTickets.length}</strong><span>Solicitudes en atención</span></div><ArrowUpRight size={17} /></Link><Link to="/ordenes"><FileText size={20} /><div><strong>{loading ? '…' : visibleReports.length}</strong><span>Reportes disponibles</span></div><ArrowUpRight size={17} /></Link><Link to="/calendario"><CalendarDays size={20} /><div><strong>{scheduled[0] ? operationDateLabel(scheduled[0].fecha_programada) : 'Sin visita programada'}</strong><span>{scheduled[0] ? 'Próxima atención compartida' : 'Consulta el calendario de tu flota'}</span></div><ArrowUpRight size={17} /></Link></div>
     <ErrorNotice message={error} />
     <FleetSummary equipment={scope} selected={status} onSelect={value => { setStatus(value); setPage(0); }} loading={loading} />
     {!loading && unknown > 0 && <p className="client-state-notice">{unknown} {unknown === 1 ? 'equipo pendiente' : 'equipos pendientes'} de confirmar su estado. Esto no significa que estén fuera de servicio.</p>}

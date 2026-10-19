@@ -41,6 +41,7 @@ export function filterVisible(actor: Actor, entity: EntityName, rows: EntityReco
     rows = rows.map(row => ({ ...row, tiene_orden: !!row.orden_id || linked.has(row.id) }));
   }
   if (actor.rol === 'Administrador') return rows;
+  if (entity === 'LecturaEnviada') return actor.rol === 'Cliente' && actor.cliente_id ? rows.filter(row => row.cliente_id === actor.cliente_id).map(row => { const { revisado_por, ...visible } = row; return visible as EntityRecord; }) : [];
   // Findings remain internal to administration until client visibility is designed.
   if (['Hallazgo', 'PlanPM'].includes(entity)) return [];
   // Internal cost fields must also be absent from repository exports.
