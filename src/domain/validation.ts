@@ -104,6 +104,10 @@ export function validateDatabase(value: unknown, { maxRows = Infinity }: { maxRo
   }
   for (const equipment of data.entities.Equipo) if (equipment.sede_id && (!sites.has(String(equipment.sede_id)) || sites.get(String(equipment.sede_id))?.cliente_id !== equipment.cliente_id)) throw new ValidationError(`${equipment.codigo}: la sede no pertenece al cliente seleccionado.`);
   const equipmentIds = new Set(data.entities.Equipo.map(row => row.id));
+  for (const row of data.entities.LecturaEnviada) {
+    if (!equipmentIds.has(String(row.equipo_id)) || !clients.has(String(row.cliente_id)) || typeof row.valor !== 'number' || !Number.isFinite(Date.parse(String(row.fecha)))) throw new ValidationError(`${row.codigo}: lectura enviada inválida o referencia inexistente.`);
+    if (row.estado === 'Aprobada' && !data.entities.LecturaHorometro.some(reading => reading.id === row.lectura_id && reading.equipo_id === row.equipo_id && reading.valor === row.valor && Date.parse(String(reading.fecha)) === Date.parse(String(row.fecha)))) throw new ValidationError(`${row.codigo}: falta la lectura aprobada vinculada.`);
+  }
   for (const technician of data.entities.Tecnico) if (enabledEquipment(technician).some(id => !equipmentIds.has(id))) throw new ValidationError(`${technician.codigo}: un equipo habilitado no existe.`);
   const orders = new Map(data.entities.OrdenServicio.map(row => [row.id, row]));
   for (const name of ['OrdenServicio', 'LecturaHorometro', 'OTRepuesto', 'OTHoras'] as const) {

@@ -6,6 +6,7 @@ import {uniqueKeys,validateDatabase,validateDatabaseStructure} from './validatio
 // Dependency declarations mirror the links checked by validateDatabase. Tests
 // compare both validators, including reverse effects of edits and deletions.
 const links: Partial<Record<EntityName, readonly (readonly [string,EntityName])[]>> = {
+  LecturaEnviada: [['equipo_id','Equipo'],['cliente_id','Cliente'],['lectura_id','LecturaHorometro']],
   Equipo: [['cliente_id','Cliente'],['sede_id','Sede']],
   Contacto: [['cliente_id','Cliente']],
   Sede: [['cliente_id','Cliente'],['autoriza_contacto_id','Contacto']],
