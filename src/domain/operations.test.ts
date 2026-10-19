@@ -94,6 +94,21 @@ describe('operación con permisos y trazabilidad', () => {
     expect(await source.repository('OrdenServicio', client).getAll()).toEqual([]);
     expect(source.snapshot(admin).entities.OrdenServicio.at(-1)?.diagnostico).toBe(closure.diagnostico);
   });
+  it('el inicio del trabajo lo registra la atención: no queda en borradores ni en visitas programadas', async () => {
+    const source = fixture(); const coordination = source.repository('OrdenServicio', coordinator); const repo = source.repository('OrdenServicio', technician);
+    // Coordinación programa la visita y el formulario anterior enviaba la hora en que se abrió: no se guarda.
+    const scheduled = await coordination.create({ ...order, fecha: '2026-10-05T14:00:00.000Z' });
+    expect(scheduled.fecha).toBe('');
+    const before = Date.now();
+    const started = await repo.update(scheduled.id, { estado: 'En proceso' });
+    expect(Date.parse(String(started.fecha))).toBeGreaterThanOrEqual(before - 1000);
+    // Si la persona indica la hora real al iniciar, se respeta.
+    const other = await coordination.create({ ...order });
+    expect((await repo.update(other.id, { estado: 'En proceso', fecha: '2026-10-10T14:00:00.000Z' })).fecha).toBe('2026-10-10T14:00:00.000Z');
+    // Reprogramada después de una pausa: vuelve a no tener inicio hasta la próxima atención.
+    await repo.update(started.id, { estado: 'En espera' });
+    expect((await coordination.update(started.id, { estado: 'Programada' })).fecha).toBe('');
+  });
   it('lectura regresiva al cerrar revierte toda la operación y conserva originales', async () => {
     const source = fixture(); const row = await source.repository('OrdenServicio', coordinator).create(order);
     const repo = source.repository('OrdenServicio', technician); await repo.update(row.id, { estado: 'En proceso' });

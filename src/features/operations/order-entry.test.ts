@@ -10,7 +10,16 @@ function fixture() { let data = JSON.stringify(createSeed()); return new LocalDa
 
 describe('captura simplificada de órdenes', () => {
   it('sugiere día y horas de Guatemala, incluso al cambiar el día UTC', () => {
-    expect(orderEntryTimes(undefined, undefined, new Date('2026-10-17T03:42:55Z'))).toEqual({ fecha_programada: '2026-10-16', hora_programada: '21:42', fecha: '2026-10-16T21:42' });
+    // El técnico que abre la orden en campo (nace en proceso): el inicio es este momento.
+    expect(orderEntryTimes(undefined, undefined, new Date('2026-10-17T03:42:55Z'), true)).toEqual({ fecha_programada: '2026-10-16', hora_programada: '21:42', fecha: '2026-10-16T21:42' });
+  });
+  it('no sugiere inicio del trabajo en un borrador ni en una visita programada', () => {
+    // Coordinación crea la orden para otro día: el inicio lo registra «Iniciar atención».
+    expect(orderEntryTimes(undefined, { fecha_programada: '2026-11-01' }, new Date('2026-10-17T03:42:55Z')).fecha).toBe('');
+    // Una orden guardada que aún no empieza no muestra el inicio sugerido que pudo quedar guardado antes.
+    expect(orderEntryTimes({ estado: 'Programada', fecha_programada: '2026-11-01', fecha: '2026-10-13T16:30:00Z' }).fecha).toBe('');
+    expect(orderEntryTimes({ estado: 'Borrador', fecha: '2026-10-13T16:30:00Z' }).fecha).toBe('');
+    expect(orderEntryTimes({ estado: 'En espera', fecha: '2026-10-13T16:30:00Z' }).fecha).toBe('2026-10-13T10:30');
   });
   it('conserva la fecha de la solicitud y no rellena ni cambia una orden guardada', () => {
     expect(orderEntryTimes(undefined, { fecha_programada: '2026-11-01' }).fecha_programada).toBe('2026-11-01');

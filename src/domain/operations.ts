@@ -188,6 +188,11 @@ export function prepareOperation(entity: EntityName, input: Record<string, Scala
         row.fecha = row.fecha || new Date().toISOString();
         row.fecha_programada = row.fecha_programada || todayGT();
       }
+      // Un borrador o una visita programada todavía no empieza: no guarda hora de inicio (tampoco al reprogramarla).
+      if (['Borrador', 'Programada'].includes(text(row.estado))) row.fecha = '';
+      // «Iniciar atención»: al pasar de borrador o programada a en proceso, el inicio es este momento,
+      // salvo que la persona indique otro. Así no queda el inicio sugerido el día en que se creó la orden.
+      if (original && ['Borrador', 'Programada'].includes(text(original.estado)) && row.estado === 'En proceso' && !text(input.fecha)) row.fecha = new Date().toISOString();
       if (!row.fecha && ['En proceso', 'Completada'].includes(text(row.estado))) row.fecha = new Date().toISOString();
       if (row.estado === 'Completada' && !row.fecha_fin) row.fecha_fin = new Date().toISOString();
     }

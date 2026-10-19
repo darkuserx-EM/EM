@@ -265,3 +265,7 @@
 .os-extra{border-block:1px solid var(--color-border);padding-block:var(--space-2)}
 .os-extra summary{cursor:pointer;min-height:var(--target-min);align-content:center;font-weight:600;font-size:var(--text-sm)}
 .os-extra>div{padding-block:var(--space-3)}
+.os-meter-note strong{color:var(--color-warning-text);font-weight:var(--weight-semibold)}
+/* Corrección de un reporte importado (ImportedReportCorrection): opciones, equipo y motivo separados */
+.imported-correction{display:grid;gap:var(--space-3)}
+.imported-correction .os-check{align-items:flex-start}
