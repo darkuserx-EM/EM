@@ -1,4 +1,5 @@
 import { assignedTo } from '../domain/order-team';
+import { reusableHistoricalReading, sameHistoricalReading, type ReadingReconciliation } from '../domain/historical-readings';
 import {localAuditPage, type AuditQuery} from './audit-log';
 import {localOperationPage,isPagedEntity,type OperationQuery,type PagedEntity} from './operation-page';
 import { preparePlan, todayGT } from '../domain/maintenance-plan';
@@ -306,7 +307,7 @@ export class LocalDataSource {
     const sourceIds = new Set(next.entities.OrdenServicio.filter(row => row.importado === true).map(row => String(row.origen_id)));
     const orderNos = new Set(next.entities.OrdenServicio.filter(row => row.importado === true).map(row => String(row.orden_origen)));
     const incomingIds = new Set<string>();
-    let addedReports = 0; let addedReadings = 0; const now = new Date().toISOString();
+    let addedReports = 0; let addedReadings = 0; let reusedReadings = 0; const now = new Date().toISOString();
     for (const input of payload.reportes) {
       const sourceId = String(input.origen_id || '').trim(); const orderNo = String(input.orden_origen || '').trim();
       if (!sourceId || !orderNo || incomingIds.has(sourceId)) throw new ValidationError(`ID de origen vacío o repetido: ${sourceId || '(sin ID)'}.`);
@@ -334,8 +335,17 @@ export class LocalDataSource {
       };
       next.entities.OrdenServicio.push(row); sourceIds.add(sourceId); orderNos.add(orderNo); addedReports++;
       if (typeof input.horometro === 'number') {
+        const existing = reusableHistoricalReading(next.entities.LecturaHorometro, { equipo_id: equipment.id, cliente_id: client.id, fecha: input.fecha, valor: input.horometro, odometro_millas: input.odometro_millas, origen_id: sourceId });
+        if (existing) {
+          const original = JSON.stringify(existing);
+          Object.assign(existing, { orden_id: row.id, actualizado_por: actor.id, fecha_actualizacion: now });
+          this.audit(next, actor, 'LecturaHorometro', 'Lectura histórica reutilizada', `${existing.codigo} vinculada a ${row.codigo}; se conservan identidad, fecha, valor, calidad y autoría original.`);
+          Object.assign(next.entities.Bitacora.at(-1)!, { equipo_id: equipment.id, lectura_id: existing.id, orden_id: row.id, lectura_original_json: original });
+          reusedReadings++;
+          continue;
+        }
         const meter: EntityRecord = {
-          id: crypto.randomUUID(), codigo: `HOR-H-${String(next.entities.LecturaHorometro.length + 1).padStart(4, '0')}`,
+          id: crypto.randomUUID(), codigo: `HOR-H-${String(next.entities.LecturaHorometro.reduce((max, reading) => Math.max(max, Number(reading.codigo.match(/^HOR-H-(\d+)$/)?.[1] || 0)), 0) + 1).padStart(4, '0')}`,
           creado_por: actor.id, fecha_creacion: now, actualizado_por: actor.id, fecha_actualizacion: now,
           equipo_id: equipment.id, cliente_id: client.id, fecha: input.fecha, valor: input.horometro,
           origen: 'Orden de servicio', orden_id: row.id, registrado_por: 'Importación histórica AppSheet', ubicacion: location,
@@ -347,9 +357,36 @@ export class LocalDataSource {
     if (!addedReports && !payload.equipos.length) return { equipos: 0, reportes: 0, lecturas: 0, repetidos: payload.reportes.length };
     const newEquipment = next.entities.Equipo.length - this.database.entities.Equipo.length;
     const duplicateReports = payload.reportes.length - addedReports;
-    this.audit(next, actor, 'Historial', 'Importación histórica', `${newEquipment} equipos, ${addedReports} reportes y ${addedReadings} lecturas agregados para ${client.nombre}; ${duplicateReports} reportes ya existentes omitidos. Valores de horómetro conservados como en origen.`);
+    this.audit(next, actor, 'Historial', 'Importación histórica', `${newEquipment} equipos, ${addedReports} reportes y ${addedReadings} lecturas agregados para ${client.nombre}; ${reusedReadings} lecturas reutilizadas; ${duplicateReports} reportes ya existentes omitidos. Valores de horómetro conservados como en origen.`);
     this.commit(next);
-    return { equipos: newEquipment, reportes: addedReports, lecturas: addedReadings, repetidos: duplicateReports };
+    return { equipos: newEquipment, reportes: addedReports, lecturas: addedReadings, repetidos: duplicateReports, ...(reusedReadings ? { lecturas_reutilizadas: reusedReadings } : {}) };
+  }
+  reconcileHistoricalReadings(actor: Actor, pairs: ReadingReconciliation[], expectedRevision: number) {
+    assertAdmin(actor);
+    if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron. Revisa de nuevo la conciliación.');
+    if (!Array.isArray(pairs) || !pairs.length || pairs.length > 2000) throw new ValidationError('Selecciona entre 1 y 2000 pares de lecturas.');
+    const next = structuredClone(this.database); const used = new Set<string>();
+    for (const pair of pairs) {
+      if (!pair || typeof pair.conservar_id !== 'string' || typeof pair.duplicada_id !== 'string' || pair.conservar_id === pair.duplicada_id || used.has(pair.conservar_id) || used.has(pair.duplicada_id)) throw new ValidationError('Par de lecturas inválido o repetido.');
+      used.add(pair.conservar_id); used.add(pair.duplicada_id);
+      const keep = next.entities.LecturaHorometro.find(row => row.id === pair.conservar_id);
+      const duplicate = next.entities.LecturaHorometro.find(row => row.id === pair.duplicada_id);
+      const order = next.entities.OrdenServicio.find(row => row.id === duplicate?.orden_id && row.importado === true);
+      if (!keep || !duplicate || !order || keep.orden_id || keep.importado !== true || !keep.origen_id || keep.origen_id !== order.origen_id || duplicate.registrado_por !== 'Importación histórica AppSheet' || typeof order.horometro !== 'number') throw new ValidationError('Solo se concilian lecturas históricas conservadas con su duplicado de importación y el mismo ID de origen.');
+      const target = { equipo_id: String(order.equipo_id), cliente_id: String(order.cliente_id), fecha: String(order.fecha), valor: order.horometro, odometro_millas: typeof order.odometro_millas === 'number' ? order.odometro_millas : null, origen_id: String(order.origen_id) };
+      const others = next.entities.LecturaHorometro.filter(row => row.equipo_id === target.equipo_id && Date.parse(String(row.fecha)) === Date.parse(target.fecha));
+      if (others.length !== 2 || !sameHistoricalReading(keep, target) || !sameHistoricalReading(duplicate, target)) throw new ValidationError('Las lecturas no son equivalentes o hay más de dos coincidencias.');
+      for (const [entity, rows] of Object.entries(next.entities)) if (entity !== 'Bitacora') {
+        if (rows.some(row => row.id !== duplicate.id && Object.entries(row).some(([key, value]) => key !== 'id' && value === duplicate.id))) throw new ValidationError('La lectura duplicada tiene otras referencias; requiere revisión.');
+      }
+      const original = JSON.stringify(keep); const removed = JSON.stringify(duplicate);
+      Object.assign(keep, { orden_id: order.id, actualizado_por: actor.id, fecha_actualizacion: new Date().toISOString() });
+      next.entities.LecturaHorometro = next.entities.LecturaHorometro.filter(row => row.id !== duplicate.id);
+      this.audit(next, actor, 'LecturaHorometro', 'Conciliación de lectura duplicada', `${duplicate.codigo} → ${keep.codigo}; mismo equipo, instante, H1, H3 e ID de origen. Se conserva la lectura original y se vincula a ${order.codigo}. Duplicado archivado íntegro en esta bitácora.`);
+      Object.assign(next.entities.Bitacora.at(-1)!, { equipo_id: keep.equipo_id, orden_id: order.id, lectura_id: keep.id, lectura_original_json: original, lectura_duplicada_json: removed });
+    }
+    this.commit(next);
+    return { conciliadas: pairs.length };
   }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.database); }
   async backup(actor: Actor) { return this.snapshot(actor); }

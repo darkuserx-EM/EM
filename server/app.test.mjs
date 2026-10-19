@@ -49,6 +49,7 @@ function poolFor(user, prepare = () => {}) {
         return [row?[{payload:JSON.stringify(row)}]:[]];
       }
       if(sql.startsWith('INSERT INTO em_audit_index')) return [{}];
+      if(sql.startsWith('DELETE FROM em_records WHERE entity=? AND id IN')) { db.entities[args[0]]=db.entities[args[0]].filter(row=>!args.slice(1).includes(row.id));return [{}]; }
       if(sql.startsWith('INSERT INTO em_records')) {
         for(let i=0;i<args.length;i+=3) {
           const [entity,id,payload]=args.slice(i,i+3); const row=JSON.parse(payload); const index=db.entities[entity].findIndex(item=>item.id===id);
@@ -504,4 +505,28 @@ test('late commit acknowledgements never replace a newer cache revision',async()
   const older=cache.publishAfterCommit({revision:10,entities:{}},()=>new Promise(resolve=>{finish=resolve;}));
   await cache.publishAfterCommit({revision:11,entities:{}},async()=>{});finish();await older;
   assert.equal(await cache.peek(10),undefined);assert.equal((await cache.peek(11)).revision,11);
+});
+
+test('historical reading reconciliation archives originals, checks revision and rejects other roles', async t => {
+  const prepare = db => {
+    const machine=db.entities.Equipo.find(row=>row.cliente_id);
+    const base={id:'retained-901',codigo:'HOR-901',creado_por:'original-author',fecha_creacion:'2025-01-01T00:00:00Z',actualizado_por:'original-author',fecha_actualizacion:'2025-01-01T00:00:00Z',equipo_id:machine.id,cliente_id:machine.cliente_id,fecha:'2025-02-08T14:00:00-06:00',valor:100,es_estimado:false,importado:true,origen_id:'original-source',orden_id:''};
+    db.entities.OrdenServicio.push({...base,id:'hist-order-901',codigo:'OS-H-901',fecha:'2025-02-08T20:00:00Z',horometro:100,orden_origen:'SOURCE-901'});
+    db.entities.LecturaHorometro.push(base,{...base,id:'duplicate-901',codigo:'HOR-H-901',orden_id:'hist-order-901',registrado_por:'Importación histórica AppSheet'});
+  };
+  const request=await fixture(t,{...coordinator,role:'Administrador'},prepare);
+  const before=await(await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  const body={action:'reconcileHistoricalReadings',revision:before.revision,pairs:[{conservar_id:'retained-901',duplicada_id:'duplicate-901'}]};
+  const stale=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({...body,revision:before.revision+1})});assert.equal(stale.status,409);
+  const response=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify(body)});assert.equal(response.status,200);assert.deepEqual((await response.json()).result,{conciliadas:1});
+  const after=await(await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  assert.equal(after.entities.LecturaHorometro.length,before.entities.LecturaHorometro.length-1);
+  assert.equal(after.entities.LecturaHorometro.find(row=>row.id==='retained-901').orden_id,'hist-order-901');
+  const audit=after.entities.Bitacora.find(row=>row.accion==='Conciliación de lectura duplicada');
+  assert.deepEqual(JSON.parse(audit.lectura_duplicada_json),before.entities.LecturaHorometro.find(row=>row.id==='duplicate-901'));
+  assert.deepEqual(after.entities.OrdenServicio,before.entities.OrdenServicio);
+  for(const user of [coordinator,{...coordinator,role:'Técnico',technician_id:'tech-1'},client]) {
+    const denied=await fixture(t,user,prepare);
+    assert.equal((await denied('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify(body)})).status,403);
+  }
 });
