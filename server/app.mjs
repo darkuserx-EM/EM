@@ -236,16 +236,17 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
     if (body?.mediaUploads !== undefined && (!body.mediaUploads || typeof body.mediaUploads !== 'object' || Array.isArray(body.mediaUploads) || Object.entries(body.mediaUploads).some(([field,id]) => !['foto_equipo','placa_datos','foto_frontal','foto_trasera','foto_lateral_1','foto_lateral_2'].includes(field) || typeof id !== 'string' || !/^[a-f0-9-]{36}$/i.test(id)))) throw fail(400,'La carga de fotografías no es válida.');
     if (req.actor.rol !== 'Administrador') {
       const operational = oneOf(['Ticket','OrdenServicio','LecturaHorometro'],body?.entity);
-      const manager = req.actor.rol === 'Coordinador' && operational && ['create','update'].includes(body?.action);
+      const manager = req.actor.rol === 'Coordinador' && (operational && ['create','update'].includes(body?.action) || body?.action === 'changeOperationEquipment');
       const technician = req.actor.rol === 'Técnico' && ((body?.entity === 'OrdenServicio' && ['create','update'].includes(body?.action)) || (body?.entity === 'Ticket' && body?.action === 'update') || (body?.entity === 'LecturaHorometro' && body?.action === 'create'));
       const client = req.actor.rol === 'Cliente' && (body?.action === 'submitReadings' || body?.entity === 'Ticket' && body?.action === 'create');
       if (!manager && !technician && !client) throw fail(403,'No tienes permiso para realizar esta operación.');
     }
-    if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','importHistoricalReports','reconcileHistoricalReadings','submitReadings','reviewReading','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
-    if (!['importClients','importHistoricalReports','reconcileHistoricalReadings','submitReadings','reviewReading','restore'].includes(body.action) && !oneOf(['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM','Tecnico','Ticket','OrdenServicio','LecturaHorometro'],body.entity)) throw fail(400,'Entidad no editable.');
+    if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','importHistoricalReports','reconcileHistoricalReadings','submitReadings','reviewReading','changeOperationEquipment','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
+    if (!['importClients','importHistoricalReports','reconcileHistoricalReadings','submitReadings','reviewReading','changeOperationEquipment','restore'].includes(body.action) && !oneOf(['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM','Tecnico','Ticket','OrdenServicio','LecturaHorometro'],body.entity)) throw fail(400,'Entidad no editable.');
     if (['create','update'].includes(body.action) && (!body.fields || typeof body.fields !== 'object' || Array.isArray(body.fields) || Object.entries(body.fields).some(([key,value]) => ['__proto__','constructor','prototype'].includes(key) || (value !== null && !['string','number','boolean'].includes(typeof value))))) throw fail(400,'Los campos del registro no son válidos.');
     if (body.action === 'update' && oneOf(['Ticket','OrdenServicio','LecturaHorometro'],body.entity) && typeof body.fields.expected_updated_at !== 'string') throw fail(400,'Recarga el registro antes de editarlo.');
     if ((body.action==='import'||body.action==='importClients') && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
+    if (body.action==='changeOperationEquipment' && (!body.correction || typeof body.correction !== 'object' || Array.isArray(body.correction))) throw fail(400,'Indica la solicitud o la orden y el equipo correcto.');
     const recordConcurrency = oneOf(['Ticket','OrdenServicio','LecturaHorometro'],body.entity) && ['create','update'].includes(body.action);
     // Retry only a transaction known to have rolled back, never an uncertain commit.
     for(let attempt=0;attempt<5;attempt++) {
@@ -283,6 +284,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       try {
         if (body.action==='submitReadings') result = source.submitReadings(req.actor,body.payload,db.revision);
         else if (body.action==='reviewReading') result = source.reviewReading(req.actor,body.decision,db.revision);
+        else if (body.action==='changeOperationEquipment') result = source.changeOperationEquipment(req.actor,body.correction,db.revision);
         else if (body.action==='importClients') result = source.importClients(req.actor,body.rows,db.revision);
         else if (body.action==='importHistoricalReports') result = source.importHistoricalReports(req.actor,body.payload,db.revision);
         else if (body.action==='reconcileHistoricalReadings') result = source.reconcileHistoricalReadings(req.actor,body.pairs,db.revision);

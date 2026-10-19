@@ -503,6 +503,58 @@ test('coordinator schedules orders; only the assigned technician executes and co
   Object.assign(user,{role:'Cliente',client_id:'client-1'});const visible=await snapshot();assert.deepEqual(visible.entities.OrdenServicio.map(row=>row.id),[saved.result.id]);assert.equal(JSON.stringify(visible).includes('solicitud_datos'),false);
 });
 
+test('equipment correction previews, moves the request with its order and readings, reindexes them and rejects other roles',async t=>{
+  let db;const user={...coordinator};
+  const pool=poolFor(user,value=>{
+    db=value;const [wrong]=db.entities.Equipo.filter(row=>row.cliente_id==='client-2');
+    const base={creado_por:'user-coord',fecha_creacion:'2026-10-10T14:00:00.000Z',actualizado_por:'user-coord',fecha_actualizacion:'2026-10-10T14:00:00.000Z',equipo_id:wrong.id,cliente_id:'client-2'};
+    db.entities.Ticket.push({...base,id:'fix-ticket',codigo:'TKT-004',schema_operacion:1,sede_id:'',titulo:'No eleva la carga',descripcion:'Falla al elevar con carga.',prioridad:'Alta',estado:'En revisión',fecha_programada:'',responsable_id:'',orden_id:''});
+    db.entities.OrdenServicio.push({...base,id:'fix-order',codigo:'OS-103',schema_operacion:1,sede_id:'',ticket_id:'fix-ticket',desde_solicitud:true,tecnico_id:'tech-1',tipo:'Correctivo',prioridad:'Alta',estado:'En proceso',fecha_programada:'2026-10-10',fecha:'2026-10-10T14:30:00.000Z',sintoma:'No eleva la carga',visible_cliente:false,motivo:'No eleva la carga',trabajo:'',tecnico:'Carlos Méndez'});
+    db.entities.LecturaHorometro.push({...base,id:'fix-reading',codigo:'HOR-901',schema_operacion:1,orden_id:'fix-order',fecha:'2026-10-10T15:00:00.000Z',valor:2400,origen:'Orden de servicio',registrado_por:'Carlos Méndez',es_estimado:false});
+    db.entities.Bitacora.push({...base,id:'log-fix-revision',codigo:'LOG-900',entidad:'OrdenServicio',accion:'Evidencia posterior al cierre',detalle:'OS-103 · foto agregada',orden_id:'fix-order',registrado_por:'Coordinación EMSA'});
+  });
+  // Cada fila operacional guardada vuelve a proyectarse en em_operation_index con su nuevo equipo.
+  const indexed=[];const execute=pool.execute;
+  pool.execute=async(sql,args)=>{
+    if(sql.startsWith('INSERT INTO em_operation_index'))for(let i=0;i<args.length;i+=16)indexed.push([args[i],args[i+1],args[i+3]]);
+    if(sql==="SELECT payload FROM em_records WHERE entity='OrdenServicio' AND id=?")return [db.entities.OrdenServicio.filter(row=>row.id===args[0]).map(row=>({payload:JSON.stringify(row)}))];
+    if(sql.startsWith("SELECT payload FROM em_audit_log WHERE entity='OrdenServicio' AND equipment_id IN"))return [db.entities.Bitacora.filter(row=>row.entidad==='OrdenServicio'&&args.slice(0,-1).includes(row.equipo_id)&&row.orden_id===args.at(-1)).reverse().map(row=>({payload:JSON.stringify(row)}))];
+    return execute.call(pool,sql,args);
+  };
+  const server=createApp({pool,origin,setupToken:token(),production:true}).listen(0,'127.0.0.1');await once(server,'listening');t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const mutate=body=>fetch(`http://127.0.0.1:${server.address().port}/api/mutate`,{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'changeOperationEquipment',...body})});
+  const [wrong,target]=db.entities.Equipo.filter(row=>row.cliente_id==='client-2');
+  const correction={ticket_id:'fix-ticket',equipo_id:target.id,motivo:'El cliente reportó la falla del otro equipo'};
+  for(const role of [{role:'Técnico',technician_id:'tech-1'},{role:'Cliente',client_id:'client-2'}]) {
+    Object.assign(user,role);assert.equal((await mutate({revision:db.revision,correction:{...correction,vista_previa:true}})).status,403);
+  }
+  Object.assign(user,{role:'Coordinador',technician_id:undefined,client_id:undefined});
+  assert.equal((await mutate({revision:db.revision})).status,400);
+  assert.equal((await mutate({revision:db.revision-1,correction})).status,409);
+  const preview=await mutate({revision:db.revision,correction:{...correction,vista_previa:true}});assert.equal(preview.status,200);
+  const summary=(await preview.json()).result;assert.deepEqual([summary.solicitud,summary.ordenes,summary.lecturas.length,summary.aplicado],['TKT-004',['OS-103'],1,false]);
+  assert.equal(db.entities.OrdenServicio.find(row=>row.id==='fix-order').equipo_id,wrong.id);assert.equal(indexed.length,0);
+  const revision=db.revision;const moved=await mutate({revision,correction});assert.equal(moved.status,200);assert.equal((await moved.json()).result.aplicado,true);
+  assert.equal(db.revision,revision+1);
+  for(const [entity,id] of [['Ticket','fix-ticket'],['OrdenServicio','fix-order'],['LecturaHorometro','fix-reading']]) {
+    assert.equal(db.entities[entity].find(row=>row.id===id).equipo_id,target.id);
+    assert.ok(indexed.some(([name,key,equipment])=>name===entity&&key===id&&equipment===target.id),`${entity} reindexado`);
+  }
+  const audit=db.entities.Bitacora.find(row=>row.accion==='Corrección de equipo');
+  assert.deepEqual([audit.equipo_id,audit.equipo_anterior_id,audit.registrado_rol,audit.motivo],[target.id,wrong.id,'Coordinador',correction.motivo]);
+  assert.equal(JSON.parse(audit.ordenes_anteriores_json)[0].equipo_id,wrong.id);
+  // El historial de revisiones de la orden conserva lo registrado con el equipo anterior y muestra la corrección.
+  const history=await(await fetch(`http://127.0.0.1:${server.address().port}/api/orders/fix-order/revisions`,{headers:jsonHeaders})).json();
+  assert.deepEqual(history.events.map(event=>event.action),['Corrección de equipo','Evidencia posterior al cierre']);
+  assert.deepEqual([history.events[0].previous,history.events[0].next,history.events[0].reason],[wrong.codigo,target.codigo,correction.motivo]);
+  // Con la orden ya completada, coordinación recibe 403: solo administración la corrige.
+  Object.assign(db.entities.OrdenServicio.find(row=>row.id==='fix-order'),{estado:'Completada',fecha_fin:'2026-10-11T16:00:00.000Z',diagnostico:'Sello dañado',trabajo_realizado:'Cambio de sello',pruebas_realizadas:'Elevación con carga',resultado_pruebas:'Sin fugas'});
+  assert.equal((await mutate({revision:db.revision,correction:{...correction,equipo_id:wrong.id}})).status,403);
+  Object.assign(user,{role:'Administrador'});
+  assert.equal((await mutate({revision:db.revision,correction:{...correction,equipo_id:wrong.id}})).status,200);
+  assert.equal(db.entities.OrdenServicio.find(row=>row.id==='fix-order').equipo_id,wrong.id);
+});
+
 test('técnico consulta fotos de equipos activos y conserva el aislamiento de equipos retirados',async t=>{
   const user={...coordinator,role:'Técnico',technician_id:'tech-1'};
   const request=await fixture(t,user,db=>{withImages(db);db.entities.Equipo[1].foto_equipo=picture;});

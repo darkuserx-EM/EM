@@ -15,6 +15,7 @@ import { equipmentImageFields, equipmentImageLabels } from '../domain/equipment-
 import { ValidationError } from '../domain/errors';
 import type { HistoricalReportsImport } from './historical-reports';
 import { enabledEquipment, validEquipmentGrant } from '../domain/technician-work';
+import { equipmentCorrectionSummary, machineName, planEquipmentCorrection, type EquipmentCorrection, type EquipmentCorrectionSummary } from '../domain/equipment-correction';
 import { isOperationalEntity, prepareOperation, ticketsResolvedByOrder } from '../domain/operations';
 
 export const STORAGE_KEY = 'portal-em.database.v1';
@@ -401,6 +402,35 @@ export class LocalDataSource {
     row.estado = decision.aprobar ? 'Aprobada' : 'Rechazada'; row.motivo = decision.motivo.trim(); row.revisado_por = actor.id; row.revisado_el = new Date().toISOString(); row.actualizado_por = actor.id; row.fecha_actualizacion = String(row.revisado_el);
     this.audit(next, actor, 'LecturaEnviada', `Lectura ${row.estado.toLowerCase()}`, `${row.codigo} · ${row.valor} h · ${row.motivo}`);
     this.commit(next); return { revisadas: 1 };
+  }
+  /** «Corregir equipo» de una solicitud o de una orden sin solicitud (ver domain/equipment-correction.ts). Todo o nada, con copia íntegra en la bitácora. */
+  changeOperationEquipment(actor: Actor, input: EquipmentCorrection, expectedRevision: number): EquipmentCorrectionSummary {
+    if (expectedRevision !== this.database.revision) throw Object.assign(new ValidationError('Los datos cambiaron. Vuelve a revisar la corrección antes de guardarla.'), { status: 409 });
+    const next = structuredClone(this.database);
+    const plan = planEquipmentCorrection(next.entities, actor, input);
+    const summary = equipmentCorrectionSummary(plan, next.entities);
+    if (input.vista_previa === true) return summary;
+    const reason = String(input.motivo ?? '').trim();
+    if (reason.length < 8 || reason.length > 500) throw new ValidationError('Explica el motivo de la corrección (entre 8 y 500 caracteres).');
+    const { ticket, orders, readings, parts, labor, findings, source, target } = plan;
+    const copies = { solicitud_anterior_json: ticket ? JSON.stringify(ticket) : '', ordenes_anteriores_json: JSON.stringify(orders), lecturas_anteriores_json: JSON.stringify(readings), repuestos_anteriores_json: JSON.stringify(parts), horas_anteriores_json: JSON.stringify(labor), hallazgos_anteriores_json: JSON.stringify(findings) };
+    const operations = [...(ticket ? [ticket] : []), ...orders];
+    for (const row of [...operations, ...readings, ...parts, ...labor, ...findings]) {
+      Object.assign(row, { equipo_id: target.id, actualizado_por: actor.id, fecha_actualizacion: new Date(Math.max(Date.now(), Date.parse(row.fecha_actualizacion) + 1)).toISOString() });
+      // El cliente no cambia; la sede es la del equipo correcto (las lecturas y los demás registros solo la llevan si ya la tenían).
+      if (operations.includes(row) || 'sede_id' in row) row.sede_id = String(target.sede_id || '');
+      if (findings.includes(row)) row.actualizado_nombre = actor.nombre;
+    }
+    const codes = operations.map(row => row.codigo).join(', ');
+    this.audit(next, actor, orders.length ? 'OrdenServicio' : 'Ticket', 'Corrección de equipo', `${codes} · ${machineName(source)} → ${machineName(target)}; con ${readings.length} lecturas, ${parts.length} repuestos, ${labor.length} registros de horas y ${findings.length} hallazgos. ${reason}`);
+    Object.assign(next.entities.Bitacora.at(-1)!, { ticket_id: ticket?.id || '', orden_id: orders[0]?.id || '', equipo_id: target.id, equipo_anterior_id: source.id, equipo_anterior: machineName(source), equipo_nuevo: machineName(target), motivo: reason, ...copies });
+    // Cada orden adicional de la solicitud también deja la corrección en su propio historial de revisiones.
+    for (const order of orders.slice(1)) {
+      this.audit(next, actor, 'OrdenServicio', 'Corrección de equipo', `${order.codigo} · se movió con ${codes} de ${machineName(source)} a ${machineName(target)}. ${reason}`);
+      Object.assign(next.entities.Bitacora.at(-1)!, { ticket_id: ticket?.id || '', orden_id: order.id, equipo_id: target.id, equipo_anterior_id: source.id, equipo_anterior: machineName(source), equipo_nuevo: machineName(target), motivo: reason });
+    }
+    this.commit(next);
+    return { ...summary, aplicado: true };
   }
   reconcileHistoricalReadings(actor: Actor, pairs: ReadingReconciliation[], expectedRevision: number) {
     assertAdmin(actor);
