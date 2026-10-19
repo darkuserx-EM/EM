@@ -1,5 +1,6 @@
 import { assignedTo } from '../domain/order-team';
 import { reusableHistoricalReading, sameHistoricalReading, type ReadingReconciliation } from '../domain/historical-readings';
+import { createdByHistoricalImport, reassignableEquipment, type ImportedReportRevision } from '../domain/imported-reports';
 import {localAuditPage, type AuditQuery} from './audit-log';
 import {localOperationPage,isPagedEntity,type OperationQuery,type PagedEntity} from './operation-page';
 import { preparePlan, todayGT } from '../domain/maintenance-plan';
@@ -387,6 +388,42 @@ export class LocalDataSource {
     }
     this.commit(next);
     return { conciliadas: pairs.length };
+  }
+  /** Anula o reasigna un reporte histórico importado (ver domain/imported-reports.ts). Todo o nada, con copia íntegra en la bitácora. */
+  reviseImportedReport(actor: Actor, input: ImportedReportRevision, expectedRevision: number) {
+    assertAdmin(actor);
+    if (expectedRevision !== this.database.revision) throw new ValidationError('Los datos cambiaron. Vuelve a abrir el reporte antes de corregirlo.');
+    const reason = String(input?.motivo ?? '').trim();
+    if (!input || !['anular', 'reasignar'].includes(input.accion)) throw new ValidationError('Elige si el reporte se anula o se mueve a otro equipo.');
+    if (reason.length < 8 || reason.length > 500) throw new ValidationError('Explica el motivo de la corrección (entre 8 y 500 caracteres).');
+    const next = structuredClone(this.database);
+    const order = next.entities.OrdenServicio.find(row => row.id === input.orden_id);
+    if (!order || order.importado !== true) throw new ValidationError('Solo se corrigen así los reportes históricos importados.');
+    for (const [entity, rows] of Object.entries(next.entities)) if (!['Bitacora', 'LecturaHorometro'].includes(entity)) {
+      if (rows.some(row => row.id !== order.id && Object.entries(row).some(([key, value]) => key !== 'id' && value === order.id))) throw new ValidationError('El reporte tiene otras referencias (solicitud, repuestos u horas); requiere revisión.');
+    }
+    const readings = next.entities.LecturaHorometro.filter(row => row.orden_id === order.id);
+    const before = JSON.stringify(order), readingsBefore = JSON.stringify(readings), now = new Date().toISOString();
+    if (input.accion === 'anular') {
+      const removed = new Set(readings.filter(createdByHistoricalImport).map(row => row.id));
+      next.entities.OrdenServicio = next.entities.OrdenServicio.filter(row => row.id !== order.id);
+      next.entities.LecturaHorometro = next.entities.LecturaHorometro.filter(row => !removed.has(row.id));
+      // Una lectura conservada de otro origen sigue siendo válida para el equipo: solo pierde el vínculo con el reporte.
+      for (const reading of readings) if (!removed.has(reading.id)) Object.assign(reading, { orden_id: '', actualizado_por: actor.id, fecha_actualizacion: now });
+      this.audit(next, actor, 'OrdenServicio', 'Anulación de reporte importado', `${order.codigo} · orden original ${order.orden_origen || 'sin número'}: sale del historial con ${removed.size} lecturas de importación. ${reason}`);
+      Object.assign(next.entities.Bitacora.at(-1)!, { orden_id: order.id, equipo_id: order.equipo_id, motivo: reason, version_anterior: before, lecturas_anteriores_json: readingsBefore });
+      this.commit(next);
+      return { accion: 'anular' as const, orden: String(order.codigo), lecturas: removed.size };
+    }
+    const target = next.entities.Equipo.find(row => row.id === input.equipo_id);
+    if (!target || !reassignableEquipment(order, [target]).length) throw new ValidationError('Elige otro equipo del mismo cliente.');
+    const previousEquipment = String(order.equipo_id);
+    Object.assign(order, { equipo_id: target.id, sede_id: target.sede_id || '', actualizado_por: actor.id, fecha_actualizacion: now });
+    for (const reading of readings) Object.assign(reading, { equipo_id: target.id, actualizado_por: actor.id, fecha_actualizacion: now });
+    this.audit(next, actor, 'OrdenServicio', 'Reasignación de reporte importado', `${order.codigo} · orden original ${order.orden_origen || 'sin número'}: pasa con ${readings.length} lecturas a ${target.codigo}. ${reason}`);
+    Object.assign(next.entities.Bitacora.at(-1)!, { orden_id: order.id, equipo_id: target.id, equipo_anterior_id: previousEquipment, motivo: reason, version_anterior: before, version_nueva: JSON.stringify(order), lecturas_anteriores_json: readingsBefore });
+    this.commit(next);
+    return { accion: 'reasignar' as const, orden: String(order.codigo), lecturas: readings.length };
   }
   snapshot(actor: Actor) { assertAdmin(actor); return structuredClone(this.database); }
   async backup(actor: Actor) { return this.snapshot(actor); }

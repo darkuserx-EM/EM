@@ -241,8 +241,8 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
       const client = req.actor.rol === 'Cliente' && body?.entity === 'Ticket' && body?.action === 'create';
       if (!manager && !technician && !client) throw fail(403,'No tienes permiso para realizar esta operación.');
     }
-    if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','importHistoricalReports','reconcileHistoricalReadings','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
-    if (!['importClients','importHistoricalReports','reconcileHistoricalReadings','restore'].includes(body.action) && !oneOf(['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM','Tecnico','Ticket','OrdenServicio','LecturaHorometro'],body.entity)) throw fail(400,'Entidad no editable.');
+    if (!body || !Number.isSafeInteger(body.revision) || !['create','update','remove','import','importClients','importHistoricalReports','reconcileHistoricalReadings','reviseImportedReport','restore'].includes(body.action)) throw fail(400,'Operación inválida.');
+    if (!['importClients','importHistoricalReports','reconcileHistoricalReadings','reviseImportedReport','restore'].includes(body.action) && !oneOf(['Cliente','Contacto','Sede','Equipo','Catalogos','Hallazgo','PlanPM','Tecnico','Ticket','OrdenServicio','LecturaHorometro'],body.entity)) throw fail(400,'Entidad no editable.');
     if (['create','update'].includes(body.action) && (!body.fields || typeof body.fields !== 'object' || Array.isArray(body.fields) || Object.entries(body.fields).some(([key,value]) => ['__proto__','constructor','prototype'].includes(key) || (value !== null && !['string','number','boolean'].includes(typeof value))))) throw fail(400,'Los campos del registro no son válidos.');
     if (body.action === 'update' && oneOf(['Ticket','OrdenServicio','LecturaHorometro'],body.entity) && typeof body.fields.expected_updated_at !== 'string') throw fail(400,'Recarga el registro antes de editarlo.');
     if ((body.action==='import'||body.action==='importClients') && (!Array.isArray(body.rows) || body.rows.length>2000)) throw fail(400,'Importa un máximo de 2000 filas.');
@@ -284,6 +284,7 @@ export function createApp({ pool, origin, setupToken, production = true, dist = 
         if (body.action==='importClients') result = source.importClients(req.actor,body.rows,db.revision);
         else if (body.action==='importHistoricalReports') result = source.importHistoricalReports(req.actor,body.payload,db.revision);
         else if (body.action==='reconcileHistoricalReadings') result = source.reconcileHistoricalReadings(req.actor,body.pairs,db.revision);
+        else if (body.action==='reviseImportedReport') result = source.reviseImportedReport(req.actor,body.report,db.revision);
         else if (body.action==='restore') source.restore(req.actor,body.database,db.revision,body.exportedAt);
         else {
           const repo = source.repository(body.entity,req.actor);

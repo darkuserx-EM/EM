@@ -530,3 +530,34 @@ test('historical reading reconciliation archives originals, checks revision and 
     assert.equal((await denied('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify(body)})).status,403);
   }
 });
+
+test('imported report correction removes or moves the report with its readings, audits it and rejects other roles', async t => {
+  const prepare = db => {
+    const owner=db.entities.Equipo.find(row=>row.cliente_id&&db.entities.Equipo.filter(other=>other.cliente_id===row.cliente_id).length>1);
+    const [wrong]=db.entities.Equipo.filter(row=>row.cliente_id===owner.cliente_id);
+    const base={creado_por:'import',fecha_creacion:'2026-10-16T13:30:00Z',actualizado_por:'import',fecha_actualizacion:'2026-10-16T13:30:00Z',equipo_id:wrong.id,cliente_id:wrong.cliente_id,fecha:'2026-05-14T18:49:00.000Z'};
+    db.entities.OrdenServicio.push({...base,id:'hist-order-493',codigo:'OS-H-0493',importado:true,origen_id:'source-493',orden_origen:'493',estado:'Completado',horometro:8059});
+    db.entities.LecturaHorometro.push({...base,id:'hist-reading-493',codigo:'HOR-H-0493',orden_id:'hist-order-493',valor:8059,es_estimado:false,registrado_por:'Importación histórica AppSheet'});
+  };
+  const request=await fixture(t,{...coordinator,role:'Administrador'},prepare);
+  const before=await(await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  const target=before.entities.Equipo.find(row=>row.cliente_id===before.entities.OrdenServicio.find(order=>order.id==='hist-order-493').cliente_id&&row.id!==before.entities.OrdenServicio.find(order=>order.id==='hist-order-493').equipo_id);
+  const report={orden_id:'hist-order-493',accion:'reasignar',equipo_id:target.id,motivo:'Las lecturas son del otro equipo'};
+  for(const user of [coordinator,{...coordinator,role:'Técnico',technician_id:'tech-1'},client]) {
+    const denied=await fixture(t,user,prepare);
+    assert.equal((await denied('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'reviseImportedReport',revision:before.revision,report})})).status,403);
+  }
+  const moved=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'reviseImportedReport',revision:before.revision,report})});
+  assert.equal(moved.status,200);assert.deepEqual((await moved.json()).result,{accion:'reasignar',orden:'OS-H-0493',lecturas:1});
+  const middle=await(await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  assert.equal(middle.entities.OrdenServicio.find(row=>row.id==='hist-order-493').equipo_id,target.id);
+  assert.equal(middle.entities.LecturaHorometro.find(row=>row.id==='hist-reading-493').equipo_id,target.id);
+  const removed=await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'reviseImportedReport',revision:middle.revision,report:{orden_id:'hist-order-493',accion:'anular',motivo:'No corresponde a equipos del portal'}})});
+  assert.equal(removed.status,200);
+  const after=await(await request('/api/backup',{headers:{Cookie:'em_session=x'}})).json();
+  assert.equal(after.entities.OrdenServicio.some(row=>row.id==='hist-order-493'),false);
+  assert.equal(after.entities.LecturaHorometro.some(row=>row.id==='hist-reading-493'),false);
+  const audit=after.entities.Bitacora.find(row=>row.accion==='Anulación de reporte importado');
+  assert.equal(JSON.parse(audit.version_anterior).equipo_id,target.id);assert.equal(audit.motivo,'No corresponde a equipos del portal');
+  assert.ok(after.entities.Bitacora.some(row=>row.accion==='Reasignación de reporte importado'&&row.equipo_anterior_id===before.entities.OrdenServicio.find(order=>order.id==='hist-order-493').equipo_id));
+});

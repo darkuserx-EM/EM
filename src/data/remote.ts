@@ -4,6 +4,7 @@ import { assertAdmin } from '../domain/permissions';
 import { planClientImport, type ClientImportRow } from '../domain/client-import';
 import type { Repository } from './repository';
 import type { HistoricalReportsImport } from './historical-reports';
+import type { ImportedReportRevision } from '../domain/imported-reports';
 import { isOperationalEntity } from '../domain/operations';
 import { equipmentImageFields } from '../domain/equipment-images';
 import {isPagedEntity,localOperationPage,type OperationQuery,type OperationPage,type PagedEntity} from './operation-page';
@@ -173,4 +174,5 @@ export class RemoteDataSource {
   importClients(actor: Actor, rows: ClientImportRow[], revision: number) { assertAdmin(actor); return this.mutate<string | undefined>({ action: 'importClients', rows, revision }); }
   importHistoricalReports(actor: Actor, payload: HistoricalReportsImport, revision: number) { assertAdmin(actor); return this.mutate<{ equipos: number; reportes: number; lecturas: number; lecturas_reutilizadas?: number; repetidos: number }>({ action: 'importHistoricalReports', payload, revision }); }
   async restore(actor: Actor, database: unknown, revision: number, exportedAt?: string) { assertAdmin(actor); await this.mutate({ action: 'restore', database, revision, exportedAt }); }
+  reviseImportedReport(actor: Actor, report: ImportedReportRevision, revision: number) { assertAdmin(actor); return this.mutate<{ accion: 'anular' | 'reasignar'; orden: string; lecturas: number }>({ action: 'reviseImportedReport', report, revision }); }
 }

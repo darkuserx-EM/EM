@@ -11,3 +11,18 @@ La operación administrativa `reconcileHistoricalReadings` recibe pares explíci
 Cada par deja la lectura original vinculada y archiva íntegros ambos registros anteriores en la bitácora (`lectura_original_json`, `lectura_duplicada_json`), además del equipo y orden asociados. La copia redundante sale de las lecturas activas; las bitácoras anteriores no se modifican. La transacción aplica todos los pares o ninguno. Antes de ejecutarla: respaldo completo verificado, ensayo aislado, comprobación de recuperación y comparación posterior de entidades, archivos y permisos.
 
 Los códigos nuevos HOR-H se generan por el máximo existente para no reutilizar códigos tras la conciliación. Costos e inventario quedan fuera de este cambio.
+
+## Corregir un reporte importado en la máquina equivocada
+
+Administración puede corregir un reporte histórico importado desde su detalle, con el botón «Corregir reporte importado». Hay dos opciones y ambas piden un motivo de 8 a 500 caracteres:
+
+- **Anular.** Se usa cuando el reporte no corresponde a ningún equipo de este cliente registrado en el portal. El reporte sale del historial activo junto con sus lecturas de importación (las registradas por «Importación histórica AppSheet»). Una lectura conservada de otro origen no se borra: solo pierde el vínculo con el reporte. Si después se registra el equipo correcto, el mismo reporte se puede volver a importar.
+- **Mover a otro equipo del mismo cliente.** El reporte pasa al otro equipo con todas sus lecturas.
+
+Lo que no se puede corregir así:
+
+- un reporte con otras referencias (repuestos, horas o una solicitud vinculada);
+- una orden creada en el portal;
+- un cambio hecho por un perfil que no sea administración.
+
+La bitácora guarda la versión anterior del reporte (`version_anterior`) y de sus lecturas (`lecturas_anteriores_json`). Si el reporte se movió, también guarda el equipo anterior (`equipo_anterior_id`). La operación aplica todo o nada y vuelve a comprobar la revisión de los datos.
