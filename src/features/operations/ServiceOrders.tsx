@@ -10,6 +10,7 @@ import { clientDisplayName } from '../../domain/client-profile';
 import type { EntityRecord } from '../../domain/model';
 import { getDataSource } from '../../data/source';
 import ServiceOrderForm from './ServiceOrderForm';
+import { EquipmentCorrection, EquipmentCorrectionBar, canCorrectEquipment } from './EquipmentCorrection';
 import { canCreateTicketOrder } from '../../domain/technician-work';
 import AttachmentPanel from '../attachments/AttachmentPanel';
 import TicketPhotos from '../attachments/TicketPhotos';
@@ -33,6 +34,8 @@ export default function ServiceOrders() {
   const [correctingImport, setCorrectingImport] = useState(false);
   const [editor, setEditor] = useState<EntityRecord | 'new' | null>(null); const [dismissedTicket, setDismissedTicket] = useState(''); const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [draftTicket, setDraftTicket] = useState<EntityRecord>();
+  // Orden sin solicitud registrada con el equipo equivocado (la de una solicitud se corrige desde la solicitud).
+  const [correctingEquipment, setCorrectingEquipment] = useState(false);
   const orders=useOperationPage('OrdenServicio',{...filters,page});
   const detail=useOperationPage('OrdenServicio',{id:params.get('orden')||'',pageSize:1},params.has('orden'));
   const tickets=useOperationPage('Ticket',{id:params.get('ticket')||'',pageSize:1},canCreate&&params.has('ticket')&&params.get('ticket')!==dismissedTicket);
@@ -104,6 +107,7 @@ export default function ServiceOrders() {
     {selected && !editor && <Modal title={`Reporte ${serviceLabel(selected)}`} wide className="os-detail-modal" onClose={close}>
       <div className="os-detail-actions">{actor.rol !== 'Técnico' && <Link className="button" aria-disabled={attachmentBusy} onClick={event => { if (attachmentBusy) event.preventDefault(); }} to={`/${actor.rol === 'Cliente' ? 'portal' : 'flota'}?equipo=${encodeURIComponent(String(selected.equipo_id))}`}>Ficha del equipo<ArrowUpRight size={15} /></Link>}<button className="button" disabled={attachmentBusy || sharing || !signature.ready} onClick={() => window.print()}><Printer size={15} />{signature.ready ? 'Imprimir / PDF' : 'Cargando firma…'}</button>{isOperationalOrder(selected) && (selected.estado !== 'Cancelada' && (selected.estado !== 'Completada' || manager)) && (manager || actor.rol === 'Técnico' && assignedTo(selected, actor.tecnico_id)) && <button className="button button-dark" disabled={attachmentBusy || sharing} onClick={() => setEditor(selected)}><Pencil size={15} />{selected.estado === 'Completada' ? 'Corregir reporte' : selected.estado === 'En proceso' ? 'Continuar atención' : 'Atender orden'}</button>}{manager && isOperationalOrder(selected) && selected.estado === 'Completada' && <button className="button" disabled={attachmentBusy || sharing} onClick={()=>{setReason('');setShareError('');setReopening(true);}}>Reabrir orden</button>}{actor.rol === 'Administrador' && selected.importado === true && <button className="button" disabled={attachmentBusy || sharing} onClick={() => setCorrectingImport(true)}>Corregir reporte importado</button>}</div>
       {(actor.rol === 'Administrador' || manager && isOperationalOrder(selected)) && selected.cliente_id && <div className="os-sharing"><span>{selected.visible_cliente === true ? 'Visible en el portal del cliente' : 'El cliente aún no ve este reporte'}</span><button className="button button-small" disabled={sharing || attachmentBusy} onClick={share}>{selected.visible_cliente === true ? <EyeOff size={15} /> : <Eye size={15} />}{sharing ? 'Guardando…' : selected.visible_cliente === true ? 'Ocultar reporte' : 'Compartir con cliente'}</button></div>}
+      {!selected.ticket_id && canCorrectEquipment(actor, undefined, [selected]) && <EquipmentCorrectionBar equipment={selectedEquipment} disabled={attachmentBusy || sharing} onOpen={() => setCorrectingEquipment(true)} />}
       <ErrorNotice message={shareError} />
       <ErrorNotice message={signature.error ? `No se pudo cargar la firma de quien recibe. ${signature.error}` : ''} />
       <ServiceReport order={selected} equipment={selectedEquipment} client={selectedClient} site={sites.rows.find(row => row.id === selected.sede_id)} technicians={technicians.rows} signature={signature.signature} signatureUnavailable={!!signature.error} />
@@ -114,5 +118,6 @@ export default function ServiceOrders() {
     {reopening && selected && <Modal title={`Reabrir ${selected.codigo}`} onClose={()=>{if(!sharing)setReopening(false);}}><form onSubmit={e=>{e.preventDefault();void reopenOrder();}}><p>La orden vuelve a En proceso. Se conserva el cierre anterior en el historial; la solicitud resuelta vinculada vuelve a En revisión. El reporte quedará sin compartir hasta su revisión.</p><label className="record-field">Motivo de reapertura<textarea required minLength={8} maxLength={500} value={reason} onChange={e=>setReason(e.target.value)} disabled={sharing}/></label><ErrorNotice message={shareError}/><div className="modal-actions"><button type="submit" className="button button-dark" disabled={sharing}>{sharing?'Guardando…':'Confirmar reapertura'}</button></div></form></Modal>}
     {correctingImport && selected && <ImportedReportCorrection order={selected} equipment={equipment.rows} onClose={() => setCorrectingImport(false)} onDone={accion => { setCorrectingImport(false); if (accion === 'anular') close(); }} />}
     {(editor || createFromLink) && <ServiceOrderForm key={editor && editor !== 'new' ? editor.id : draftTicket?.id || 'new'} row={editor && editor !== 'new' ? editor : undefined} ticket={draftTicket} onClose={() => { setEditor(null); setDraftTicket(undefined); if (draftTicket) setDismissedTicket(draftTicket.id); if (draftTicket || createFromLink) setParams({}); }} onSaved={row => { setEditor(null); setDraftTicket(undefined); setDismissedTicket(draftTicket?.id || ''); open(row.id); }} />}
+    {correctingEquipment && selected && <EquipmentCorrection order={selected} equipment={equipment.rows} clients={clients.rows} onClose={() => setCorrectingEquipment(false)} onDone={() => setCorrectingEquipment(false)} />}
   </div>;
 }

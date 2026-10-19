@@ -63,11 +63,19 @@ export function registerAttachmentRoutes(app,{pool,files:storage=localFiles}) {
   app.get('/api/orders/:id/revisions',async(req,res)=>{
     if(!['Administrador','Coordinador'].includes(req.actor.rol))throw fail(403,'Solo administración y coordinación pueden revisar el historial.');
     const order=permitted(await readOrder(pool,req.params.id),req.actor);
+    // Una orden movida con «Corregir equipo» conserva las revisiones registradas con sus equipos anteriores.
+    const equipmentIds=[String(order.equipo_id)];
     /** @type {{payload:string}[]} */
-    const rows=await select(pool,"SELECT payload FROM em_audit_log WHERE entity='OrdenServicio' AND equipment_id=? AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.orden_id'))=? ORDER BY created_at DESC,id DESC LIMIT 100",[order.equipo_id,order.id]);
+    let rows=[];
+    for(let depth=0;depth<5;depth++) {
+      rows=await select(pool,`SELECT payload FROM em_audit_log WHERE entity='OrdenServicio' AND equipment_id IN (${equipmentIds.map(()=>'?').join(',')}) AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.orden_id'))=? ORDER BY created_at DESC,id DESC LIMIT 100`,[...equipmentIds,order.id]);
+      const previous=[...new Set(rows.map(entry=>JSON.parse(entry.payload).equipo_anterior_id).filter(id=>typeof id==='string'&&id&&!equipmentIds.includes(id)))];
+      if(!previous.length)break;
+      equipmentIds.push(...previous);
+    }
     res.json({events:rows.map(entry=>{const row=JSON.parse(entry.payload),before=JSON.parse(row.version_anterior||'{}'),after=JSON.parse(row.version_nueva||'{}');
       const keys=['sintoma','diagnostico','causa_confirmada','trabajo_realizado','recomendaciones','pruebas_realizadas','resultado_pruebas','recibido_por','notas_seguridad','insumos','repuestos','fecha_fin','visible_cliente'];
-      return {id:row.id,action:row.accion,date:row.fecha_creacion,actor:row.registrado_por,reason:row.motivo,previous:row.estado_anterior,next:row.estado_nuevo,changes:keys.filter(key=>before[key]!==after[key]).map(key=>({field:key,before:before[key]??'',after:after[key]??''}))};})});
+      return {id:row.id,action:row.accion,date:row.fecha_creacion,actor:row.registrado_por,reason:row.motivo,previous:row.estado_anterior||row.equipo_anterior,next:row.estado_nuevo||row.equipo_nuevo,changes:keys.filter(key=>before[key]!==after[key]).map(key=>({field:key,before:before[key]??'',after:after[key]??''}))};})});
   });
   app.get('/api/attachments',/** @param {import("./http-contracts.js").PortalRequest<import("./http-contracts.js").AttachmentBody>} req @param {import("./http-contracts.js").PortalResponse<import("./http-contracts.js").AttachmentReply|Buffer>} res */ async (req,res)=>{
     const id=String(req.query.orderId || ''); permitted(await readOrder(pool,id),req.actor);

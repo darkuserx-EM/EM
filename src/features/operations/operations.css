@@ -38,6 +38,10 @@
 .os-equipment-context { display: grid; gap: 5px; padding: 13px 16px; margin: 0 0 18px; border-radius: var(--radius-md); background: var(--color-surface-subtle); color: var(--color-text-muted); line-height: 1.6; }
 .os-equipment-context strong { font-size: var(--text-md); font-weight: var(--weight-semibold); color: var(--color-text); overflow-wrap: anywhere; }
 .os-equipment-context small { font-size: var(--text-xs); color: var(--color-text-muted); }
+/* Corregir equipo (EquipmentCorrection): lo que se moverá, antes de confirmar */
+.equipment-fix-summary { display: grid; gap: var(--space-2); padding: 13px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-subtle); font-size: var(--text-md); line-height: 1.6; overflow-wrap: anywhere; }
+.equipment-fix-summary ul { margin: 0; padding-inline-start: 20px; font-size: var(--text-sm); }
+.equipment-fix-warning { color: var(--color-warning-text); font-weight: var(--weight-semibold); }
 .os-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 22px; }
 .os-form-grid[hidden] { display: none; }
 .os-field { display: grid; align-content: start; gap: 8px; min-width: 0; font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--color-text-muted); }
