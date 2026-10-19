@@ -1,15 +1,19 @@
 import type { EntityRecord } from '../../domain/model';
-import { dateTimeInput } from './operations-ui';
+import { dateTimeInput, orderNotStarted } from './operations-ui';
 
 export const orderSections = ['Inicio', 'Atención', 'Cierre'] as const;
 
-/** Suggestions only for a new draft: opening a saved order must not rewrite dates. */
-export function orderEntryTimes(row?: Partial<EntityRecord>, ticket?: Partial<EntityRecord>, now = new Date()) {
+/**
+ * Suggestions only for a new draft: opening a saved order must not rewrite dates.
+ * El inicio del trabajo solo se sugiere cuando la orden nace en proceso (el técnico en campo, `startsNow`);
+ * un borrador o una visita programada no tiene inicio hasta que se atiende.
+ */
+export function orderEntryTimes(row?: Partial<EntityRecord>, ticket?: Partial<EntityRecord>, now = new Date(), startsNow = false) {
   const local = dateTimeInput(now.toISOString());
   return {
     fecha_programada: String(row ? row.fecha_programada || '' : ticket?.fecha_programada || local.slice(0, 10)),
     hora_programada: String(row ? row.hora_programada || '' : local.slice(11, 16)),
-    fecha: row ? dateTimeInput(row.fecha) : local,
+    fecha: row ? orderNotStarted(row.estado) ? '' : dateTimeInput(row.fecha) : startsNow ? local : '',
   };
 }
 

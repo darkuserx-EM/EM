@@ -1,4 +1,5 @@
 import type { EntityRecord, Scalar } from '../../domain/model';
+import { formatDate, formatNumber } from '../../domain/format';
 import { supportFields } from '../../domain/order-team';
 import {emptyOperationFilters,type OperationFilters} from '../../domain/operation-query';
 export {filterOperations,emptyOperationFilters,isOperationalOrder,type OperationFilters} from '../../domain/operation-query';
@@ -42,7 +43,25 @@ export function changedFields(fields: Record<string, Scalar>, values: Record<str
 }
 /** Valores del formulario después de guardar: el nuevo punto de partida es la orden que devolvió el servidor, campo por campo. */
 export function savedFormValues(saved: EntityRecord, values: Record<string, string>): Record<string, string> {
-  return { ...values, ...Object.fromEntries([...orderAssignmentFields, ...orderExecutionFields].map(key => [key, String(saved[key] ?? '')])), fecha: dateTimeInput(saved.fecha), fecha_fin: dateTimeInput(saved.fecha_fin), visible_cliente: saved.visible_cliente === true ? 'true' : 'false' };
+  return { ...values, ...Object.fromEntries([...orderAssignmentFields, ...orderExecutionFields].map(key => [key, String(saved[key] ?? '')])), fecha: orderNotStarted(saved.estado) ? '' : dateTimeInput(saved.fecha), fecha_fin: dateTimeInput(saved.fecha_fin), visible_cliente: saved.visible_cliente === true ? 'true' : 'false' };
+}
+
+/** Estados en los que la atención todavía no empieza: el inicio del trabajo lo registra «Iniciar atención». */
+export const orderNotStarted = (estado: unknown) => estado === 'Borrador' || estado === 'Programada';
+
+/**
+ * Aviso al capturar el horómetro, frente a la última lectura conocida del equipo.
+ * Menor: el servidor no deja completar la orden con ese dato. Mayor de lo que el equipo pudo trabajar
+ * (24 h por día desde la última lectura, con un día de margen): probablemente es un error de captura.
+ */
+export function meterWarning(value: string, last?: { valor: number; fecha: string }, now = new Date()) {
+  const reading = Number(String(value).trim().replace(/,/g, ''));
+  if (!String(value).trim() || !Number.isFinite(reading) || !last || !Number.isFinite(Date.parse(last.fecha))) return '';
+  const lastLabel = `${formatNumber(last.valor)} h el ${formatDate(last.fecha)}`;
+  if (reading < last.valor) return `Es menor que la última lectura del equipo (${lastLabel}). Con este dato no se podrá completar la orden: revisa el horómetro o avisa a coordinación si cambiaron el contador.`;
+  const days = Math.max(0, (now.getTime() - Date.parse(last.fecha)) / 86400000);
+  if (reading - last.valor > 24 * (days + 1)) return `Supera en ${formatNumber(reading - last.valor)} h la última lectura (${lastLabel}): más de lo que el equipo pudo trabajar desde entonces. Verifica el dato.`;
+  return '';
 }
 
 /** Blank optional meters are absent values; zero must be explicitly observed. */

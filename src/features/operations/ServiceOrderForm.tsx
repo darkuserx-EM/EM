@@ -13,7 +13,9 @@ import { todayGT } from '../../domain/maintenance-plan';
 import AttachmentPanel from '../attachments/AttachmentPanel';
 import { ReceiverSignature } from '../attachments/ReceiverSignature';
 import TicketPhotos from '../attachments/TicketPhotos';
-import { changedFields, dateTimeInput, equipmentLabel, fromDateTimeInput, optionalMeterFields, orderAssignmentFields as assignmentFields, orderExecutionFields as executionFields, priorities, savedFormValues, serviceTypes } from './operations-ui';
+import { formatDate, formatNumber } from '../../domain/format';
+import { latestEquipmentReading } from '../../domain/equipment-history';
+import { changedFields, dateTimeInput, equipmentLabel, fromDateTimeInput, meterWarning, optionalMeterFields, orderAssignmentFields as assignmentFields, orderExecutionFields as executionFields, orderNotStarted, priorities, savedFormValues, serviceTypes } from './operations-ui';
 import './operations.css';
 import { addSymptom, orderEntryTimes, orderSections as steps, symptomOptions } from './order-entry';
 
@@ -39,7 +41,7 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
     cliente_id: String(row?.cliente_id || ticket?.cliente_id || ''), equipo_id: String(row?.equipo_id || ticket?.equipo_id || ''), sede_id: String(row?.sede_id || ticket?.sede_id || ''),
     ticket_id: String(row?.ticket_id || ticket?.id || ''), tecnico_id: String(row?.tecnico_id || (creating ? actor.tecnico_id : ticket?.responsable_id) || ''),
     tipo: String(row?.tipo || 'Correctivo'), estado: String(row?.estado || (creating ? 'En proceso' : 'Borrador')), prioridad: String(row?.prioridad || ticket?.prioridad || 'Media'),
-    sintoma: String(row?.sintoma || ticket?.descripcion || ''), ...orderEntryTimes(row, ticket),
+    sintoma: String(row?.sintoma || ticket?.descripcion || ''), ...orderEntryTimes(row, ticket, new Date(), creating),
     fecha_fin: dateTimeInput(row?.fecha_fin), visible_cliente: row?.visible_cliente === true ? 'true' : 'false',
   }));
   const [initialValues, setInitialValues] = useState(values);
@@ -51,6 +53,10 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
   useLayoutEffect(() => { pendingFocus.current?.focus(); pendingFocus.current = null; }, [step]);
   const set = (key: string, value: string) => setValues(previous => ({ ...previous, [key]: value }));
   const selectedEquipment = equipment.rows.find(item => item.id === values.equipo_id);
+  // Última lectura del equipo: el aviso aparece al capturar el horómetro, no recién al completar la orden.
+  const readings = useRows('LecturaHorometro', true, { equipment: values.equipo_id }, !!values.equipo_id);
+  const lastReading = latestEquipmentReading(values.equipo_id, readings.rows);
+  const meterNotice = correcting ? '' : meterWarning(values.horometro, lastReading ? { valor: Number(lastReading.valor), fecha: String(lastReading.fecha) } : undefined);
   const queries = [equipment, clients, sites, technicians]; const loading = queries.some(query => !query.ready); const queryError = queries.find(query => query.error)?.error || '';
   const completed = values.estado === 'Completada';
   const requiredAssignment = ['Programada', 'En proceso', 'En espera', 'Completada'].includes(values.estado);
@@ -76,6 +82,8 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
     if (['Completada', 'Cancelada'].includes(values.estado) && attachmentPending) { setError('Hay evidencia pendiente. Vuelve a cargarla o quita la selección antes de cerrar la orden.'); setStep(1); return; }
     if (['Completada', 'Cancelada'].includes(values.estado) && signaturePending) { setError('Hay una firma sin confirmar. Confírmala o cancélala antes de cerrar la orden.'); setStep(2); return; }
     if (!validate()) return;
+    // El servidor rechaza completar con un horómetro menor que la última lectura: avisarlo aquí, junto al campo.
+    if (completed && !correcting && lastReading && values.horometro.trim() && Number(values.horometro) < Number(lastReading.valor)) { setError(meterNotice); setStep(1); return; }
     setBusy(true); setError('');
     try {
       const keys = (canIdentify || correcting ? [...assignmentFields, ...executionFields] : [...(canEditTeam ? supportFields : []), ...executionFields.filter(key => key !== 'sintoma'), ...(canSchedule ? ['fecha_programada', 'hora_programada'] : [])]).filter(key => !['horometro', 'odometro_millas'].includes(key));
@@ -120,15 +128,15 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
         {supportFields.map((key, index) => <label className="os-field" key={key}>Técnico de apoyo {index + 1}<select value={values[key]} disabled={busy || !canEditTeam || loading} onChange={event => set(key, event.target.value)}><option value="">Sin apoyo</option>{technicians.rows.filter(person => person.activo !== false && person.id !== values.tecnico_id && !supportFields.some(other => other !== key && values[other] === person.id)).map(person => <option key={person.id} value={person.id}>{person.nombre}</option>)}</select></label>)}
         {choose('tipo', 'Tipo de servicio', serviceTypes, !canIdentify)}{choose('prioridad', 'Prioridad', priorities, !canIdentify)}
         {input('fecha_programada', 'Día de visita', 'date', requiredAssignment, !canSchedule)}{input('hora_programada', 'Hora de visita · Guatemala', 'time', false, !canSchedule)}
-        {input('fecha', 'Inicio del trabajo · Guatemala', 'datetime-local')}
-        {!row && <p className="os-help">Las horas se completan al abrir esta nueva orden. Puedes ajustarlas antes de guardar; si programas una visita futura, deja el inicio vacío hasta comenzar el trabajo.</p>}
+        {input('fecha', 'Inicio del trabajo · Guatemala', 'datetime-local', false, orderNotStarted(values.estado))}
+        <p className="os-help">{orderNotStarted(values.estado) ? 'El inicio del trabajo se registra al pulsar «Iniciar atención». Después puedes ajustarlo si empezaste antes.' : !row ? 'El inicio es la hora en que abriste esta orden; ajústalo si empezaste antes.' : 'Ajusta el inicio si el trabajo empezó a otra hora.'}</p>
         {(canIdentify || correcting) && <div className="os-symptoms os-span"><span>Síntomas frecuentes · opcional</span><div>{symptomOptions(symptoms.rows).map(symptom => <button type="button" className="button" key={symptom} disabled={busy} onClick={() => { try { set('sintoma', addSymptom(values.sintoma, symptom)); setError(''); } catch (cause) { setError((cause as Error).message); } }}>{symptom}</button>)}</div><small>{symptoms.error ? 'No se pudieron cargar las sugerencias. Puedes escribir el motivo.' : 'Pulsa para agregar al motivo. Puedes completar o editar el texto.'}</small></div>}
         {text('sintoma', 'Síntoma o motivo reportado', true)}
       </section>
       <section hidden={step !== 1} data-order-step="1" aria-label={steps[1]} className="os-form-grid">
         {text('diagnostico', 'Diagnóstico técnico', completed)}{text('trabajo_realizado', 'Trabajo realizado', completed)}
         {input('horometro', 'Horómetro H1 · horas', 'number')}{input('odometro_millas', 'Odómetro H3 · millas', 'number')}
-        <p className="os-help os-span">Captura las lecturas observadas. Una lectura menor requiere revisión del contador; conserva el dato original y explica la situación en el diagnóstico.</p>
+        <p className="os-help os-span os-meter-note" role="status">{!correcting && lastReading ? <>Última lectura del equipo: {formatNumber(Number(lastReading.valor))} h el {formatDate(String(lastReading.fecha))}.{meterNotice && <strong> {meterNotice}</strong>}</> : 'Captura las lecturas que marca el equipo. Si el horómetro es menor que la última lectura, la orden no se podrá completar.'}</p>
         <details className="os-extra os-span" open={!!(initialValues.insumos || initialValues.repuestos || initialValues.recomendaciones)}><summary>Materiales y recomendaciones · opcional</summary><div className="os-form-grid">{text('insumos', 'Insumos utilizados', false, 'Descripción y cantidades utilizadas.')}{text('repuestos', 'Repuestos utilizados', false, 'Descripción, número de parte y cantidad si están disponibles.')}{text('recomendaciones', 'Recomendaciones y siguiente acción')}</div></details>
         {text('notas_seguridad', 'Hallazgos de seguridad / restricciones', false, 'Documenta cualquier restricción de uso y comunica el hallazgo al coordinador.')}
       </section>

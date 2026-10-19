@@ -55,6 +55,7 @@ export type MutationBody = MutationCommon & (
   | { action:'submitReadings'; payload:import('../src/domain/reading-submissions.js').ReadingSubmission }
   | { action:'reviewReading'; decision:import('../src/domain/reading-submissions.js').ReadingDecision }
   | { action:'reconcileHistoricalReadings'; pairs:import('../src/domain/historical-readings.js').ReadingReconciliation[] }
+  | { action:'reviseImportedReport'; report:import('../src/domain/imported-reports.js').ImportedReportRevision }
   | { action:'restore'; database:unknown; exportedAt?:string }
 );
 export interface AppOptions {
@@ -78,6 +79,7 @@ export interface PublicDatabase extends Database {
 export interface MutationReply {
   result?: { enviadas:number; repetidas:number } | { revisadas:number } | EntityRecord | ReturnType<import('../src/data/repository.js').LocalDataSource['importClients']>
     | ReturnType<import('../src/data/repository.js').LocalDataSource['importHistoricalReports']>
-    | ReturnType<import('../src/data/repository.js').LocalDataSource['reconcileHistoricalReadings']>;
+    | ReturnType<import('../src/data/repository.js').LocalDataSource['reconcileHistoricalReadings']>
+    | ReturnType<import('../src/data/repository.js').LocalDataSource['reviseImportedReport']>;
   database:PublicDatabase;
 }
