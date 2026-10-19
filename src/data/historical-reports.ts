@@ -61,12 +61,34 @@ function sourceDate(value: string) {
   return new Date(local).toISOString();
 }
 
-export function parseHistoricalReports(textContent: string, clienteId: string, sedeId: string, existingEquipment: EntityRecord[], existingReports: EntityRecord[]) {
-  const workbook = XLSX.read(textContent, { type: 'string', FS: '\t' });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+export function parseHistoricalReports(textContent: string | ArrayBuffer, clienteId: string, sedeId: string, existingEquipment: EntityRecord[], existingReports: EntityRecord[]) {
+  const excel = typeof textContent !== 'string';
+  const workbook = excel ? XLSX.read(textContent, { type: 'array' }) : XLSX.read(textContent, { type: 'string', FS: '\t' });
+  if (excel && !workbook.SheetNames.includes('Carga')) throw new Error('El Excel debe contener la hoja «Carga». Las hojas de ejemplo e instrucciones no se importan.');
+  const sheet = workbook.Sheets[excel ? 'Carga' : workbook.SheetNames[0]];
   if (!sheet) throw new Error('No se encontró una tabla en el archivo.');
+  if (excel && sheet['!ref']) {
+    const bounds = XLSX.utils.decode_range(sheet['!ref']);
+    if (bounds.e.r > 2000 || bounds.e.c > 100) throw new Error('El Excel admite hasta 2,000 filas de reportes y 101 columnas.');
+    for (let col = 0; col <= bounds.e.c; col++) {
+      const heading = String(sheet[XLSX.utils.encode_cell({ r: 0, c: col })]?.v ?? '');
+      for (let row = 1; row <= bounds.e.r; row++) {
+        const cell = sheet[XLSX.utils.encode_cell({ r: row, c: col })];
+        if (!cell) continue;
+        if (cell.f) throw new Error(`Fila ${row + 1}: usa valores, no fórmulas, en la hoja Carga.`);
+        if (cell.t !== 'n') continue;
+        if (heading === 'Date/Time' || heading === 'Hora_Final') {
+          const date = XLSX.SSF.parse_date_code(Number(cell.v), { date1904: !!workbook.Workbook?.WBProps?.date1904 });
+          if (!date) throw new Error(`Fila ${row + 1}: fecha Excel inválida.`);
+          const pad = (value: number) => String(value).padStart(2, '0');
+          cell.w = `${pad(date.d)}/${pad(date.m)}/${date.y} ${pad(date.H)}:${pad(date.M)}:${pad(date.S)}`;
+        } else if (heading === 'Horometro (H1)' || heading === 'Odometro (H3)') cell.w = String(cell.v);
+      }
+    }
+  }
   // Formatted text preserves the source's Guatemala date order (DD/MM/YYYY).
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
+  if (excel && raw.some(row => Object.values(row).some(value => String(value).trim()) && (!text(row, 'ID') || !text(row, 'Date/Time')))) throw new Error('Cada fila de Carga debe tener ID y Date/Time. Corrige las filas incompletas.');
   const rows = raw.filter(row => text(row, 'ID') && text(row, 'Date/Time'));
   if (!rows.length) throw new Error('No se encontraron reportes con ID y fecha.');
   if (rows.length > 2000) throw new Error('Esta importación admite hasta 2,000 reportes por archivo.');
