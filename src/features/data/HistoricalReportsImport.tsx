@@ -45,7 +45,7 @@ export function HistoricalReportsImport({ onClose }: { onClose: () => void }) {
     setError(''); setParsed(null); setFilename(file.name);
     if (file.size > 8 * 1024 * 1024) { setError('El archivo supera el límite de 8 MB.'); return; }
     try {
-      const result = parseHistoricalReports(await file.text(), clienteId, sedeId, equipment, reports);
+      const result = parseHistoricalReports(/\.xlsx$/i.test(file.name) ? await file.arrayBuffer() : await file.text(), clienteId, sedeId, equipment, reports);
       setParsed(result);
       if (result.errors.length) setError(result.errors.slice(0, 5).join(' '));
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'No se pudo leer el archivo.'); }
@@ -63,14 +63,14 @@ export function HistoricalReportsImport({ onClose }: { onClose: () => void }) {
   };
 
   return <Modal title="Importar historial de reportes" onClose={onClose} wide className="historical-import-modal">
-    <p className="modal-intro">Carga equipos y reportes anteriores desde el archivo de AppSheet. Las lecturas existentes que coincidan se vinculan al reporte sin duplicarlas ni cambiar sus valores.</p>
+    <p className="modal-intro">Carga equipos y reportes anteriores desde la plantilla Excel o el archivo de AppSheet. Las lecturas existentes que coincidan se vinculan al reporte sin duplicarlas ni cambiar sus valores.</p>
     {!serverMode && <ErrorNotice message="Esta carga requiere la versión en línea conectada a MySQL." />}
     <div className="historical-import-fields">
       <label>Cliente<select value={clienteId} onChange={event => chooseClient(event.target.value)} disabled={busy}><option value="">Selecciona el cliente</option>{clients.map(row => <option key={row.id} value={row.id}>{row.nombre_comercial || row.nombre} · {row.codigo}</option>)}</select></label>
       <label>Sede (opcional)<select value={sedeId} onChange={event => { setSedeId(event.target.value); setParsed(null); }} disabled={!clienteId || busy}><option value="">Sin sede asignada</option>{clientSites.map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></label>
     </div>
     {client && <p className="field-help">Los reportes se vincularán a <strong>{client.nombre_comercial || client.nombre}</strong>{site ? <> y mostrarán la ubicación <strong>{site.nombre}</strong></> : ' y quedarán sin ubicación'}. Los equipos nuevos quedarán como “Pendiente de revisión” hasta confirmar su estado actual.</p>}
-    <div className="historical-file-picker"><FileUp size={21} /><div><strong>{filename || 'Archivo de reportes (TSV o TXT)'}</strong><span>Fechas en formato día/mes/año · hasta 8 MB</span></div><button className="button" onClick={() => input.current?.click()} disabled={!clienteId || busy}>Seleccionar archivo</button><input ref={input} type="file" accept=".txt,.tsv,.csv,text/plain,text/tab-separated-values" onChange={selectFile} className="visually-hidden" aria-label="Archivo histórico de reportes" /></div>
+    <div className="historical-file-picker"><FileUp size={21} /><div><strong>{filename || 'Archivo de reportes (Excel, TSV o TXT)'}</strong><span>Excel: solo hoja Carga · fechas de Guatemala · hasta 8 MB</span></div><button className="button" onClick={() => input.current?.click()} disabled={!clienteId || busy}>Seleccionar archivo</button><input ref={input} type="file" accept=".xlsx,.txt,.tsv,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/tab-separated-values" onChange={selectFile} className="visually-hidden" aria-label="Archivo histórico de reportes" /></div>
     {parsed && <>
       <p role="status">{readings.loading ? 'Revisando lecturas existentes…' : `${reconciliation.added} lecturas nuevas · ${reconciliation.reused} reutilizadas · ${reconciliation.conflicts.length} conflictos por revisar`}</p>
       <ErrorNotice message={readings.error || reconciliation.conflicts.slice(0, 5).join(' ')} />

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as XLSX from 'xlsx';
 import { historicalMeterRegressions, historicalPendingNotice, historicalStatusCounts, parseHistoricalReports } from './historical-reports';
 import { createSeed } from './seed';
 
@@ -8,6 +9,38 @@ const tabular = (...rows: string[][]) => [headings, ...rows].map(values => value
 const withValue = (values: string[], heading: string, value: string) => values.map((item, index) => headings[index] === heading ? value : item);
 
 describe('importación histórica de AppSheet', () => {
+  const excelFile = (values: unknown[][], name = 'Carga') => {
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['No importar instrucciones']]), 'Instrucciones');
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([headings, ...values]), name);
+    return XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+  };
+  it('lee solo Carga y conserva la misma validación que el texto', () => {
+    const values = row('source-excel', '08/02/2025 14:00:00', '100.25');
+    const text = parseHistoricalReports(tabular(values), 'client', '', [], []);
+    expect(parseHistoricalReports(excelFile([values]), 'client', '', [], [])).toEqual(text);
+    const existing = { ...createSeed().entities.OrdenServicio[0], importado: true, origen_id: 'source-excel', orden_origen: '21' };
+    const repeated = parseHistoricalReports(excelFile([values]), 'client', '', [], [existing]);
+    expect(repeated.newReportCount).toBe(0);
+    expect(repeated.repeatedReports).toBe(1);
+    expect(parseHistoricalReports(excelFile([values, values]), 'client', '', [], []).errors.join(' ')).toContain('repetido');
+  });
+  it('interpreta fechas numéricas Excel como hora Guatemala y conserva decimales reales', () => {
+    const values: unknown[] = row('numeric', '08/02/2025 14:00:00', '100');
+    values[2] = (Date.UTC(2025, 1, 8, 14) - Date.UTC(1899, 11, 30)) / 86400000;
+    values[16] = 100.125;
+    const result = parseHistoricalReports(excelFile([values]), 'client', '', [], []);
+    expect(result.errors).toEqual([]);
+    expect(result.payload.reportes[0].fecha).toBe('2025-02-08T20:00:00.000Z');
+    expect(result.payload.reportes[0].horometro).toBe(100.125);
+  });
+  it('rechaza hojas de ejemplo, filas incompletas y fórmulas', () => {
+    const values = row('source', '08/02/2025 14:00:00', '100');
+    expect(() => parseHistoricalReports(excelFile([values], 'Ejemplo'), 'client', '', [], [])).toThrow('hoja «Carga»');
+    expect(() => parseHistoricalReports(excelFile([withValue(values, 'ID', '')]), 'client', '', [], [])).toThrow('filas incompletas');
+    const formula: unknown[] = [...values]; formula[16] = { t: 'n', v: 100, f: '50+50' };
+    expect(() => parseHistoricalReports(excelFile([formula]), 'client', '', [], [])).toThrow('no fórmulas');
+  });
   it('interpreta fechas guatemaltecas, crea el mapa de equipo y conserva referencias', () => {
     const client = createSeed().entities.Cliente[0];
     const result = parseHistoricalReports(tabular(row('source-1','08/02/2025 14:00:00','100'), row('source-2','09/02/2025 14:00:00','90')), client.id, '', [], []);

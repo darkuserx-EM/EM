@@ -1,5 +1,7 @@
 # Importación histórica y conciliación de lecturas
 
+El formulario acepta directamente la plantilla `.xlsx` (hasta 8 MB), además de TXT/TSV. Solo lee la hoja `Carga`, con encabezados en la primera fila y hasta 2,000 filas de reportes. Nunca importa las instrucciones ni el ejemplo. Las fechas numéricas de Excel se interpretan como fecha y hora locales de Guatemala, sin depender del formato visual de la celda; H1 y H3 conservan su precisión numérica. Se rechazan fórmulas y filas con datos pero sin ID o fecha. Mantener los ID originales, las órdenes originales y las series exactas; revisar la vista previa antes de confirmar. La carga de Excel pasa por las mismas validaciones y transacción del servidor que la carga de texto, incluyendo la reutilización de lecturas y el bloqueo de conflictos.
+
 La importación compara el equipo, cliente, instante real (UTC y Guatemala equivalentes), H1, H3 y calidad de la lectura. No compara solamente el valor del horómetro. Si existe una única lectura sin orden y coincide, conserva su ID, fecha, valores, autoría y procedencia y la vincula a la nueva orden. La bitácora conserva su versión anterior. Las lecturas estimadas, diferencias y coincidencias múltiples o ya vinculadas bloquean el lote completo. Un reporte repetido por ID de origen sigue omitiéndose.
 
 La vista previa informa lecturas nuevas, reutilizadas y conflictos; el servidor vuelve a comprobar todo contra la revisión actual. Las consultas, errores y cierres del formulario no realizan escrituras. Las imágenes no se modifican.
