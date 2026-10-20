@@ -1,3 +1,4 @@
+import { isRentalEquipment } from './maintenance-fleet';
 import { operationalState, maintenanceState } from './equipment-status';
 import type { Actor, Database, EntityName, EntityRecord } from './model';
 import { ValidationError } from './errors';
@@ -26,7 +27,10 @@ function project(entity: EntityName, row: EntityRecord) {
   const allowed = publicFields[entity];
   if (!allowed) return row;
   const keys = ['id', 'codigo', 'fecha_creacion', 'fecha_actualizacion', ...allowed];
-  return Object.fromEntries(Object.entries(row).filter(([key]) => keys.includes(key))) as EntityRecord;
+  const projected = Object.fromEntries(Object.entries(row).filter(([key]) => keys.includes(key))) as EntityRecord;
+  // Only this classification is shared; administrative status and plans stay private.
+  if (entity === 'Equipo') projected.en_renta = isRentalEquipment(row);
+  return projected;
 }
 /** Projection after the server has authorized an operational row's SQL scope. */
 export function projectOperation(actor:Actor,entity:EntityName,row:EntityRecord) {
@@ -53,7 +57,7 @@ export function filterVisible(actor: Actor, entity: EntityName, rows: EntityReco
     if (entity === 'Cliente') return rows.filter(row => row.id === actor.cliente_id).map(row => project(entity, row));
     if (entity === 'Equipo') return rows.filter(row => row.cliente_id === actor.cliente_id).map(row => {
       const { estado, estado_administrativo, estado_actualizado_por, ...visible } = row;
-      return project(entity, { ...visible, estado_operativo: operationalState(row), estado_mantenimiento: maintenanceState(row), fuera_de_flota: ['Vendido', 'Baja'].includes(String(estado_administrativo ?? estado)) } as EntityRecord);
+      return project(entity, { ...visible, en_renta: isRentalEquipment(row), estado_operativo: operationalState(row), estado_mantenimiento: maintenanceState(row), fuera_de_flota: ['Vendido', 'Baja'].includes(String(estado_administrativo ?? estado)) } as EntityRecord);
     });
     if (['Ticket', 'Contacto', 'Sede'].includes(entity)) return rows.filter(row => row.cliente_id === actor.cliente_id).map(row => project(entity, row));
     if (entity === 'OrdenServicio') return rows.filter(row => row.cliente_id === actor.cliente_id && row.visible_cliente === true).map(row => project(entity, row));

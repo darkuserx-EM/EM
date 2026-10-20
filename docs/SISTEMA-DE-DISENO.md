@@ -260,3 +260,10 @@ Al abrir una orden nueva se sugieren el día, la hora de visita y el inicio del 
 Los botones Todos los equipos, Equipos en renta y Equipos de clientes filtran conjuntamente la lista y sus indicadores. En renta identifica equipos propios con situación administrativa En renta; la asignación a un cliente no basta. Limpiar filtros restablece también esta selección.
 
 Un plan preventivo nuevo de un equipo en renta propone Días y un intervalo de 30. Se conserva cualquier plan existente y el ciclo mayor mantiene su criterio por horas. La fecha base permanece pendiente hasta su confirmación por administración; no se crean servicios, lecturas ni planes automáticamente. Coordinación mantiene la consulta y administración la configuración.
+
+
+## Reportes: control preventivo
+
+Reportes filtra equipos y servicios por Todos, En renta o De clientes. La cobertura del período cuenta equipos con preventivo completado una vez por equipo, no órdenes; no certifica cumplimiento del intervalo. Sin fechas seleccionadas, el bloque preventivo usa el mes actual de Guatemala. El origen filtra el detalle general, mientras el bloque preventivo contempla todo el historial autorizado.
+
+Administración y coordinación consultan los vencimientos de planes vigentes al día actual, separados del período de reportes, con programación y bases pendientes explícitas. El cliente conserva solo reportes compartidos y equipos propios; recibe una clasificación booleana de renta sin estado administrativo ni planes. El técnico mantiene su navegación actual sin acceso a Reportes. No se modifican bases, lecturas ni historial.
