@@ -254,3 +254,9 @@ Los síntomas activos del catálogo se agregan al motivo mediante botones; no re
 Causa confirmada desaparece de la captura. No se elimina el campo persistido ni su contenido en reportes anteriores, exportaciones o auditoría. Los guardados parciales no envían ese campo.
 
 Al abrir una orden nueva se sugieren el día, la hora de visita y el inicio del trabajo usando America/Guatemala. Son editables con los permisos existentes. Abrir una orden guardada no cambia ni rellena sus horas; al iniciar una atención sin inicio, el servidor registra el instante actual. En una visita futura debe dejarse el inicio vacío hasta comenzar. Las correcciones de reportes completados siguen conservando sus fechas y exigiendo motivo.
+
+## Mantenimiento por tipo de flota
+
+Los botones Todos los equipos, Equipos en renta y Equipos de clientes filtran conjuntamente la lista y sus indicadores. En renta identifica equipos propios con situación administrativa En renta; la asignación a un cliente no basta. Limpiar filtros restablece también esta selección.
+
+Un plan preventivo nuevo de un equipo en renta propone Días y un intervalo de 30. Se conserva cualquier plan existente y el ciclo mayor mantiene su criterio por horas. La fecha base permanece pendiente hasta su confirmación por administración; no se crean servicios, lecturas ni planes automáticamente. Coordinación mantiene la consulta y administración la configuración.
