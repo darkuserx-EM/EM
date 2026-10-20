@@ -267,3 +267,8 @@ Un plan preventivo nuevo de un equipo en renta propone Días y un intervalo de 3
 Reportes filtra equipos y servicios por Todos, En renta o De clientes. La cobertura del período cuenta equipos con preventivo completado una vez por equipo, no órdenes; no certifica cumplimiento del intervalo. Sin fechas seleccionadas, el bloque preventivo usa el mes actual de Guatemala. El origen filtra el detalle general, mientras el bloque preventivo contempla todo el historial autorizado.
 
 Administración y coordinación consultan los vencimientos de planes vigentes al día actual, separados del período de reportes, con programación y bases pendientes explícitas. El cliente conserva solo reportes compartidos y equipos propios; recibe una clasificación booleana de renta sin estado administrativo ni planes. El técnico mantiene su navegación actual sin acceso a Reportes. No se modifican bases, lecturas ni historial.
+
+
+## Flota: selección de renta y clientes
+
+Flota de equipos usa los mismos filtros Todos los equipos, Equipos en renta y Equipos de clientes que Mantenimiento y Reportes. La selección se combina con cliente, búsqueda, estado operativo y mantenimiento. Los indicadores y la exportación administrativa usan el mismo alcance; volver de la ficha conserva la selección. No cambia permisos ni registros.
