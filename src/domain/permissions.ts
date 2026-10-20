@@ -10,6 +10,7 @@ export function canAccessModule(actor: Actor, module: string): boolean {
   if (actor.rol === 'Técnico') return ['inicio', 'tickets', 'ordenes', 'calendario', 'planificador'].includes(module);
   return ['inicio', 'flota', 'clientes', 'contratos', 'tickets', 'ordenes', 'preventivos', 'calendario', 'planificador', 'checklists', 'reportes', 'plan', 'dashboard'].includes(module);
 }
+export function canViewMaintenance(actor: Actor) { return ['Administrador', 'Coordinador'].includes(actor.rol); }
 export function canWriteCatalogs(actor: Actor) { return actor.rol === 'Administrador'; }
 const publicFields: Partial<Record<EntityName, string[]>> = {
   Cliente: ['nombre', 'nombre_comercial', 'logo', 'estado', 'ubicacion', 'plus_code'],
@@ -43,7 +44,7 @@ export function filterVisible(actor: Actor, entity: EntityName, rows: EntityReco
   if (actor.rol === 'Administrador') return rows;
   if (entity === 'LecturaEnviada') return actor.rol === 'Cliente' && actor.cliente_id ? rows.filter(row => row.cliente_id === actor.cliente_id).map(row => { const { revisado_por, ...visible } = row; return visible as EntityRecord; }) : [];
   // Findings remain internal to administration until client visibility is designed.
-  if (['Hallazgo', 'PlanPM'].includes(entity)) return [];
+  if (entity === 'Hallazgo' || entity === 'PlanPM' && !canViewMaintenance(actor)) return [];
   // Internal cost fields must also be absent from repository exports.
   rows = rows.map(row => Object.fromEntries(Object.entries(row).filter(([key]) => !key.startsWith('costo_'))) as EntityRecord);
   if (entity === 'Usuario') return rows.filter(row => row.id === actor.id);

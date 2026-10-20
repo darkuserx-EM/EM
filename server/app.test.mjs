@@ -460,12 +460,12 @@ test('maintenance plans keep immutable versions, reject stale changes and preser
   assert.deepEqual(after.entities.Equipo,before.entities.Equipo);assert.deepEqual(after.entities.LecturaHorometro,before.entities.LecturaHorometro);assert.deepEqual(after.entities.OrdenServicio,before.entities.OrdenServicio);
   assert.equal(after.entities.Bitacora.filter(row=>row.plan_id).length,2);
 });
-test('maintenance plan data and writes are restricted to administration',async t=>{
+test('coordinator can read maintenance plans but writes remain administration-only',async t=>{
   for(const user of [coordinator,client,{...coordinator,role:'Técnico'}]) {
     const request=await fixture(t,user,db=>{db.entities.PlanPM.push({id:'internal-plan',codigo:'PM-TEST',equipo_id:'equipment-1',creado_por:'test-admin',actualizado_por:'test-admin',fecha_creacion:'2026-01-01T12:00:00Z',fecha_actualizacion:'2026-01-01T12:00:00Z',schema_plan:1,tipo_plan:'Preventivo',criterio:'Horas',intervalo:250,estado_plan:'Activo',base_origen:'Pendiente',base_confirmada:false,motivo:'Solo administración',version:1,vigente:true,confirmado_por:'Admin',confirmado_el:'2026-01-01T12:00:00Z',vigente_desde:'2026-01-01'});});
     const response=await request('/api/database',{headers:jsonHeaders});assert.equal(response.status,200);
-    const db=await response.json();assert.deepEqual(db.entities.PlanPM,[]);
-    assert.equal((await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action:'create',entity:'PlanPM',revision:0,fields:{},actor:{rol:'Administrador'}})})).status,403);
+    const db=await response.json();assert.equal(db.entities.PlanPM.length,user.role === 'Coordinador' ? 1 : 0);
+    for (const action of ['create','update','remove','import']) assert.equal((await request('/api/mutate',{method:'POST',headers:jsonHeaders,body:JSON.stringify({action,entity:'PlanPM',id:'internal-plan',revision:0,fields:{},rows:[],actor:{rol:'Administrador'}})})).status,403);
   }
 });
 

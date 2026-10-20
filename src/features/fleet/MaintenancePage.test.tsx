@@ -38,7 +38,7 @@ it('un borrador no muestra el equipo como programado', () => {
   expect(html).not.toContain('OS-QA');
 });
 it('no consulta ni muestra datos administrativos para otros roles', () => {
-  for (const role of ['Coordinador', 'Técnico', 'Cliente']) {
+  for (const role of ['Técnico', 'Cliente']) {
     fixture.role = role; fixture.enabled = [];
     const html = render();
     expect(html).not.toContain('QA-001');
@@ -46,3 +46,5 @@ it('no consulta ni muestra datos administrativos para otros roles', () => {
     expect(fixture.enabled.every(value => !value)).toBe(true);
   }
 });
+
+it('permite al coordinador consultar ciclos y programación', () => { fixture.role = 'Coordinador'; const html = render(); expect(html).toContain('QA-001'); expect(html).toContain('Mayor · Sin programar'); expect(fixture.enabled.every(Boolean)).toBe(true); });
