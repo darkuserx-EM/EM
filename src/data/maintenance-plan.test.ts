@@ -134,6 +134,6 @@ describe('planificación y calidad de la base',()=>{
       const broken=structuredClone(backup);delete broken.entities.PlanPM[1][key];expect(()=>validateDatabase(broken)).toThrow();
     }
     const target=fixture();target.source.restore(admin,backup,target.source.getRevision());expect(target.source.snapshot(admin).entities.PlanPM).toEqual(source.snapshot(admin).entities.PlanPM);
-    for(const actor of [demoUsers[1],demoUsers[2],demoUsers[5]]) {expect(await source.repository('PlanPM',actor).getAll()).toEqual([]);await expect(source.repository('PlanPM',actor).create(raw)).rejects.toThrow('administración');}
+    for(const actor of [demoUsers[1],demoUsers[2],demoUsers[5]]) {expect((await source.repository('PlanPM',actor).getAll()).length).toBe(actor.rol === 'Coordinador' ? 2 : 0);await expect(source.repository('PlanPM',actor).create(raw)).rejects.toThrow('administración');}
   });
 });

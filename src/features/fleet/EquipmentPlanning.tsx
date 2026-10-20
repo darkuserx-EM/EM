@@ -68,6 +68,7 @@ function PlanForm({ equipment, type, current, services, onClose }: { equipment: 
 }
 
 export function EquipmentPlanning({ equipment, services, readings, onReport }: { equipment: EntityRecord; services: EntityRecord[]; readings: EntityRecord[]; onReport: (id: string) => void }) {
+  const actor = useActor(); const canEdit = actor.rol === 'Administrador';
   const plans = useRows('PlanPM', true); const [editing, setEditing] = useState<string | null>(null);
   if (plans.error) return <ErrorNotice message={plans.error} />;
   if (!plans.ready) return <p role="status">Cargando planes…</p>;
@@ -78,10 +79,10 @@ export function EquipmentPlanning({ equipment, services, readings, onReport }: {
       return <article className="pm-card" key={type} aria-label={`Plan ${type.toLowerCase()}`}><div className="pm-card-title"><h3>{type}</h3><PlanStatus projection={projection} /></div><p className="pm-interval">{plan ? `Cada ${formatNumber(Number(plan.intervalo))} ${plan.criterio === 'Horas' ? 'horas' : 'días'}` : type === 'Mayor' ? 'Ciclo recomendado de 2,000 horas' : '250 horas o 30 / 60 / 90 días'}</p>
         <PlanCycle plan={plan} projection={projection} />
         {plan && <dl className="pm-base"><div><dt>Base del ciclo</dt><dd>{plan.base_origen === 'Pendiente' ? 'Pendiente de confirmar' : `${planDate(String(plan.base_fecha))}${typeof plan.base_horas === 'number' ? ` · ${formatNumber(plan.base_horas)} h` : ''} · ${plan.base_calidad}`}</dd></div><div><dt>Responsable</dt><dd>{plan.responsable || 'Sin asignar'}</dd></div></dl>}
-        <div className="pm-actions"><button className="button button-dark" onClick={() => setEditing(type)}><Settings2 size={15} />{plan ? 'Actualizar plan o base' : `Configurar ${type.toLowerCase()}`}</button>{plan?.base_orden_id && <button className="summary-link" onClick={() => onReport(String(plan.base_orden_id))}>Ver reporte base<ArrowUpRight size={14} /></button>}</div>
+        <div className="pm-actions">{canEdit && <button className="button button-dark" onClick={() => setEditing(type)}><Settings2 size={15} />{plan ? 'Actualizar plan o base' : `Configurar ${type.toLowerCase()}`}</button>}{plan?.base_orden_id && <button className="summary-link" onClick={() => onReport(String(plan.base_orden_id))}>Ver reporte base<ArrowUpRight size={14} /></button>}</div>
         {versions.length > 0 && <details className="pm-history"><summary><History size={14} />Versiones y confirmaciones ({versions.length})</summary><ol>{versions.map(row => <li key={row.id}><strong>Versión {row.version} · {row.vigente ? 'Vigente' : 'Anterior'} · {row.estado_plan}</strong><p>{row.intervalo} {row.criterio} · Base: {row.base_origen}{row.base_fecha && ` · ${planDate(String(row.base_fecha))}`}{typeof row.base_horas === 'number' && ` · ${formatNumber(row.base_horas)} h`}{row.base_calidad && ` · ${row.base_calidad}`}</p><p>{row.motivo}</p><small>{row.confirmado_por} · {formatDate(String(row.confirmado_el))}</small></li>)}</ol></details>}
       </article>;
     })}</div><p className="pm-footnote">Al registrar un nuevo mantenimiento completado, actualiza la base del ciclo correspondiente. Las bases no avanzan automáticamente. Los avisos del estado del equipo se conservan por separado.</p>
-    {editing && <PlanForm equipment={equipment} type={editing} current={currentPlan(plans.rows, equipment.id, editing)} services={services} onClose={() => setEditing(null)} />}
+    {canEdit && editing && <PlanForm equipment={equipment} type={editing} current={currentPlan(plans.rows, equipment.id, editing)} services={services} onClose={() => setEditing(null)} />}
   </section>;
 }
