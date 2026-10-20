@@ -279,3 +279,10 @@ Flota de equipos usa los mismos filtros Todos los equipos, Equipos en renta y Eq
 Mantenimiento inicia en Preventivo y permite seleccionar Mayor o Ambos. El total de equipos se distingue de los ciclos evaluados; indicadores, agrupaciones y columnas siguen el tipo elegido. Las bases pendientes se destacan antes de los indicadores: cero ciclos vencidos no certifica que los equipos estén al día.
 
 Reportes inicia en el mes actual de Guatemala. Desde y Hasta se aplican al resumen, cobertura preventiva, gráfico y detalle, incluyendo el filtro de origen. Restablecer vuelve al mes actual. Los intervalos inválidos muestran un aviso en lugar de indicadores engañosos. El seguimiento de vencimientos y programación conserva toda la información autorizada y se identifica como estado actual, independiente del período de servicios. No se modifican planes, bases, historial ni permisos.
+
+
+### Filtros entre Flota, Mantenimiento y Reportes
+
+La navegación entre estas tres pantallas conserva en la URL el tipo de flota y el cliente, además del período y filtros propios que se recuperan al regresar. Abrir o cerrar una ficha conserva el contexto; no se transfieren IDs de detalle al menú ni se guardan filtros en un almacenamiento compartido entre cuentas. Cambiar cliente o tipo de flota limpia el equipo específico de Reportes. Los permisos siguen siendo los del perfil y del servidor.
+
+En teléfono (hasta 600 px), los filtros secundarios se pliegan con un botón accesible y conservan un resumen visible. Los indicadores ocupan dos columnas y la tabla de Flota se presenta como fichas con etiquetas, sin depender del desplazamiento horizontal. En computadora los controles permanecen visibles.
