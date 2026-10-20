@@ -6,7 +6,7 @@ export type MaintenanceFleetFilter = typeof maintenanceFleetFilters[number];
 
 /** Rental is an administrative state, not the presence of an assigned client. */
 export function isRentalEquipment(equipment: Partial<EntityRecord>) {
-  return equipment.propiedad === 'Propio' && administrativeState(equipment) === 'En renta';
+  return equipment.propiedad === 'Propio' && (equipment.en_renta === true || administrativeState(equipment) === 'En renta');
 }
 
 export function matchesMaintenanceFleet(equipment: Partial<EntityRecord>, filter: MaintenanceFleetFilter) {
