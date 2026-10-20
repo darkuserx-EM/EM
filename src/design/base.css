@@ -292,3 +292,17 @@ button.steps-item:hover:not(:disabled) { border-color: var(--color-border-strong
   .attachment-video { grid-column: 1 / -1; }
   .attachment-video video { height: 180px; }
 }
+
+/* Contexto visible y filtros secundarios plegables solo en teléfono. */
+.compact-filters { margin-bottom:var(--space-3); }
+.compact-filters-heading { display:none; }
+@media (max-width:600px) {
+  .compact-filters-heading { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:var(--space-3); background:var(--color-surface-subtle); border-radius:var(--radius-md); }
+  .compact-filters-heading>span { min-width:0; font-size:var(--text-xs); overflow-wrap:anywhere; }
+  .compact-filters-heading>button { flex-shrink:0; min-height:var(--target-min); }
+  .compact-filters-content:not(.is-open) { display:none; }
+  .pm-dashboard .kpi-grid,.operational-page .kpi-grid,.fleet-overview .kpi-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); }
+  .pm-dashboard .kpi-card,.operational-page .kpi-card,.fleet-overview .kpi-card { padding:var(--space-3); gap:var(--space-1); min-width:0; }
+  .pm-dashboard .kpi-card-value,.operational-page .kpi-card-value,.fleet-overview .kpi-card-value { font-size:var(--text-xl); }
+  .pm-dashboard-context { flex-wrap:wrap; }
+}

@@ -1,3 +1,4 @@
+import {fleetContextLink} from '../domain/fleet-navigation';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Building2, ChevronDown, ChevronRight, Menu, ShieldCheck } from 'lucide-react';
@@ -22,7 +23,7 @@ export function Shell() {
   // Si se entra a un módulo próximo (por enlace o dirección), la sección se abre para mostrarlo marcado.
   const onUpcoming = upcoming.some(item => item.module === module);
   useEffect(() => { if (onUpcoming) setUpcomingOpen(true); }, [onUpcoming]);
-  const navItem = (item: NavItem) => <NavLink key={item.module} to={`/${item.module}`} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><item.icon size={18} strokeWidth={1.7} /><span>{item.title}</span></NavLink>;
+  const navItem = (item: NavItem) => <NavLink key={item.module} to={fleetContextLink(`/${item.module}`,location.pathname,location.search)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><item.icon size={18} strokeWidth={1.7} /><span>{item.title}</span></NavLink>;
   const title = (isClient ? clientNavigation.find(item => item.path === module)?.label : navigation.flatMap(group => group.items).find(item => item.module === module)?.title) ?? 'Portal del cliente';
   useEffect(() => setMenu(false), [location.pathname]);
   useEffect(() => { if (!canAccessModule(actor, module)) navigate(actor.rol === 'Cliente' ? '/portal' : '/inicio', { replace: true }); }, [actor, module, navigate]);
@@ -32,7 +33,7 @@ export function Shell() {
       <NavLink to={isClient ? '/portal' : '/inicio'} className="brand-link" aria-label="Portal EM, inicio"><Brand /></NavLink>
       <div className="workspace-label"><span className="workspace-symbol">E</span><div><strong>EMSA Guatemala</strong><small>Gestión de flota y servicio</small></div><span className="online-dot" data-connection={serverMode ? connection : "local"} role="status" aria-label={connectionLabel} title={connectionLabel} /></div>
       <nav aria-label="Navegación principal">
-        {isClient ? <>{clientNavigation.map(item=><NavLink key={item.path} className="nav-item" to={`/${item.path}`}><item.icon size={18}/><span>{item.label}</span></NavLink>)}</> : navigation.map(group => {
+        {isClient ? <>{clientNavigation.map(item=><NavLink key={item.path} className="nav-item" to={fleetContextLink(`/${item.path}`,location.pathname,location.search)}><item.icon size={18}/><span>{item.label}</span></NavLink>)}</> : navigation.map(group => {
           const items = group.items.filter(item => !item.upcoming && canAccessModule(actor, item.module));
           return items.length ? <div className="nav-group" key={group.label}><p>{group.label}</p>{items.map(navItem)}</div> : null;
         })}
