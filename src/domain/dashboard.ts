@@ -16,3 +16,10 @@ export function dashboardOrders(rows:EntityRecord[],filter:{from:string;to:strin
 export function monthlyServices(rows:EntityRecord[]){
  const groups=new Map<string,number>();for(const row of rows){const day=orderDay(row);if(!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;const key=day.slice(0,7);groups.set(key,(groups.get(key)||0)+1);}return [...groups].sort(([a],[b])=>a.localeCompare(b)).map(([month,count])=>({month,count}));
 }
+
+/** One bounded period for every report metric, using the supplied Guatemala day. */
+export function reportPeriod(from: string | null, to: string | null, today: string) {
+ const start = from || today.slice(0,7) + '-01';
+ const end = to || new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7)),0)).toISOString().slice(0,10);
+ return {from:start,to:end,error:!validDay(start)||!validDay(end)?'Indica fechas válidas para el período.':start>end?'La fecha Desde no puede ser posterior a Hasta.':''};
+}

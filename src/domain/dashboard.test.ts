@@ -1,3 +1,4 @@
+import {reportPeriod} from './dashboard';
 import { describe, expect, it } from 'vitest';
 import { dashboardOrders, monthlyServices, orderDay } from './dashboard';
 import type { EntityRecord } from './model';
@@ -16,5 +17,17 @@ describe('fechas y filtros del dashboard',()=>{
    expect(orderDay(row({schema_operacion:1}))).toBe('2026-10-10');
    expect(orderDay(row({schema_operacion:1,fecha_programada:'2026-02-30'}))).toBe('2026-10-10');
    expect(orderDay(row({fecha:'2026-10-10'}))).toBe('2026-10-10');
+ });
+});
+
+
+describe('período único de Reportes',()=>{
+ it('usa el mes completo de Guatemala y admite febrero bisiesto',()=>{
+  expect(reportPeriod(null,null,'2028-02-29')).toEqual({from:'2028-02-01',to:'2028-02-29',error:''});
+ });
+ it('conserva fechas explícitas y rechaza intervalos invertidos',()=>{
+  expect(reportPeriod('2026-09-01','2026-09-30','2026-10-20').from).toBe('2026-09-01');
+  expect(reportPeriod('2026-11-01','2026-10-31','2026-10-20').error).not.toBe('');
+  expect(reportPeriod('2026-02-30',null,'2026-10-20').error).not.toBe('');
  });
 });

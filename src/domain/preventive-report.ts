@@ -4,9 +4,9 @@ import { orderDay } from './dashboard';
 import { isCompletedService, serviceKind } from './vocabulary';
 
 /** Operates only on the rows already authorized for the viewer. Dates use Guatemala. */
-export function preventiveReport(equipment: EntityRecord[], plans: EntityRecord[], readings: EntityRecord[], orders: EntityRecord[], from: string, to: string, today: string) {
+export function preventiveReport(equipment: EntityRecord[], plans: EntityRecord[], readings: EntityRecord[], orders: EntityRecord[], from: string, to: string, today: string, periodOrders: EntityRecord[] = orders) {
   const ids = new Set(equipment.map(row => row.id));
-  const completed = new Set(orders.filter(row => ids.has(String(row.equipo_id)) && serviceKind(row) === 'Preventivo' && isCompletedService(row) && !!row.fecha && orderDay(row) >= from && orderDay(row) <= to).map(row => row.equipo_id));
+  const completed = new Set(periodOrders.filter(row => ids.has(String(row.equipo_id)) && serviceKind(row) === 'Preventivo' && isCompletedService(row) && !!row.fecha && orderDay(row) >= from && orderDay(row) <= to).map(row => row.equipo_id));
   const pending = equipment.map(machine => {
     const plan = currentPlan(plans, machine.id, 'Preventivo');
     const projection = projectPlan(plan, readings, orders, today);
@@ -16,5 +16,5 @@ export function preventiveReport(equipment: EntityRecord[], plans: EntityRecord[
     const due = (s: string) => ['Vencido','Vence hoy'].includes(s) ? 0 : 1;
     return due(a.projection.status)-due(b.projection.status) || String(typeof a.projection.target === 'string' ? a.projection.target : '9999').localeCompare(String(typeof b.projection.target === 'string' ? b.projection.target : '9999')) || String(a.machine.codigo).localeCompare(String(b.machine.codigo));
   });
-  return { completed: completed.size, coverage: equipment.length ? Math.round(completed.size / equipment.length * 100) : null, pending, overdue: pending.filter(row => ['Vencido','Vence hoy'].includes(row.projection.status)).length, unknown: pending.filter(row => row.projection.target === undefined).length };
+  return { basePending: pending.filter(row => row.projection.status === 'Base pendiente').length, completed: completed.size, coverage: equipment.length ? Math.round(completed.size / equipment.length * 100) : null, pending, overdue: pending.filter(row => ['Vencido','Vence hoy'].includes(row.projection.status)).length, unknown: pending.filter(row => row.projection.target === undefined).length };
 }

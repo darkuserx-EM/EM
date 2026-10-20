@@ -272,3 +272,10 @@ Administración y coordinación consultan los vencimientos de planes vigentes al
 ## Flota: selección de renta y clientes
 
 Flota de equipos usa los mismos filtros Todos los equipos, Equipos en renta y Equipos de clientes que Mantenimiento y Reportes. La selección se combina con cliente, búsqueda, estado operativo y mantenimiento. Los indicadores y la exportación administrativa usan el mismo alcance; volver de la ficha conserva la selección. No cambia permisos ni registros.
+
+
+### Claridad de mantenimiento y período de Reportes
+
+Mantenimiento inicia en Preventivo y permite seleccionar Mayor o Ambos. El total de equipos se distingue de los ciclos evaluados; indicadores, agrupaciones y columnas siguen el tipo elegido. Las bases pendientes se destacan antes de los indicadores: cero ciclos vencidos no certifica que los equipos estén al día.
+
+Reportes inicia en el mes actual de Guatemala. Desde y Hasta se aplican al resumen, cobertura preventiva, gráfico y detalle, incluyendo el filtro de origen. Restablecer vuelve al mes actual. Los intervalos inválidos muestran un aviso en lugar de indicadores engañosos. El seguimiento de vencimientos y programación conserva toda la información autorizada y se identifica como estado actual, independiente del período de servicios. No se modifican planes, bases, historial ni permisos.
