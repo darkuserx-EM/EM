@@ -30,7 +30,7 @@ describe('mantenimiento agrupado por cliente y sede', () => {
     expect(groups[0]).toMatchObject({ equipmentCount: 4, due: 1, upcoming: 2, scheduled: 1, unscheduled: 2, configured: 3, cycles: 8, withoutPlan: 5 });
   });
   it('separa por sede y ordena los equipos por urgencia; los equipos sin plan van aparte', () => {
-    expect(groups[0].sites.map(site => [site.name, site.rows.map(item => item.equipment.id)])).toEqual([['B12 · Producto terminado', ['rd11', 'sp04']], ['B5 · Materia prima', ['tce010']]]);
+    expect(groups[0].sites.map(site => [site.name, site.rows.map(item => item.equipment.id)])).toEqual([['B12 · Producto terminado', ['rd11', 'sp04']], ['B5 · Materia prima', ['tce010', 'sp02']]]);
     expect(groups[0].unconfigured.map(item => item.equipment.id)).toEqual(['sp02']);
     expect(groups[1].unconfigured.map(item => item.equipment.id)).toEqual(['rd06']);
   });
@@ -45,3 +45,20 @@ describe('mantenimiento agrupado por cliente y sede', () => {
     expect(cyclePercent(rows[3].plans[0])).toBeUndefined();
   });
 });
+
+ it('excluye borradores, fechas inválidas, otros equipos y servicios cerrados', () => {
+   const order = record({ id: 'visit', equipo_id: 'e1', schema_operacion: 1, tipo: 'Preventivo', estado: 'Programada', fecha_programada: '2026-10-23' });
+   for (const change of [{estado:'Borrador'}, {estado:'Completado'}, {estado:'Cancelada'}, {fecha_programada:''}, {fecha_programada:'2026-02-30'}, {equipo_id:'e2'}, {tipo:'Mayor'}, {schema_operacion:undefined}]) {
+     expect(scheduledOrder('e1','Preventivo',[record({...order,...change})])).toBeUndefined();
+   }
+   expect(scheduledOrder('e1','Preventivo',[order])?.id).toBe('visit');
+ });
+ it('conserva sedes aunque todos sus equipos carezcan de plan', () => {
+   const groups = maintenanceGroups([row('e1','c1','s1',projection('Sin plan')), row('e2','c1','s2',projection('Sin plan'))], sites, []);
+   expect(groups[0].sites).toHaveLength(2);
+   expect(groups[0].unconfigured).toHaveLength(2);
+ });
+ it('un preventivo programado no cubre el mayor vencido', () => {
+   const groups = maintenanceGroups([row('e1','c1','s1',projection('Vencido',-1),projection('Vencido',-2))], sites, [record({id:'o1',equipo_id:'e1',schema_operacion:1,tipo:'Preventivo',estado:'Programada',fecha_programada:'2026-10-23'})]);
+   expect(groups[0]).toMatchObject({due:2,scheduled:1,unscheduled:1});
+ });

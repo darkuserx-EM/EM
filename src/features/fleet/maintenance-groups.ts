@@ -1,5 +1,5 @@
 import type { EntityRecord } from '../../domain/model';
-import type { PlanProjection } from '../../domain/maintenance-plan';
+import { validDay, type PlanProjection } from '../../domain/maintenance-plan';
 import { serviceKind } from '../../domain/vocabulary';
 import { clientDisplayName } from '../../domain/client-profile';
 
@@ -11,11 +11,11 @@ export const dueStates = ['Vencido', 'Vence hoy', 'Por vencer'];
 const urgencyRank = (status: string) => ['Vencido', 'Vence hoy'].includes(status) ? 0 : status === 'Por vencer' ? 1 : ['Sin plan', 'En pausa'].includes(status) ? 4 : status === 'Al día' ? 3 : 2;
 
 /**
- * Orden abierta (creada en el portal, sin completar ni cancelar) del mismo equipo y tipo de mantenimiento.
+ * Orden programada o en ejecución, con fecha válida (excluye borradores) del mismo equipo y tipo de mantenimiento.
  * Es la visita que atiende el ciclo: si existe, el ciclo está programado.
  */
 export function scheduledOrder(equipmentId: string, type: MaintenanceCycle['type'], orders: EntityRecord[]) {
-  return orders.filter(row => row.equipo_id === equipmentId && row.schema_operacion === 1 && !['Completada', 'Cancelada'].includes(String(row.estado)) && serviceKind(row) === type)
+  return orders.filter(row => row.equipo_id === equipmentId && row.schema_operacion === 1 && ['Programada', 'En proceso', 'En espera'].includes(String(row.estado)) && validDay(row.fecha_programada) && serviceKind(row) === type)
     .sort((a, b) => String(a.fecha_programada || '9999').localeCompare(String(b.fecha_programada || '9999')))[0];
 }
 
@@ -35,7 +35,7 @@ export interface MaintenanceGroup {
 /**
  * Agrupa la flota por cliente y sede para programar visitas por lugar.
  * Clientes con ciclos vencidos primero, luego los que tienen más ciclos por vencer; dentro de cada sede, por urgencia.
- * Los equipos sin ningún plan van aparte (`unconfigured`) para no ocupar la tabla.
+ * Los equipos sin ningún plan también se enumeran en `unconfigured` para poder resumirlos sin perder su sede.
  */
 export function maintenanceGroups(rows: MaintenanceRow[], sites: EntityRecord[], orders: EntityRecord[]): MaintenanceGroup[] {
   const groups = new Map<string, MaintenanceGroup>();
@@ -51,7 +51,7 @@ export function maintenanceGroups(rows: MaintenanceRow[], sites: EntityRecord[],
       if (item.projection.status === 'Por vencer') group.upcoming++;
       if (dueStates.includes(item.projection.status)) { if (scheduledOrder(String(row.equipment.id), item.type, orders)) group.scheduled++; else group.unscheduled++; }
     }
-    if (row.plans.every(item => !item.plan)) { group.unconfigured.push(row); continue; }
+    if (row.plans.every(item => !item.plan)) group.unconfigured.push(row);
     const siteId = String(row.equipment.sede_id || '');
     let site = group.sites.find(item => item.id === siteId);
     if (!site) { site = { id: siteId, name: String(sites.find(item => item.id === siteId)?.nombre || 'Sin sede asignada'), rows: [] }; group.sites.push(site); }
@@ -68,6 +68,6 @@ export function maintenanceGroups(rows: MaintenanceRow[], sites: EntityRecord[],
 /** Avance del ciclo en porcentaje (0–100), si el plan tiene objetivo y margen calculados. */
 export function cyclePercent(cycle: MaintenanceCycle) {
   const interval = Number(cycle.plan?.intervalo);
-  if (!cycle.plan || cycle.projection.remaining === undefined || !Number.isFinite(interval) || interval <= 0) return undefined;
+  if (!cycle.plan || !Number.isFinite(cycle.projection.remaining) || cycle.projection.remaining === undefined || !Number.isFinite(interval) || interval <= 0) return undefined;
   return Math.max(0, Math.min(100, Math.round((interval - cycle.projection.remaining) / interval * 100)));
 }

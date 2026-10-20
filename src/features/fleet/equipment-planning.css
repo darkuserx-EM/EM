@@ -89,3 +89,15 @@
 .pm-visit { display:grid; gap:4px; justify-items:start; font-size:var(--text-xs); color:var(--color-text); }
 .pm-unconfigured strong { display:block; font-weight:500; }
 .pm-unconfigured small { display:block; margin-top:4px; font-size:var(--text-xs); color:var(--color-text-muted); }
+
+/* En móvil todos los ciclos y acciones quedan visibles sin arrastrar la tabla. */
+@media (max-width: 600px) {
+  .pm-grouped, .pm-grouped tbody, .pm-grouped tr, .pm-grouped th, .pm-grouped td { display:block; width:100%; min-width:0; }
+  .pm-grouped thead { display:none; }
+  .pm-dashboard .pm-grouped td { padding:12px 16px; overflow-wrap:anywhere; }
+  .pm-grouped td[data-label]::before { content:attr(data-label); display:block; font-size:var(--text-xs); color:var(--color-text-muted); margin-bottom:8px; }
+  .pm-grouped tr { border-bottom:1px solid var(--color-border); }
+  .pm-group button { padding:14px 16px; }
+  .pm-group-config { flex-wrap:wrap; }
+  .pm-visit { margin-bottom:8px; }
+}
