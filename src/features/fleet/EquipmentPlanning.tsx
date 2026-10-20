@@ -5,6 +5,7 @@ import { ErrorNotice, Modal } from '../../components/ui';
 import { getDataSource } from '../../data/source';
 import type { EntityRecord, Scalar } from '../../domain/model';
 import { currentPlan, planTypes, planService, projectPlan, todayGT, planIntervalLimits } from '../../domain/maintenance-plan';
+import { maintenancePlanDefaults } from '../../domain/maintenance-fleet';
 import { localDay } from '../../domain/equipment-history';
 import { formatDate, formatNumber } from '../../domain/format';
 import './equipment-planning.css';
@@ -16,8 +17,9 @@ const reportName = (row: EntityRecord) => row.orden_origen ? `OS ${row.orden_ori
 
 function PlanForm({ equipment, type, current, services, onClose }: { equipment: EntityRecord; type: string; current?: EntityRecord; services: EntityRecord[]; onClose: () => void }) {
   const actor = useActor(); const notify = useToast(state => state.notify);
+  const defaults = maintenancePlanDefaults(equipment, type);
   const [revision] = useState(() => getDataSource().getRevision());
-  const [values, setValues] = useState<Record<string, string>>(() => ({ criterio: String(current?.criterio || 'Horas'), intervalo: String(current?.intervalo || (type === 'Mayor' ? 2000 : 250)), estado_plan: String(current?.estado_plan || 'Activo'), base_origen: String(current?.base_origen || 'Pendiente'), base_orden_id: String(current?.base_orden_id || ''), base_fecha: String(current?.base_fecha || ''), base_horas: typeof current?.base_horas === 'number' ? String(current.base_horas) : '', base_calidad: String(current?.base_calidad || 'Registrada'), responsable: String(current?.responsable || ''), motivo: '' }));
+  const [values, setValues] = useState<Record<string, string>>(() => ({ criterio: String(current?.criterio || defaults.criterio), intervalo: String(current?.intervalo || defaults.intervalo), estado_plan: String(current?.estado_plan || 'Activo'), base_origen: String(current?.base_origen || 'Pendiente'), base_orden_id: String(current?.base_orden_id || ''), base_fecha: String(current?.base_fecha || ''), base_horas: typeof current?.base_horas === 'number' ? String(current.base_horas) : '', base_calidad: String(current?.base_calidad || 'Registrada'), responsable: String(current?.responsable || ''), motivo: '' }));
   const [customInterval, setCustomInterval] = useState(() => !!current && !(type === 'Mayor' ? [2000] : current.criterio === 'Días' ? [30, 60, 90] : [250]).includes(Number(current.intervalo)));
   const [confirmed, setConfirmed] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
