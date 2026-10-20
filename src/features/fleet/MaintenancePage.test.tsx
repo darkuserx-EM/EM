@@ -24,9 +24,9 @@ beforeEach(() => {
     OrdenServicio: [record({ id:'visit', codigo:'OS-QA', equipo_id:'e1', schema_operacion:1, tipo:'Preventivo', estado:'Programada', fecha_programada:'2026-10-23' })],
   };
 });
-it('muestra el mayor pendiente junto al preventivo programado sin ocultar el vencimiento', () => {
+it('inicia en preventivo y conserva programación y vencimiento', () => {
   const html = render();
-  expect(html).toContain('Mayor · Sin programar');
+  expect(html).not.toContain('Mayor · Sin programar');
   expect(html).toContain('Preventivo · OS-QA');
   expect(html).toContain('Vencido');
   expect(html).toContain('Avance del ciclo: 100 %');
@@ -47,4 +47,14 @@ it('no consulta ni muestra datos administrativos para otros roles', () => {
   }
 });
 
-it('permite al coordinador consultar ciclos y programación', () => { fixture.role = 'Coordinador'; const html = render(); expect(html).toContain('QA-001'); expect(html).toContain('Mayor · Sin programar'); expect(fixture.enabled.every(Boolean)).toBe(true); });
+it('permite al coordinador consultar ciclos y programación', () => { fixture.role = 'Coordinador'; const html = render(); expect(html).toContain('QA-001'); expect(html).not.toContain('Mayor · Sin programar'); expect(fixture.enabled.every(Boolean)).toBe(true); });
+
+it('destaca la base pendiente antes de los indicadores sin modificar el plan',()=>{
+ const plan=fixture.rows.PlanPM![0];plan.base_origen='Pendiente';plan.base_confirmada=false;
+ const before=JSON.stringify(fixture.rows);
+ const html=render();
+ expect(html).toContain('equipos con base pendiente');
+ expect(html.indexOf('equipos con base pendiente')).toBeLessThan(html.indexOf('Ciclos vencidos o vencen hoy'));
+ expect(html).toContain('ciclos evaluados');expect(html).not.toContain('<th>Mayor</th>');
+ expect(JSON.stringify(fixture.rows)).toBe(before);
+});

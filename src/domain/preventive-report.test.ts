@@ -23,3 +23,15 @@ it('el cliente recibe solo clasificación de renta de sus equipos, nunca planes 
  const actor={id:'u',nombre:'QA',rol:'Cliente' as const,cliente_id:'c'};const equipment=[row({id:'a',cliente_id:'c',propiedad:'Propio',estado_administrativo:'En renta'}),row({id:'b',cliente_id:'other',propiedad:'Propio',estado_administrativo:'En renta'})];
  const entities={Equipo:equipment} as Parameters<typeof filterVisible>[3];const visible=filterVisible(actor,'Equipo',equipment,entities);expect(visible).toHaveLength(1);expect(matchesMaintenanceFleet(visible[0],'En renta')).toBe(true);expect(visible[0].estado_administrativo).toBeUndefined();expect(filterVisible(actor,'PlanPM',[plan('a','2026-09-01')],entities)).toEqual([]);
 });
+
+it('distingue una base pendiente de un plan inexistente sin inventar vencimientos',()=>{
+ const pending={...plan('a','2026-09-01'),base_origen:'Pendiente',base_confirmada:false,base_fecha:''};
+ const r=preventiveReport(machines,[pending],[],[],'2026-10-01','2026-10-31','2026-10-20');
+ expect(r.basePending).toBe(1);expect(r.unknown).toBe(2);expect(r.overdue).toBe(0);
+});
+it('aplica el mismo conjunto de reportes al indicador y conserva programación fuera del período',()=>{
+ const historic=row({id:'old',equipo_id:'a',tipo:'Preventivo',estado:'Completada',fecha:'2026-10-02'});
+ const scheduled=row({id:'next',equipo_id:'a',tipo:'Preventivo',estado:'Programada',schema_operacion:1,fecha_programada:'2026-11-02'});
+ const r=preventiveReport(machines,[],[],[historic,scheduled],'2026-10-01','2026-10-31','2026-10-20',[]);
+ expect(r.completed).toBe(0);expect(r.pending[0].scheduled?.id).toBe('next');
+});
