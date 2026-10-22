@@ -51,6 +51,29 @@ test('Trabajo del técnico: permisos, concurrencia, reapertura e integridad',{sk
   async function mutate(entity,action,fields,actor=admin,id){const snapshot=await readSnapshot(pool);if(action==='update')fields={expected_updated_at:snapshot.entities[entity].find(row=>row.id===id)?.fecha_actualizacion,...fields};return call('mutate',{revision:snapshot.revision,action,entity,fields,id},actor);}
   async function update(entity,row,fields,actor=admin){const r=await mutate(entity,'update',{...fields,expected_updated_at:row.fecha_actualizacion},actor,row.id);assert.equal(r.status,200,JSON.stringify(r.data));return r.data.result;}
   const date='2026-10-14',tech=accounts.tech.technicianId;
+  await t.test('cancelación con motivo, cuatro perfiles y órdenes asociadas',async()=>{
+    const ticket=await create('Ticket',{equipo_id:'eq-a',titulo:'Cancelar prueba',descripcion:'Conservar descripción'},sessions.client);
+    const fields={estado:'Cancelado',cancelacion_motivo:'El cliente cancela la visita de prueba'};
+    for(const role of ['tech','client'])assert.equal((await mutate('Ticket','update',fields,sessions[role],ticket.id)).status,403);
+    assert.equal((await mutate('Ticket','update',{estado:'Cancelado'},admin,ticket.id)).status,400);
+    const order=await create('OrdenServicio',{equipo_id:'eq-a',ticket_id:ticket.id,sintoma:'Visita de prueba'});
+    assert.equal((await mutate('Ticket','update',fields,admin,ticket.id)).status,400);
+    await update('OrdenServicio',order,{estado:'Cancelada'});
+    const result=await mutate('Ticket','update',fields,sessions.coordinator,ticket.id);assert.equal(result.status,200,JSON.stringify(result.data));
+    assert.equal(result.data.result.descripcion,ticket.descripcion);
+    const snapshot=await readSnapshot(pool);assert.equal(snapshot.entities.OrdenServicio.find(r=>r.id===order.id).estado,'Cancelada');
+    assert.ok(snapshot.entities.Bitacora.some(r=>r.ticket_id===ticket.id&&r.accion==='Cancelación de solicitud'&&r.motivo===fields.cancelacion_motivo));
+    const race=await create('Ticket',{equipo_id:'eq-a',titulo:'Concurrencia cancelación',descripcion:'No puede quedar cancelada con una orden abierta'});
+    const outcomes=await Promise.all([
+      mutate('Ticket','update',fields,admin,race.id),
+      mutate('OrdenServicio','create',{equipo_id:'eq-a',ticket_id:race.id,sintoma:'Alta concurrente'},sessions.coordinator),
+    ]);
+    assert.equal(outcomes.filter(r=>r.status===200).length,1,JSON.stringify(outcomes.map(r=>({status:r.status,data:r.data}))));
+    const after=await readSnapshot(pool),closed=after.entities.Ticket.find(r=>r.id===race.id).estado==='Cancelado';
+    assert.equal(after.entities.OrdenServicio.some(r=>r.ticket_id===race.id),!closed);
+
+  });
+
   let ticket=await create('Ticket',{equipo_id:'eq-a',titulo:'Cadena floja',descripcion:'Solicitud sintética con video'},sessions.client);
   const clip=await fs.readFile(new URL('./fixtures/video-qa.mp4',import.meta.url));
   const requestId=randomUUID(),sha256=createHash('sha256').update(clip).digest('hex');

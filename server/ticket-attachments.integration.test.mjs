@@ -87,8 +87,10 @@ for (const external of [false,true]) test(`Fotografías de tickets (${external?'
     const edit=await call('mutate',{revision:0,action:'update',entity:'OrdenServicio',id:order.id,fields:{tecnico_id:accounts.otherTech.technicianId,expected_updated_at:current.fecha_actualizacion}},admin);assert.equal(edit.status,200,JSON.stringify(edit.data));
     assert.equal((await call(`attachments/${file.id}/file?orderId=${order.id}`,undefined,sessions.tech)).status,404);
     assert.equal((await call(`attachments/${file.id}/file?orderId=${order.id}`,undefined,sessions.otherTech)).status,200);
+    const cancelledOrder=edit.data.result;
+    assert.equal((await call('mutate',{revision:0,action:'update',entity:'OrdenServicio',id:order.id,fields:{estado:'Cancelada',expected_updated_at:cancelledOrder.fecha_actualizacion}},admin)).status,200);
     const original=(await readSnapshot(pool)).entities.Ticket.find(r=>r.id===ticket.id);
-    assert.equal((await call('mutate',{revision:0,action:'update',entity:'Ticket',id:ticket.id,fields:{estado:'Cancelado',expected_updated_at:original.fecha_actualizacion}},admin)).status,200);
+    assert.equal((await call('mutate',{revision:0,action:'update',entity:'Ticket',id:ticket.id,fields:{estado:'Cancelado',cancelacion_motivo:'El cliente cancela el servicio de prueba',expected_updated_at:original.fecha_actualizacion}},admin)).status,200);
     assert.equal((await call('ticket-attachments',{...body,requestId:randomUUID()},admin)).status,409);
     assert.equal((await call(`attachments/${file.id}/file`,undefined,sessions.client)).status,200);
   });

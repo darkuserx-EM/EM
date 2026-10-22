@@ -16,7 +16,7 @@ function fixture() {
 }
 
 describe('resolución de solicitudes al completar sus órdenes', () => {
-  it.each(['Resuelto', 'Cancelado'])('rechaza nuevas órdenes desde un ticket %s sin invalidar reintentos de altas ya guardadas', async estado => {
+  it.each(['Resuelto'])('rechaza nuevas órdenes desde un ticket %s sin invalidar reintentos de altas ya guardadas', async estado => {
     const { source } = fixture(); const tickets = source.repository('Ticket', coordinator); const orders = source.repository('OrdenServicio', coordinator);
     const ticket = await tickets.create(ticketInput); const input = { ...orderInput, ticket_id: ticket.id, solicitud_id: 'closure-retry-123' };
     const order = await orders.create(input); await tickets.update(ticket.id, { estado }); const before = source.snapshot(admin);
@@ -61,7 +61,7 @@ describe('resolución de solicitudes al completar sus órdenes', () => {
     expect((await tickets.getById(ticket.id))?.estado).toBe('Nuevo');
     await tickets.update(ticket.id, { estado: 'Resuelto' }); expect((await tickets.getById(ticket.id))?.estado).toBe('Resuelto');
   });
-  it.each(['Resuelto', 'Cancelado'])('no reescribe una solicitud ya %s', async estado => {
+  it.each(['Resuelto'])('no reescribe una solicitud ya %s', async estado => {
     const { source } = fixture(); const orders = source.repository('OrdenServicio', coordinator); const tickets = source.repository('Ticket', coordinator);
     const ticket = await tickets.create(ticketInput); const order = await orders.create({ ...orderInput, ticket_id: ticket.id });
     await tickets.update(ticket.id, { estado }); const original = source.snapshot(admin).entities.Ticket;

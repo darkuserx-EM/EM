@@ -286,3 +286,9 @@ Reportes inicia en el mes actual de Guatemala. Desde y Hasta se aplican al resum
 La navegación entre estas tres pantallas conserva en la URL el tipo de flota y el cliente, además del período y filtros propios que se recuperan al regresar. Abrir o cerrar una ficha conserva el contexto; no se transfieren IDs de detalle al menú ni se guardan filtros en un almacenamiento compartido entre cuentas. Cambiar cliente o tipo de flota limpia el equipo específico de Reportes. Los permisos siguen siendo los del perfil y del servidor.
 
 En teléfono (hasta 600 px), los filtros secundarios se pliegan con un botón accesible y conservan un resumen visible. Los indicadores ocupan dos columnas y la tabla de Flota se presenta como fichas con etiquetas, sin depender del desplazamiento horizontal. En computadora los controles permanecen visibles.
+
+### Cancelación de solicitudes
+
+Administración y coordinación disponen de «Cancelar solicitud» con motivo obligatorio de 8 a 500 caracteres. La descripción y las evidencias se conservan; la bitácora registra actor, fecha, motivo y versiones anterior/nueva. El estado Cancelado se retira del formulario general para usar esta acción explícita.
+
+No se cancelan órdenes en cadena: las órdenes abiertas deben revisarse y cancelarse primero. Una orden completada impide cancelar la solicitud; corresponde revisar el trabajo y su resolución. El servidor verifica todas las relaciones, incluidos enlaces inversos, dentro de la escritura transaccional. Técnico y cliente no pueden cancelar. Los registros históricos se conservan.

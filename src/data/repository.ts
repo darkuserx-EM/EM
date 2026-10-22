@@ -220,6 +220,9 @@ export class LocalDataSource {
         else if (entity === 'OrdenServicio' && original.estado === 'Completada' && input.revision_accion) {
           this.audit(next, actor, entity, input.revision_accion === 'reabrir' ? 'Reapertura de orden' : 'Corrección de orden completada', row.codigo + ' · ' + input.revision_motivo);
           Object.assign(next.entities.Bitacora.at(-1)!, { orden_id: row.id, equipo_id: row.equipo_id, motivo: input.revision_motivo, estado_anterior: original.estado, estado_nuevo: row.estado, version_anterior: JSON.stringify(original), version_nueva: JSON.stringify(row) });
+        } else if (entity === 'Ticket' && row.estado === 'Cancelado' && original.estado !== 'Cancelado') {
+          this.audit(next, actor, entity, 'Cancelación de solicitud', row.codigo + ' · ' + row.cancelacion_motivo);
+          Object.assign(next.entities.Bitacora.at(-1)!, { ticket_id: row.id, equipo_id: row.equipo_id, estado_anterior: original.estado, estado_nuevo: row.estado, motivo: row.cancelacion_motivo, version_anterior: JSON.stringify(original), version_nueva: JSON.stringify(row) });
         } else if (entity === 'Ticket' && original.estado === 'Resuelto' && row.estado === 'En revisión') {
           this.audit(next, actor, entity, 'Reapertura sin orden', row.codigo + ' · Resuelto → En revisión · ' + row.reapertura_motivo);
           Object.assign(next.entities.Bitacora.at(-1)!, { ticket_id: row.id, equipo_id: row.equipo_id, estado_anterior: original.estado, estado_nuevo: row.estado, motivo: row.reapertura_motivo });

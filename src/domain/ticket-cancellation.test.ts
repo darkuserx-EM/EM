@@ -1,0 +1,22 @@
+import { describe, expect, it } from 'vitest';
+import { LocalDataSource } from '../data/repository';
+import { createSeed, demoUsers } from '../data/seed';
+const [admin,coordinator,tech,,,client]=demoUsers;
+const reason='El cliente cancela la visita; ya no requiere el trabajo.';
+function fixture(){let data=JSON.stringify(createSeed());return new LocalDataSource({getItem:()=>data,setItem:(_k,v)=>{data=v;}},{demoHistory:false});}
+const input={equipo_id:'equipment-1',titulo:'Solicitud de prueba',descripcion:'Descripción que debe conservarse'};
+describe('cancelación trazable de solicitudes',()=>{
+ it.each([admin,coordinator])('$rol cancela con motivo y conserva registros',async actor=>{
+  const source=fixture(),repo=source.repository('Ticket',actor),ticket=await repo.create(input),before=source.snapshot(admin);
+  const result=await repo.update(ticket.id,{estado:'Cancelado',cancelacion_motivo:reason,expected_updated_at:ticket.fecha_actualizacion});
+  expect(result).toMatchObject({...input,id:ticket.id,codigo:ticket.codigo,estado:'Cancelado',cancelacion_motivo:reason,fecha_creacion:ticket.fecha_creacion});
+  const after=source.snapshot(admin);for(const entity of ['OrdenServicio','Equipo','LecturaHorometro','Hallazgo'] as const)expect(after.entities[entity]).toEqual(before.entities[entity]);
+  expect(after.entities.Bitacora.find(r=>r.accion==='Cancelación de solicitud')).toMatchObject({ticket_id:ticket.id,motivo:reason,creado_por:actor.id,estado_anterior:'Nuevo',estado_nuevo:'Cancelado'});
+  await expect(repo.update(ticket.id,{estado:'Cancelado',cancelacion_motivo:reason})).rejects.toThrow();expect(source.snapshot(admin)).toEqual(after);
+ });
+ it.each([tech,client])('$rol no puede cancelar',async actor=>{const s=fixture(),t=await s.repository('Ticket',admin).create(input),before=s.snapshot(admin);await expect(s.repository('Ticket',actor).update(t.id,{estado:'Cancelado',cancelacion_motivo:reason})).rejects.toThrow();expect(s.snapshot(admin)).toEqual(before);});
+ it('rechaza motivo ausente, corto, excesivo, cambios mezclados y versión anterior',async()=>{const s=fixture(),repo=s.repository('Ticket',admin),t=await repo.create(input);for(const cancelacion_motivo of ['', '   ','Corto','x'.repeat(501)])await expect(repo.update(t.id,{estado:'Cancelado',cancelacion_motivo})).rejects.toThrow('motivo');await expect(repo.update(t.id,{estado:'Cancelado',cancelacion_motivo:reason,descripcion:'Borrar anterior'})).rejects.toThrow('separado');await expect(repo.update(t.id,{estado:'Cancelado',cancelacion_motivo:reason,expected_updated_at:'viejo'})).rejects.toThrow('cambió');});
+ it('exige cancelar todas las órdenes y nunca las modifica en cadena',async()=>{const s=fixture(),tickets=s.repository('Ticket',admin),orders=s.repository('OrdenServicio',admin),t=await tickets.create(input);const a=await orders.create({equipo_id:'equipment-1',ticket_id:t.id,sintoma:'Prueba'}),b=await orders.create({equipo_id:'equipment-1',ticket_id:t.id,sintoma:'Otra visita'});const cancel=()=>tickets.update(t.id,{estado:'Cancelado',cancelacion_motivo:reason});await expect(cancel()).rejects.toThrow('órdenes vinculadas');await orders.update(a.id,{estado:'Cancelada'});await expect(cancel()).rejects.toThrow('órdenes vinculadas');await orders.update(b.id,{estado:'Cancelada'});const before=s.snapshot(admin).entities.OrdenServicio;await cancel();expect(s.snapshot(admin).entities.OrdenServicio).toEqual(before);await expect(orders.create({equipo_id:'equipment-1',ticket_id:t.id,sintoma:'Reintento'})).rejects.toThrow('cerrada');});
+ it('bloquea una orden completada con otra cancelada y respeta vínculo inverso',async()=>{const s=fixture(),tickets=s.repository('Ticket',admin),orders=s.repository('OrdenServicio',admin);const a=await orders.create({equipo_id:'equipment-1',sintoma:'Prueba',tecnico_id:'tech-1',fecha_programada:'2026-10-22'});const t=await tickets.create({...input,orden_id:a.id});await expect(tickets.update(t.id,{estado:'Cancelado',cancelacion_motivo:reason})).rejects.toThrow('órdenes vinculadas');const b=await orders.create({equipo_id:'equipment-1',ticket_id:t.id,sintoma:'Otra visita'});await orders.update(b.id,{estado:'Cancelada'});await orders.update(a.id,{estado:'En proceso'});await orders.update(a.id,{estado:'Completada',diagnostico:'Inspección',trabajo_realizado:'Ajuste',pruebas_realizadas:'Prueba',resultado_pruebas:'Satisfactorio'});await expect(tickets.update(t.id,{estado:'Cancelado',cancelacion_motivo:reason})).rejects.toThrow('completada');});
+});
+

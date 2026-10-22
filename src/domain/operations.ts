@@ -99,6 +99,17 @@ export function allowedOperationStates(entity: 'Ticket' | 'OrdenServicio', origi
 export function prepareOperation(entity: EntityName, input: Record<string, Scalar>, actor: Actor, entities: Database['entities'], original?: EntityRecord): Record<string, Scalar> {
   if (!isOperationalEntity(entity)) return input;
   const manager = managesOperations(actor);
+  if (entity === 'Ticket' && (input.estado === 'Cancelado' || input.cancelacion_motivo !== undefined)) {
+    if (!manager) throw forbidden();
+    if (!original || original.schema_operacion !== 1 || original.importado === true || !['Nuevo','En revisión','Programado'].includes(text(original.estado)) || input.estado !== 'Cancelado') throw new ValidationError('Solo puedes cancelar una solicitud abierta.');
+    if (text(input.cancelacion_motivo).length < 8 || text(input.cancelacion_motivo).length > 500) throw new ValidationError('Explica el motivo de cancelación (entre 8 y 500 caracteres).');
+    if (Object.keys(input).some(key => !['estado','cancelacion_motivo'].includes(key))) throw new ValidationError('Cancela la solicitud por separado para conservar sus datos.');
+    const related = entities.OrdenServicio.filter(order => order.ticket_id === original.id || order.id === original.orden_id);
+    if (original.orden_id && !related.some(order => order.id === original.orden_id)) throw new ValidationError('No se pudo verificar la orden vinculada. Revisa su relación antes de cancelar.');
+    if (related.some(order => order.estado === 'Completada')) throw new ValidationError('Hay una orden completada. Revisa el trabajo realizado y resuelve la solicitud; no corresponde cancelarla.');
+    if (related.some(order => order.estado !== 'Cancelada' || order.schema_operacion !== 1 || order.importado === true || order.equipo_id !== original.equipo_id || order.cliente_id !== original.cliente_id || order.ticket_id && order.ticket_id !== original.id)) throw new ValidationError('Revisa y cancela primero todas las órdenes vinculadas. No se cancelan automáticamente.');
+    input = { ...input, cancelacion_motivo: text(input.cancelacion_motivo) };
+  }
   const reopening = entity === 'Ticket' && original?.estado === 'Resuelto' && input.estado === 'En revisión';
   if (reopening) {
     if (!canReopenTicket(actor, original!, entities.OrdenServicio)) throw forbidden();
