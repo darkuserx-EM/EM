@@ -19,7 +19,7 @@ const publicFields: Partial<Record<EntityName, string[]>> = {
   Sede: ['cliente_id', 'nombre', 'direccion', 'municipio', 'departamento', 'referencia_ubicacion', 'autoriza_contacto_id'],
   Equipo: ['marca', 'modelo', 'serie', 'id_interno_cliente', 'tipo', 'propiedad', 'cliente_id', 'sede_id', 'horometro', 'anio', 'capacidad_lb', 'altura_elevacion_in', 'altura_torre_in', 'largo_cuchillas_in', 'voltaje', 'combustible', 'bateria', 'cargador', 'llantas_delanteras', 'llantas_traseras', 'caster', 'foto_equipo', 'placa_datos', 'foto_frontal', 'foto_trasera', 'foto_lateral_1', 'foto_lateral_2', 'estado_operativo', 'estado_mantenimiento', 'fuera_de_flota'],
   OrdenServicio: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'ticket_id', 'tecnico_id', 'tecnico_apoyo_1_id', 'tecnico_apoyo_2_id', 'tecnico', 'tipo', 'prioridad', 'estado', 'fecha_programada', 'hora_programada', 'fecha', 'fecha_fin', 'sintoma', 'motivo', 'diagnostico', 'causa_confirmada', 'trabajo_realizado', 'trabajo', 'recomendaciones', 'pruebas_realizadas', 'resultado_pruebas', 'recibido_por', 'notas_seguridad', 'insumos', 'repuestos', 'horometro', 'odometro_millas', 'visible_cliente', 'ubicacion'],
-  Ticket: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'titulo', 'descripcion', 'prioridad', 'estado', 'fecha_programada', 'responsable_id', 'orden_id', 'tiene_orden'],
+  Ticket: ['schema_operacion', 'equipo_id', 'cliente_id', 'sede_id', 'titulo', 'descripcion', 'prioridad', 'estado', 'fecha_programada', 'responsable_id', 'orden_id', 'tiene_orden', 'cancelacion_motivo'],
   LecturaHorometro: ['equipo_id', 'cliente_id', 'orden_id', 'fecha', 'valor', 'odometro_millas', 'origen', 'es_estimado'],
   Tecnico: ['nombre', 'especialidad', 'activo'],
 };

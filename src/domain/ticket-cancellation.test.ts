@@ -10,6 +10,7 @@ describe('cancelación trazable de solicitudes',()=>{
   const source=fixture(),repo=source.repository('Ticket',actor),ticket=await repo.create(input),before=source.snapshot(admin);
   const result=await repo.update(ticket.id,{estado:'Cancelado',cancelacion_motivo:reason,expected_updated_at:ticket.fecha_actualizacion});
   expect(result).toMatchObject({...input,id:ticket.id,codigo:ticket.codigo,estado:'Cancelado',cancelacion_motivo:reason,fecha_creacion:ticket.fecha_creacion});
+  expect((await source.repository('Ticket',client).getById(ticket.id))?.cancelacion_motivo).toBe(reason);
   const after=source.snapshot(admin);for(const entity of ['OrdenServicio','Equipo','LecturaHorometro','Hallazgo'] as const)expect(after.entities[entity]).toEqual(before.entities[entity]);
   expect(after.entities.Bitacora.find(r=>r.accion==='Cancelación de solicitud')).toMatchObject({ticket_id:ticket.id,motivo:reason,creado_por:actor.id,estado_anterior:'Nuevo',estado_nuevo:'Cancelado'});
   await expect(repo.update(ticket.id,{estado:'Cancelado',cancelacion_motivo:reason})).rejects.toThrow();expect(source.snapshot(admin)).toEqual(after);
