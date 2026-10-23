@@ -1,3 +1,4 @@
+import { OrderDraftPanel } from './OrderDraftPanel';
 import { assignedTo, supportFields } from '../../domain/order-team';
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { flushSync } from 'react-dom';
@@ -19,7 +20,7 @@ import { changedFields, dateTimeInput, equipmentLabel, fromDateTimeInput, meterW
 import './operations.css';
 import { addSymptom, orderEntryTimes, orderSections as steps, symptomOptions } from './order-entry';
 
-export default function ServiceOrderForm({ row: original, ticket, onClose, onSaved }: { row?: EntityRecord; ticket?: EntityRecord; onClose: () => void; onSaved: (row: EntityRecord) => void }) {
+export default function ServiceOrderForm({ row: original, ticket, onClose, onSaved, onCreated }: { row?: EntityRecord; ticket?: EntityRecord; onClose: () => void; onSaved: (row: EntityRecord) => void; onCreated?: (row: EntityRecord) => void }) {
   // Keep the version actually loaded/saved by this editor. Background refreshes must
   // not silently replace it while another participant is writing to the order.
   const [row, setRow] = useState(original);
@@ -35,7 +36,7 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
   const canSchedule = !correcting && (manager || creating || actor.rol === 'Técnico' && row?.estado === 'Borrador');
   const enabledIds = technicianEquipmentIds(actor, { Equipo: equipment.rows, Tecnico: technicians.rows });
   const eligibleEquipment = creating ? equipment.rows.filter(item => enabledIds.has(item.id)) : equipment.rows;
-  const [requestId] = useState(() => crypto.randomUUID());
+  const [requestId, setRequestId] = useState<string>(() => crypto.randomUUID());
   const [values, setValues] = useState<Record<string, string>>(() => ({
     ...Object.fromEntries([...assignmentFields, ...executionFields].map(key => [key, String(row?.[key] ?? '')])),
     cliente_id: String(row?.cliente_id || ticket?.cliente_id || ''), equipo_id: String(row?.equipo_id || ticket?.equipo_id || ''), sede_id: String(row?.sede_id || ticket?.sede_id || ''),
@@ -46,8 +47,9 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
   }));
   const [initialValues, setInitialValues] = useState(values);
   const [attachmentPending, setAttachmentPending] = useState(false); const [signaturePending, setSignaturePending] = useState(false);
-  const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues) || !!reason || attachmentPending || signaturePending, onClose);
+  const guard = useUnsavedChanges(JSON.stringify(values) !== JSON.stringify(initialValues) || !!reason || attachmentPending || signaturePending, () => { if (JSON.stringify(values) !== JSON.stringify(initialValues)) clearDraft.current(); onClose(); });
   const [savedMessage, setSavedMessage] = useState('');
+  const clearDraft = useRef<() => void>(() => {});
   const [step, setStep] = useState(original && !correcting && ['En proceso', 'En espera'].includes(String(original.estado)) ? 1 : 0); const [saving, setBusy] = useState(false); const [attachmentBusy, setAttachmentBusy] = useState(false); const [signatureBusy, setSignatureBusy] = useState(false); const [error, setError] = useState(''); const busy = saving || attachmentBusy || signatureBusy;
   const form = useRef<HTMLFormElement>(null); const pendingFocus = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => { pendingFocus.current?.focus(); pendingFocus.current = null; }, [step]);
@@ -102,9 +104,10 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
       const repo = getDataSource().repository('OrdenServicio', actor);
       const saved = row ? await repo.update(row.id, fields) : await repo.create(fields);
       const next = savedFormValues(saved, values);
-      setRow(saved); setValues(next); setInitialValues(next); setReason('');
+      clearDraft.current(); setRow(saved); setValues(next); setInitialValues(next); setReason('');
       setSavedMessage(`${saved.codigo} · ${start ? 'Atención iniciada' : 'Avance guardado'} en el portal.`);
       if (start) setStep(1);
+      if (!row) onCreated?.(saved);
       if (saved.estado === 'Completada' || saved.estado === 'Cancelada') { notify(`${saved.codigo} guardada correctamente.`); onSaved(saved); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'No se pudo guardar. El borrador permanece aquí para reintentar.'); }
     finally { setBusy(false); }
@@ -114,11 +117,12 @@ export default function ServiceOrderForm({ row: original, ticket, onClose, onSav
   const input = (key: string, label: string, type = 'text', required = false, disabled = false) => <label className="os-field">{label}{required ? ' *' : ''}<input type={type} value={values[key]} onInput={['date', 'time', 'datetime-local'].includes(type) ? event => set(key, event.currentTarget.value) : undefined} onChange={event => set(key, event.target.value)} disabled={busy || disabled || correcting && ['horometro','odometro_millas','fecha','fecha_fin'].includes(key)} required={required} min={type === 'number' ? '0' : undefined} step={type === 'number' ? 'any' : undefined} maxLength={type === 'text' ? 500 : undefined} /></label>;
   const choose = (key: string, label: string, options: readonly string[], disabled = false) => <label className="os-field">{label}<select value={values[key]} onChange={event => set(key, event.target.value)} disabled={busy || disabled || correcting && key === 'estado'}>{!options.includes(values[key]) && <option>{values[key]}</option>}{options.map(option => <option key={option}>{option}</option>)}</select></label>;
   return <Modal title={row ? `${correcting ? 'Corregir' : 'Atender'} ${row.codigo}` : 'Nueva orden de servicio'} wide className="os-form-modal" onClose={() => { if (!busy) guard.requestClose(); }}>{guard.prompt}
+    <OrderDraftPanel key={`${actor.id}:${actor.rol}:${row?.id || 'new'}`} actor={actor} scope={row?.id || `new:${ticket?.id || 'standalone'}`} version={String(row?.fecha_actualizacion || '')} equipment={String(row?.codigo || (selectedEquipment ? equipmentLabel(selectedEquipment) : 'Orden nueva'))} values={values} initial={initialValues} requestId={requestId} onRestore={(texts, id) => { setValues(previous => ({ ...previous, ...texts })); if (!row) setRequestId(id); }} onSavedDraft={clear => { clearDraft.current = clear; }} />
     <form ref={form} onSubmit={save} noValidate>
       <>{correcting&&<label className="os-field os-span">Motivo de corrección *<textarea required minLength={8} maxLength={500} value={reason} onChange={e=>setReason(e.target.value)} disabled={busy}/><small>Se conserva la versión anterior, el cierre, las lecturas y las evidencias.</small></label>}</><p className="os-intro">Identifica el equipo, documenta el trabajo y registra las pruebas. Los campos con * son obligatorios.</p>
       <nav className="os-steps" aria-label="Pasos del reporte">{steps.map((label, index) => <button type="button" key={label} aria-current={step === index ? 'step' : undefined} disabled={busy} onClick={() => { setStep(index); setError(''); }}><span>{index + 1}</span>{label}</button>)}</nav>
       <div className="os-equipment-context"><strong>{selectedEquipment ? equipmentLabel(selectedEquipment) : 'Selecciona un equipo para comenzar'}</strong>{values.ticket_id && <small>Solicitud vinculada{ticket ? `: ${ticket.codigo}` : ''}</small>}</div>
-      <p className="os-help" role="status">{savedMessage || (row ? `${row.codigo} · ${row.estado}` : 'Inicia la atención para registrar la orden y adjuntar evidencias aquí.')} {row && !correcting && 'Guarda tus avances antes de salir; los cambios de texto no se guardan automáticamente.'}</p>
+      <p className="os-help" role="status">{savedMessage || (row ? `${row.codigo} · ${row.estado}` : 'Inicia la atención para registrar la orden y adjuntar evidencias aquí.')} {row && !correcting && 'Guarda tus avances para compartirlos; el respaldo local de texto no sustituye el guardado en el portal.'}</p>
       <ErrorNotice message={queryError} />{creating && <p className="os-help">La orden quedará asignada a ti. Puedes elegir cualquier equipo activo y agregar hasta dos técnicos de apoyo. Los tres podrán trabajar en esta misma orden.</p>}
       <section hidden={step !== 0} data-order-step="0" aria-label={steps[0]} className="os-form-grid">
         <label className="os-field">Cliente / patio<select value={values.cliente_id} disabled={busy || !canIdentify || !!row || !!ticket || loading} onChange={event => setValues(previous => ({ ...previous, cliente_id: event.target.value, equipo_id: '', sede_id: '' }))}><option value="">Patio EMSA · sin cliente asignado</option>{clients.rows.map(client => <option value={client.id} key={client.id}>{clientDisplayName(client)}</option>)}</select></label>
