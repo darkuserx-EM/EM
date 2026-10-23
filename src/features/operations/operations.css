@@ -269,3 +269,8 @@
 /* Corrección de un reporte importado (ImportedReportCorrection): opciones, equipo y motivo separados */
 .imported-correction{display:grid;gap:var(--space-3)}
 .imported-correction .os-check{align-items:flex-start}
+
+.os-draft-notice { margin-block:var(--space-3); padding:var(--space-3); border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-surface-subtle); }
+.os-draft-notice p { margin:0 0 var(--space-2); }
+.os-draft-notice small { display:block; color:var(--color-text-muted); }
+.os-draft-notice .button { margin:var(--space-2) var(--space-2) var(--space-2) 0; }

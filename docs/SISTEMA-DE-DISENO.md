@@ -296,3 +296,7 @@ No se cancelan órdenes en cadena: las órdenes abiertas deben revisarse y cance
 ### Avance visible de los ciclos
 
 Mantenimiento conserva el cálculo de avance existente y muestra su porcentaje junto a una barra accesible en Preventivo y Mayor. El color sigue el estado calculado; al vencer hoy la barra es roja. Los avances estimados se identifican y se mantiene la fecha de la última lectura. Sin base o margen calculable no se presenta porcentaje. No cambia planes, historial ni permisos: administración y coordinación consultan esta pantalla.
+
+### Borrador local de atención
+
+El formulario respalda únicamente textos en el navegador, por cuenta, perfil y orden, durante siete días. Requiere restauración explícita; si la versión de la orden cambió, permite consultar el texto pero bloquea su restauración automática. Los guardados siguen validando la versión y los permisos en servidor. Una orden nueva conserva el identificador de reintento al recuperar texto. No se respaldan archivos, firmas, lecturas, fechas ni estado. Guardar correctamente o descartar explícitamente elimina la copia local. El indicador de red es orientativo: no deshabilita el envío ni afirma que el servidor esté disponible. El almacenamiento local puede estar bloqueado o borrarse por el navegador; se informa si falla y no sustituye «Guardar avance».
