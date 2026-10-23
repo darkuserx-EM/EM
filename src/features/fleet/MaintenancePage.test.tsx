@@ -29,7 +29,7 @@ it('inicia en preventivo y conserva programación y vencimiento', () => {
   expect(html).not.toContain('Mayor · Sin programar');
   expect(html).toContain('Preventivo · OS-QA');
   expect(html).toContain('Vencido');
-  expect(html).toContain('Avance del ciclo: 100 %');
+  expect(html).toContain('aria-valuenow="100"');
 });
 it('un borrador no muestra el equipo como programado', () => {
   fixture.rows.OrdenServicio![0].estado = 'Borrador';
@@ -57,4 +57,23 @@ it('destaca la base pendiente antes de los indicadores sin modificar el plan',()
  expect(html.indexOf('equipos con base pendiente')).toBeLessThan(html.indexOf('Ciclos vencidos o vencen hoy'));
  expect(html).toContain('ciclos evaluados');expect(html).not.toContain('<th>Mayor</th>');
  expect(JSON.stringify(fixture.rows)).toBe(before);
+});
+
+it.each(['Administrador', 'Coordinador'])('muestra ambos avances con datos de horas sin alterar planes para %s', role => {
+  fixture.role = role;
+  fixture.rows.LecturaHorometro![0].valor = 100;
+  const before = JSON.stringify(fixture.rows);
+  const html = renderToStaticMarkup(<MemoryRouter initialEntries={['/preventivos?cycle=Ambos']}><MaintenancePage /></MemoryRouter>);
+  expect(html.match(/role="progressbar"/g)).toHaveLength(2);
+  expect(html).toContain('Preventivo: avance del ciclo');
+  expect(html).toContain('Mayor: avance del ciclo');
+  expect(html).toContain('aria-valuenow="40"');
+  expect(html).toContain('Actualizar lectura');
+  expect(JSON.stringify(fixture.rows)).toBe(before);
+});
+
+it('omite el avance cuando la base no está confirmada', () => {
+  fixture.rows.PlanPM![0].base_origen = 'Pendiente';
+  fixture.rows.PlanPM![0].base_confirmada = false;
+  expect(render()).not.toContain('role="progressbar"');
 });
