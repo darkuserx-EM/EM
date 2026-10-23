@@ -292,3 +292,7 @@ En teléfono (hasta 600 px), los filtros secundarios se pliegan con un botón ac
 Administración y coordinación disponen de «Cancelar solicitud» con motivo obligatorio de 8 a 500 caracteres. La descripción y las evidencias se conservan; la bitácora registra actor, fecha, motivo y versiones anterior/nueva. El estado Cancelado se retira del formulario general para usar esta acción explícita.
 
 No se cancelan órdenes en cadena: las órdenes abiertas deben revisarse y cancelarse primero. Una orden completada impide cancelar la solicitud; corresponde revisar el trabajo y su resolución. El servidor verifica todas las relaciones, incluidos enlaces inversos, dentro de la escritura transaccional. Técnico y cliente no pueden cancelar. Los registros históricos se conservan.
+
+### Avance visible de los ciclos
+
+Mantenimiento conserva el cálculo de avance existente y muestra su porcentaje junto a una barra accesible en Preventivo y Mayor. El color sigue el estado calculado; al vencer hoy la barra es roja. Los avances estimados se identifican y se mantiene la fecha de la última lectura. Sin base o margen calculable no se presenta porcentaje. No cambia planes, historial ni permisos: administración y coordinación consultan esta pantalla.
